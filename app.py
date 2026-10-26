@@ -122,7 +122,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진
+# 3. 퀀트 채점 엔진 (10대 항목 완전 동적화 v2.17)
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -177,44 +177,63 @@ class QuantEngine:
 
         return r_1w_val, f"{r_1w_val:+.2f}%", f"{r_1m_val:+.2f}%", f"{r_3m_val:+.2f}%", f"{r_1y_val:+.2f}%"
 
-    def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, is_smallcap: bool = False) -> np.ndarray:
+    def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, market: str) -> np.ndarray:
         if df.empty or len(df) < 2:
-            return np.array([50, 75, 80, 65, 50, 50, 70, 60, 50, 80])
+            return np.array([50, 50, 50, 50, 50, 50, 50, 50, 50, 50])
 
         latest = df.iloc[-1]
         close_val = float(latest['Close'])
         vol_val = float(latest['Volume']) if 'Volume' in latest and latest['Volume'] > 0 else 100000
 
+        # 1. 기술적 모멘텀 (RSI)
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rsi_series = 100 - (100 / (1 + gain / loss))
         rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and not pd.isna(rsi_series.iloc[-1]) else 50.0
 
+        # 2. 성장성 (CAGR 기반)
         start_price = float(df['Close'].iloc[0])
         growth_rate = (close_val - start_price) / start_price * 100
-        
-        if is_smallcap:
-            s1 = min(100, max(0, growth_rate * 1.5 + 50))
-            s2 = 80.0
-            s3 = 75.0
-            s4 = 70.0
-        else:
-            s1 = min(100, max(0, growth_rate + 50))
-            s2 = 75.0
-            s3 = 80.0
-            s4 = 65.0
+        s1 = min(100, max(10, growth_rate + 50))
 
-        s5 = max(0, 100 - abs(60 - rsi) * 2)
+        # 🔥 3. 수익성 (ROE 추정: 3개월/1년 주가 수익률 성과에 동적 연동)
+        r_1y_pct = ((close_val - start_price) / start_price * 100)
+        s2 = np.clip(50.0 + r_1y_pct * 0.4, 15.0, 95.0)
+
+        # 🔥 4. 재무건전성 (주가 변동성/표준편차 기반 동적 산출)
+        daily_returns = df['Close'].pct_change().dropna()
+        volatility = daily_returns.std() * np.sqrt(252) * 100 if len(daily_returns) > 5 else 20.0
+        s3 = np.clip(100.0 - volatility * 1.2, 20.0, 90.0)
+
+        # 🔥 5. 밸류에이션 (20일 이동평균 이격도 기반 저평가/고평가 산출)
+        ma20 = df['Close'].tail(20).mean() if len(df) >= 20 else close_val
+        disparity = (close_val / ma20) * 100 if ma20 > 0 else 100.0
+        s4 = np.clip(100.0 - abs(disparity - 100.0) * 3.0, 15.0, 95.0)
+
+        # 6. 기술적 모멘텀 점수
+        s5 = max(10, 100 - abs(60 - rsi) * 2)
+
+        # 7. 수급 / 거래량
         avg_vol = float(df['Volume'].tail(20).mean()) if 'Volume' in df else vol_val
-        s6 = min(100, (vol_val / avg_vol * 50)) if avg_vol > 0 else 50.0
-        
+        s6 = min(100, max(10, (vol_val / avg_vol * 50))) if avg_vol > 0 else 50.0
+
+        # 🔥 8. 환율 민감도 (테마별 동적 차등)
+        usdkrw_change = macro.get('USDKRW', {}).get('change', 0.0)
+        if "미국" in market or "S&P" in market or "나스닥" in market:
+            s7 = np.clip(70.0 + usdkrw_change * 5.0, 20.0, 95.0)
+        else:
+            s7 = np.clip(50.0 - usdkrw_change * 3.0, 20.0, 85.0)
+
+        # 🔥 9. 금리 환경 (변동성/시장 민감도 기반 동적 산출)
         vix_val = macro['VIX']['val'] if macro.get('VIX') and macro['VIX']['val'] > 0 else 15.0
-        s7 = max(0, 100 - (vix_val * 2))
-        s8 = 60.0
-        
+        s8 = np.clip(80.0 - (vix_val - 15.0) * 2.5, 20.0, 90.0)
+
+        # 10. 시장 상대 강도
         pct_change = float(df['Close'].pct_change(5).iloc[-1]) if len(df) >= 5 else 0.0
-        s9 = min(100, max(0, pct_change * 1000 + 50))
+        s9 = min(100, max(10, pct_change * 1000 + 50))
+
+        # 11. 대외 변동성
         s10 = 85.0 if vix_val < 20 else 40.0
 
         return np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
@@ -244,7 +263,7 @@ def get_chart_link(ticker: str, name: str) -> str:
 
 
 # ==========================================
-# 4. 🔥 매도/보유/V자 반등 및 종목별 맞춤 손익절 산출 (v2.16)
+# 4. 매도/보유/V자 반등 및 종목별 맞춤 손익절 산출
 # ==========================================
 def generate_sell_analysis(row):
     stock_name = row['종목명']
@@ -253,13 +272,11 @@ def generate_sell_analysis(row):
     rsi_score = row['기술적모멘텀']
     market = row['시장']
     
-    # 3개월 수익률 수치 파싱
     try:
         r_3m_val = float(str(row['3개월 수익률']).replace('%', '').replace('+', ''))
     except Exception:
         r_3m_val = 0.0
 
-    # 📌 종목 테마별 / 총점별 동적 손익절 라인 계산
     if "소형" in market:
         target_p_low = round(total_score * 0.14, 1)
         target_p_high = round(total_score * 0.19, 1)
@@ -270,19 +287,17 @@ def generate_sell_analysis(row):
         target_p_high = round(total_score * 0.1, 1)
         target_profit = f"+{target_p_low}% ~ +{target_p_high}%"
         stop_loss = "-2.5% ~ -4.0%"
-    else:  # 대형주
+    else:
         target_p_low = round(total_score * 0.09, 1)
         target_p_high = round(total_score * 0.13, 1)
         target_profit = f"+{target_p_low}% ~ +{target_p_high}%"
         stop_loss = "-3.0% ~ -5.0%"
 
-    # 1. 단기 과열 익절 시그널
     if rsi_score >= 85 and r_1w_val >= 8.0:
         sell_signal = "🟠 익절 권장 (Take Profit)"
         sell_reason = f"[{stock_name}] 최근 1주 수익률({r_1w_val:+.2f}%) 급등으로 단기 과열 상태입니다."
         action = "비중 50% 이상 매도하여 수익 확정"
 
-    # 2. V자 반등 및 매도 로직
     elif r_1w_val <= -5.0:
         if total_score >= 55.0 or r_3m_val > 0:
             sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold)"
@@ -293,13 +308,11 @@ def generate_sell_analysis(row):
             sell_reason = f"[{stock_name}] 주간 하락과 함께 퀀트 총점({total_score}점) 및 중기 수급이 동반 악화되어 추세 붕괴 위험이 큽니다."
             action = "전량 매도 후 우량주 교체"
 
-    # 3. 약세권 관망 시그널
     elif r_1w_val < 0 and total_score < 55.0:
         sell_signal = "🟡 손절 고려 / 관망 (Caution)"
         sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 손절가 이탈 시 대응이 필요합니다."
         action = f"손절가({stop_loss}) 미도달 시 보유, 이탈 시 손절"
 
-    # 4. 일반 보유 유지
     else:
         sell_signal = "🟢 보유 유지 (Hold)"
         sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점({total_score}점)이 견조합니다."
@@ -321,14 +334,13 @@ def run_quant_analysis():
     periods = ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']
 
     for market, tickers in universe.items():
-        is_smallcap = "소형" in market
         for ticker in tickers:
             try:
                 df = yf.Ticker(ticker).history(period='1y', timeout=3)
             except Exception:
                 df = pd.DataFrame()
 
-            raw_scores = engine.calculate_raw_scores(df, macro, is_smallcap=is_smallcap)
+            raw_scores = engine.calculate_raw_scores(df, macro, market)
             r_1w_val, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
 
             clean_code = ticker.split('.')[0]
@@ -358,16 +370,16 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 6. 대시보드 UI (v2.16 동적 손익절 반영)
+# 6. 대시보드 UI (v2.17 10대 지표 동적 산출)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.16", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.17", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.16)")
-st.caption("부제 2.16 - 테마별/종목별 변동성 기반 맞춤형 동적 손익절 라인 자동 산출 모델")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.17)")
+st.caption("부제 2.17 - 수익성/재무건전성/밸류에이션/환율/금리 10대 지표 완전 동적 개별 채점 모델")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 퀀트 데이터 및 맞춤 손익절 라인 산출 중..."):
+with st.spinner("종목별 동적 10대 지표 산출 및 실시간 퀀트 데이터 정밀 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
