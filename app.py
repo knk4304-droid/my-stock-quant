@@ -68,7 +68,7 @@ def fetch_realtime_macro():
 
 
 # ==========================================
-# 2. 유니버스 로드
+# 2. 유니버스 로드 (소형 고성장주 카테고리 2종 추가)
 # ==========================================
 class UniverseLoader:
     @staticmethod
@@ -90,7 +90,17 @@ class UniverseLoader:
             'SPY': 'SPDR S&P 500 ETF', 'QQQ': 'Invesco QQQ Trust', 'IVV': 'iShares Core S&P 500',
             'VOO': 'Vanguard S&P 500', 'SOXX': 'iShares Semiconductor ETF',
             'TQQQ': 'ProShares UltraPro QQQ', 'SQQQ': 'ProShares Short QQQ',
-            'SCHD': 'Schwab U.S. Dividend Equity', 'XLK': 'Technology Select Sector SPDR', 'XLE': 'Energy Select Sector SPDR'
+            'SCHD': 'Schwab U.S. Dividend Equity', 'XLK': 'Technology Select Sector SPDR', 'XLE': 'Energy Select Sector SPDR',
+            
+            # 신규: 국내 소형 고성장주
+            '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스', '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템',
+            '053690.KQ': '한미반도체', '081660.KQ': '플리토', '060280.KQ': '큐렉소', '058470.KQ': '리노공업',
+            '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
+            
+            # 신규: 미국 소형 고성장주
+            'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
+            'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스',
+            'DKNG': '드래프트킹스', 'AFRM': '어펌홀딩스'
         }
 
         universe = {
@@ -99,13 +109,15 @@ class UniverseLoader:
             'S&P500': ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'BRK-B', 'TSLA', 'UNH', 'JNJ'],
             '나스닥100': ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD'],
             '국내 ETF': ['069500.KS', '102110.KQ', '305540.KS', '458730.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '360750.KS', '229200.KS'],
-            '미국 ETF': ['SPY', 'QQQ', 'IVV', 'VOO', 'SOXX', 'TQQQ', 'SQQQ', 'SCHD', 'XLK', 'XLE']
+            '미국 ETF': ['SPY', 'QQQ', 'IVV', 'VOO', 'SOXX', 'TQQQ', 'SQQQ', 'SCHD', 'XLK', 'XLE'],
+            '국내 소형 고성장주': ['440110.KQ', '277810.KQ', '328130.KQ', '084990.KQ', '053690.KQ', '081660.KQ', '060280.KQ', '058470.KQ', '053030.KQ', '068240.KQ'],
+            '미국 소형 고성장주': ['PLTR', 'SMCI', 'IONQ', 'ROKU', 'SOFI', 'U', 'RBLX', 'PATH', 'DKNG', 'AFRM']
         }
         return universe, name_map
 
 
 # ==========================================
-# 3. 퀀트 정량 채점 및 수익률 산출 엔진
+# 3. 퀀트 정량 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -126,18 +138,14 @@ class QuantEngine:
 
         latest_price = df['Close'].iloc[-1]
 
-        # 1주 (5영업일 전)
         r_1w = ((latest_price - df['Close'].iloc[-5]) / df['Close'].iloc[-5] * 100) if len(df) >= 5 else 0.0
-        # 1달 (20영업일 전)
         r_1m = ((latest_price - df['Close'].iloc[-20]) / df['Close'].iloc[-20] * 100) if len(df) >= 20 else 0.0
-        # 3개월 (60영업일 전 또는 데이터 시작 지점)
         r_3m = ((latest_price - df['Close'].iloc[-60]) / df['Close'].iloc[-60] * 100) if len(df) >= 60 else ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100)
-        # 1년 (전체 구간 대비)
         r_1y = ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100) if len(df) > 0 else 0.0
 
         return f"{r_1w:+.2f}%", f"{r_1m:+.2f}%", f"{r_3m:+.2f}%", f"{r_1y:+.2f}%"
 
-    def calculate_raw_scores(self, df: pd.DataFrame, macro: dict) -> np.ndarray:
+    def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, is_smallcap: bool = False) -> np.ndarray:
         if df.empty or len(df) < 2:
             return np.array([50, 75, 80, 65, 50, 50, 70, 60, 50, 80])
 
@@ -152,12 +160,20 @@ class QuantEngine:
         rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and not pd.isna(rsi_series.iloc[-1]) else 50.0
 
         start_price = float(df['Close'].iloc[0])
-        s1 = min(100, max(0, (close_val - start_price) / start_price * 100 + 50))
-        s2 = 75.0
-        s3 = 80.0
-        s4 = 65.0
-        s5 = max(0, 100 - abs(60 - rsi) * 2)
+        growth_rate = (close_val - start_price) / start_price * 100
         
+        if is_smallcap:
+            s1 = min(100, max(0, growth_rate * 1.5 + 50))
+            s2 = 80.0
+            s3 = 75.0
+            s4 = 70.0
+        else:
+            s1 = min(100, max(0, growth_rate + 50))
+            s2 = 75.0
+            s3 = 80.0
+            s4 = 65.0
+
+        s5 = max(0, 100 - abs(60 - rsi) * 2)
         avg_vol = float(df['Volume'].tail(20).mean()) if 'Volume' in df else vol_val
         s6 = min(100, (vol_val / avg_vol * 50)) if avg_vol > 0 else 50.0
         
@@ -205,7 +221,7 @@ def generate_analyst_opinion(row, horizon_type='주간 (월~금 리밸런싱)'):
         prob = int(np.clip(total_score * 0.5 + rsi_score * 0.3 + vol_score * 0.2, 10, 95))
     elif horizon_type == '주간 (월~금 리밸런싱)':
         prob = int(np.clip(total_score * 0.7 + vol_score * 0.2 + macro_score * 0.1, 10, 95))
-    else:  # 차주 (다음주 모멘텀)
+    else:
         prob = int(np.clip(total_score * 0.85 + macro_score * 0.15, 10, 95))
 
     if prob >= 70:
@@ -234,14 +250,14 @@ def run_quant_analysis():
     periods = ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']
 
     for market, tickers in universe.items():
+        is_smallcap = "소형" in market
         for ticker in tickers:
             try:
-                # 1년치 일별 시세 수집
                 df = yf.Ticker(ticker).history(period='1y', timeout=3)
             except Exception:
                 df = pd.DataFrame()
 
-            raw_scores = engine.calculate_raw_scores(df, macro)
+            raw_scores = engine.calculate_raw_scores(df, macro, is_smallcap=is_smallcap)
             r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
 
             clean_code = ticker.split('.')[0]
@@ -272,23 +288,23 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v1.1", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.1", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 프로그램 (v1.1)")
-st.caption("부제 1.1 - 주간 매매 전략(월요일 매수 ~ 금요일 리밸런싱) 및 미래 기대 상승 모델 적용")
+st.title("📈 AI 퀀트 주식 추천 프로그램 (v2.1)")
+st.caption("부제 2.1 - 소형 고성장주 10대 항목 평가 모델 및 주간 리밸런싱 분석 시스템")
 
-with st.spinner("실시간 지수 수집 및 1년/3개월/1달/1주 수익률 분석 중..."):
+with st.spinner("실시간 국내외 지수 수집 및 소형 고성장주/대형주 8개 테마 분석 중..."):
     df, weights_map, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://m.stock.naver.com/domestic/index/KOSPI/total"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://m.stock.naver.com/domestic/index/KOSDAQ/total"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/%5EGSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/%5EIXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchange/FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/%5EVIX/")
 ]
 
@@ -313,9 +329,9 @@ if not df.empty:
             st.dataframe(w_df, use_container_width=True)
             
             st.markdown("---")
-            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10")
+            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 (8대 테마)")
 
-            categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF']
+            categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주']
             
             for cat in categories:
                 st.markdown(f"### 🏆 {cat} Top 10")
@@ -326,14 +342,13 @@ if not df.empty:
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    # 1년 수익률 항목 추가 및 총점 바로 앞 배치
                     show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '1년 수익률', '총점'] + FEATURE_NAMES
                     display_df = cat_df[show_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
                     
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
-                    with st.expander(f"🔍 {cat} Top 10 종목별 시점별 애널리스트 종합 분석 (v1.1)"):
+                    with st.expander(f"🔍 {cat} Top 10 종목별 시점별 애널리스트 종합 분석 (v2.1)"):
                         horizon = st.radio(f"[{cat}] 분석 시점 선택", ['장중 (오늘 단기)', '주간 (월~금 리밸런싱)', '차주 (다음주 모멘텀)'], key=f"radio_{p_code}_{cat}")
                         
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
