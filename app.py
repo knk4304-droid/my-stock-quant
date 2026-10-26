@@ -122,7 +122,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진 및 매도 판정 로직 보완
+# 3. 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -244,40 +244,58 @@ def get_chart_link(ticker: str, name: str) -> str:
 
 
 # ==========================================
-# 매도 타이밍 및 가이드라인 진단 로직 (신규)
+# 4. 🔥 매도/보유/V자 반등 진단 로직 (v2.15 보완)
 # ==========================================
 def generate_sell_analysis(row):
     stock_name = row['종목명']
     total_score = row['총점']
     r_1w_val = row['r_1w_val']
     rsi_score = row['기술적모멘텀']
+    
+    # 3개월 수익률 수치 파싱
+    try:
+        r_3m_val = float(str(row['3개월 수익률']).replace('%', '').replace('+', ''))
+    except Exception:
+        r_3m_val = 0.0
 
-    # 익절 / 손절 가이드라인 설정
     target_profit = "+7.0% ~ +10.0%"
     stop_loss = "-3.0% ~ -5.0%"
 
+    # 1. 단기 과열 익절 시그널
     if rsi_score >= 85 and r_1w_val >= 8.0:
         sell_signal = "🟠 익절 권장 (Take Profit)"
-        sell_reason = f"[{stock_name}] 최근 1주 수익률({r_1w_val:+.2f}%) 급등으로 단기 과열(RSI 높음) 상태입니다. 차익 실현을 권장합니다."
+        sell_reason = f"[{stock_name}] 최근 1주 수익률({r_1w_val:+.2f}%) 급등으로 단기 과열 상태입니다."
         action = "비중 50% 이상 매도하여 수익 확정"
-    elif r_1w_val <= -5.0 or total_score < 45.0:
-        sell_signal = "🔴 즉시 매도 / 교체 (Sell)"
-        sell_reason = f"[{stock_name}] 주간 추세 하락(-5% 초과) 또는 퀀트 점수 저조({total_score}점)로 리스크가 큽니다."
-        action = "전량 매도 후 지수 안정 시까지 관망 또는 우량주 교체"
+
+    # 2. 🔥 보완된 V자 반등 및 매도 로직
+    elif r_1w_val <= -5.0:
+        # 단기 하락했으나 총점이 높거나(55점 이상) 3개월 수익률이 양수인 경우 -> V자 반등 기대!
+        if total_score >= 55.0 or r_3m_val > 0:
+            sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold)"
+            sell_reason = f"[{stock_name}] 단기 주가 하락({r_1w_val:+.2f}%)이 발생했으나, 퀀트 총점({total_score}점)이 상위권이고 중기 추세(3개월 {r_3m_val:+.2f}%)가 견조하여 V자 반등 가능성이 높습니다."
+            action = "매도하지 말고 금요일 리밸런싱까지 보유 유지 (손절가 -5% 엄수)"
+        else:
+            sell_signal = "🔴 즉시 매도 / 교체 (Sell)"
+            sell_reason = f"[{stock_name}] 주간 하락과 함께 퀀트 총점({total_score}점) 및 중기 수급이 동반 악화되어 추세 붕괴 위험이 큽니다."
+            action = "전량 매도 후 우량주 교체"
+
+    # 3. 약세권 관망 시그널
     elif r_1w_val < 0 and total_score < 55.0:
         sell_signal = "🟡 손절 고려 / 관망 (Caution)"
-        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 -3% 하락 이탈 시 손절 준비가 필요합니다."
-        action = "손절가(-3%) 미도달 시 보유, 이탈 시 즉시 손절"
+        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 -3% 이탈 시 손절이 필요합니다."
+        action = "손절가(-3%) 미도달 시 보유, 이탈 시 손절"
+
+    # 4. 일반 보유 유지
     else:
         sell_signal = "🟢 보유 유지 (Hold)"
-        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점({total_score}점)이 견조합니다. 금요일 리밸런싱까지 보유를 유지하세요."
+        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점({total_score}점)이 견조합니다."
         action = "목표 수익 달성 시까지 분할 보유 유지"
 
     return sell_signal, sell_reason, action, target_profit, stop_loss
 
 
 # ==========================================
-# 4. 분석 실행 및 캐싱
+# 5. 분석 실행 및 캐싱
 # ==========================================
 @st.cache_data(ttl=60)
 def run_quant_analysis():
@@ -326,16 +344,16 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 5. 대시보드 UI (v2.14 매도 시스템 추가)
+# 6. 대시보드 UI (v2.15 V자 반등 로직 적용)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.14", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.15", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.14)")
-st.caption("부제 2.14 - 매수 추천 및 보유 종목 언제 팔아야 할지 알려주는 매도/익절/손절 진단 로직 보완")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.15)")
+st.caption("부제 2.15 - 우량주 눌림목 V자 반등 로직 보완 및 테마별 매도/익절/손절 통합 진단판")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 퀀트 데이터 및 매도 타이밍 진단 수집 중..."):
+with st.spinner("실시간 퀀트 데이터 및 V자 반등 매도 로직 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
@@ -395,7 +413,6 @@ if not df.empty:
                     
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
-                    # 💡 매도 및 보유 종합 진단 탭 추가
                     with st.expander(f"🔴 [{cat}] 보유 종목 언제 팔아야 할까? (매도/익절/손절 진단 리포트)"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
