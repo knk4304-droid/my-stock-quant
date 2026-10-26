@@ -122,13 +122,10 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 정량 채점 엔진 (v2.13 테마별 차등 가중치 적용)
+# 3. 퀀트 채점 엔진 및 매도 판정 로직 보완
 # ==========================================
 class QuantEngine:
     def __init__(self):
-        # 10대 항목: ['성장성', '수익성', '재무건전성', '밸류에이션', '기술적모멘텀', '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성']
-        
-        # 1. 대형주 그룹 가중치 (안정성 및 밸류 중심)
         self.largecap_weights = {
             '1W':   [10, 10, 10, 15, 15, 10, 5, 5, 15, 5],
             '1M':   [10, 10, 10, 15, 15, 10, 5, 5, 15, 5],
@@ -139,7 +136,6 @@ class QuantEngine:
             '10Y+': [30, 20, 15, 15, 0, 0, 5, 5, 5, 5]
         }
         
-        # 2. 소형 고성장주 그룹 가중치 (성장성, 기술적모멘텀, 수급 중심)
         self.smallcap_weights = {
             '1W':   [25, 5, 5, 5, 20, 20, 2, 3, 10, 5],
             '1M':   [25, 5, 5, 5, 20, 15, 2, 3, 15, 5],
@@ -150,7 +146,6 @@ class QuantEngine:
             '10Y+': [50, 15, 5, 5, 0, 0, 2, 3, 15, 5]
         }
 
-        # 3. ETF 그룹 가중치 (상대강도, 모멘텀, 매크로 환경 중심)
         self.etf_weights = {
             '1W':   [5, 0, 0, 0, 20, 15, 10, 10, 30, 10],
             '1M':   [5, 0, 0, 0, 20, 15, 10, 10, 30, 10],
@@ -171,16 +166,16 @@ class QuantEngine:
 
     def calculate_returns(self, df: pd.DataFrame):
         if df.empty or len(df) < 5:
-            return "0.0%", "0.0%", "0.0%", "0.0%"
+            return 0.0, "0.0%", "0.0%", "0.0%", "0.0%"
 
         latest_price = df['Close'].iloc[-1]
 
-        r_1w = ((latest_price - df['Close'].iloc[-5]) / df['Close'].iloc[-5] * 100) if len(df) >= 5 else 0.0
-        r_1m = ((latest_price - df['Close'].iloc[-20]) / df['Close'].iloc[-20] * 100) if len(df) >= 20 else 0.0
-        r_3m = ((latest_price - df['Close'].iloc[-60]) / df['Close'].iloc[-60] * 100) if len(df) >= 60 else ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100)
-        r_1y = ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100) if len(df) > 0 else 0.0
+        r_1w_val = ((latest_price - df['Close'].iloc[-5]) / df['Close'].iloc[-5] * 100) if len(df) >= 5 else 0.0
+        r_1m_val = ((latest_price - df['Close'].iloc[-20]) / df['Close'].iloc[-20] * 100) if len(df) >= 20 else 0.0
+        r_3m_val = ((latest_price - df['Close'].iloc[-60]) / df['Close'].iloc[-60] * 100) if len(df) >= 60 else ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100)
+        r_1y_val = ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100) if len(df) > 0 else 0.0
 
-        return f"{r_1w:+.2f}%", f"{r_1m:+.2f}%", f"{r_3m:+.2f}%", f"{r_1y:+.2f}%"
+        return r_1w_val, f"{r_1w_val:+.2f}%", f"{r_1m_val:+.2f}%", f"{r_3m_val:+.2f}%", f"{r_1y_val:+.2f}%"
 
     def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, is_smallcap: bool = False) -> np.ndarray:
         if df.empty or len(df) < 2:
@@ -248,31 +243,37 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
-def generate_analyst_opinion(row, horizon_type='주간 (월~금 리밸런싱)'):
-    total_score = row['총점']
-    rsi_score = row['기술적모멘텀']
-    vol_score = row['수급/거래량']
-    macro_score = row['대외변동성']
+# ==========================================
+# 매도 타이밍 및 가이드라인 진단 로직 (신규)
+# ==========================================
+def generate_sell_analysis(row):
     stock_name = row['종목명']
+    total_score = row['총점']
+    r_1w_val = row['r_1w_val']
+    rsi_score = row['기술적모멘텀']
 
-    if horizon_type == '장중 (오늘 단기)':
-        prob = int(np.clip(total_score * 0.5 + rsi_score * 0.3 + vol_score * 0.2, 10, 95))
-    elif horizon_type == '주간 (월~금 리밸런싱)':
-        prob = int(np.clip(total_score * 0.7 + vol_score * 0.2 + macro_score * 0.1, 10, 95))
+    # 익절 / 손절 가이드라인 설정
+    target_profit = "+7.0% ~ +10.0%"
+    stop_loss = "-3.0% ~ -5.0%"
+
+    if rsi_score >= 85 and r_1w_val >= 8.0:
+        sell_signal = "🟠 익절 권장 (Take Profit)"
+        sell_reason = f"[{stock_name}] 최근 1주 수익률({r_1w_val:+.2f}%) 급등으로 단기 과열(RSI 높음) 상태입니다. 차익 실현을 권장합니다."
+        action = "비중 50% 이상 매도하여 수익 확정"
+    elif r_1w_val <= -5.0 or total_score < 45.0:
+        sell_signal = "🔴 즉시 매도 / 교체 (Sell)"
+        sell_reason = f"[{stock_name}] 주간 추세 하락(-5% 초과) 또는 퀀트 점수 저조({total_score}점)로 리스크가 큽니다."
+        action = "전량 매도 후 지수 안정 시까지 관망 또는 우량주 교체"
+    elif r_1w_val < 0 and total_score < 55.0:
+        sell_signal = "🟡 손절 고려 / 관망 (Caution)"
+        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 -3% 하락 이탈 시 손절 준비가 필요합니다."
+        action = "손절가(-3%) 미도달 시 보유, 이탈 시 즉시 손절"
     else:
-        prob = int(np.clip(total_score * 0.85 + macro_score * 0.15, 10, 95))
+        sell_signal = "🟢 보유 유지 (Hold)"
+        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점({total_score}점)이 견조합니다. 금요일 리밸런싱까지 보유를 유지하세요."
+        action = "목표 수익 달성 시까지 분할 보유 유지"
 
-    if prob >= 70:
-        signal = "🟢 강력 매수 (Buy)"
-        opinion = f"[{stock_name}] {horizon_type} 관점의 미래 추세 모멘텀이 매우 우수합니다. 기대 상승 확률이 약 {prob}%로 높게 형성되어 적극 보유/매수를 권장합니다."
-    elif prob >= 55:
-        signal = "🟡 분할 매수 / 관망 (Hold)"
-        opinion = f"[{stock_name}] 펀더멘털은 견조하나 {horizon_type} 지수 숨고르기가 지속될 수 있습니다 (기대 상승 확률 {prob}%). 금요일 리밸런싱 시 점검을 권장합니다."
-    else:
-        signal = "🔴 관망 / 매도 (Sell/Wait)"
-        opinion = f"[{stock_name}] 단기 차익 실현 물량이 존재하므로 {horizon_type} 기준 위험 관리가 필요합니다 (기대 상승 확률 {prob}%). 교체 매도를 고려하세요."
-
-    return prob, signal, opinion
+    return sell_signal, sell_reason, action, target_profit, stop_loss
 
 
 # ==========================================
@@ -296,7 +297,7 @@ def run_quant_analysis():
                 df = pd.DataFrame()
 
             raw_scores = engine.calculate_raw_scores(df, macro, is_smallcap=is_smallcap)
-            r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
+            r_1w_val, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
 
             clean_code = ticker.split('.')[0]
             stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
@@ -306,6 +307,7 @@ def run_quant_analysis():
                 '시장': market,
                 '종목명': stock_name,
                 '차트링크': chart_link,
+                'r_1w_val': r_1w_val,
                 '1주 수익률': r_1w,
                 '1달 수익률': r_1m,
                 '3개월 수익률': r_3m,
@@ -324,16 +326,16 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 5. 대시보드 UI (v2.13 테마별 차등 알고리즘)
+# 5. 대시보드 UI (v2.14 매도 시스템 추가)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.13", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.14", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 프로그램 (v2.13)")
-st.caption("부제 2.13 - 대형주, 소형 고성장주, ETF 테마별 맞춤형 퀀트 평가 배점 모델 도입")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.14)")
+st.caption("부제 2.14 - 매수 추천 및 보유 종목 언제 팔아야 할지 알려주는 매도/익절/손절 진단 로직 보완")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("테마별 차등 가중치 계산 및 실시간 퀀트 데이터 산출 중..."):
+with st.spinner("실시간 퀀트 데이터 및 매도 타이밍 진단 수집 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
@@ -341,10 +343,10 @@ m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=9"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
@@ -374,7 +376,7 @@ if not df.empty:
             st.dataframe(w_summary_df, use_container_width=True)
             
             st.markdown("---")
-            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 (8대 테마)")
+            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매도/보유 진단")
 
             categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주']
             
@@ -393,20 +395,15 @@ if not df.empty:
                     
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
-                    with st.expander(f"🔍 {cat} Top 10 종목별 시점별 애널리스트 종합 분석"):
-                        horizon = st.radio(
-                            f"[{cat}] 분석 시점 선택",
-                            ['장중 (오늘 단기)', '주간 (월~금 리밸런싱)', '차주 (다음주 모멘텀)'],
-                            index=1,
-                            key=f"radio_{p_code}_{cat}"
-                        )
-                        
+                    # 💡 매도 및 보유 종합 진단 탭 추가
+                    with st.expander(f"🔴 [{cat}] 보유 종목 언제 팔아야 할까? (매도/익절/손절 진단 리포트)"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
-                            prob, signal, opinion = generate_analyst_opinion(row, horizon)
+                            s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
-                            st.markdown(f"**{idx}. {row['종목명']}** | **미래 기대 총점:** {row['총점']}점")
-                            st.markdown(f"- **{horizon} 기준 상승 확률/매수 신호:** `{prob}%` | **시그널:** {signal}")
-                            st.info(f"💡 **종합 분석 코멘트:** {opinion}")
+                            st.markdown(f"**{idx}. {row['종목명']}** | **미래 총점:** `{row['총점']}`점 | **현재 매도 시그널:** `{s_signal}`")
+                            st.markdown(f"- 🎯 **권장 목표 익절가:** `{target_p}` | 🛑 **자동 손절 기준:** `{stop_l}`")
+                            st.warning(f"💡 **매도 진단 이유:** {s_reason}\n\n👉 **대응 방법:** {action}")
+                            st.markdown("---")
                 else:
                     st.info("해당 카테고리 데이터가 없습니다.")
                 st.write("")
