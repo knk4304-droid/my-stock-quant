@@ -15,7 +15,7 @@ FEATURE_NAMES = [
 ]
 
 # ==========================================
-# 1. 실시간 주요 지수 수집 (환율 N/A 보완)
+# 1. 실시간 주요 지수 수집
 # ==========================================
 def fetch_realtime_macro():
     macro_results = {}
@@ -41,7 +41,6 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['KOSDAQ'] = {'val': 0.0, 'change': 0.0}
 
-    # 환율 수집 파싱 보완
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
@@ -50,7 +49,6 @@ def fetch_realtime_macro():
         macro_results['USDKRW'] = {'val': curr, 'change': rate}
     except Exception:
         try:
-            # 보조 API
             fx_sub = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=3).json()
             curr = float(fx_sub['rates']['KRW'])
             macro_results['USDKRW'] = {'val': curr, 'change': 0.0}
@@ -75,7 +73,7 @@ def fetch_realtime_macro():
 
 
 # ==========================================
-# 2. 유니버스 로드 (중복 제거 보완)
+# 2. 유니버스 로드
 # ==========================================
 class UniverseLoader:
     @staticmethod
@@ -124,12 +122,13 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 정량 채점 엔진
+# 3. 퀀트 정량 채점 엔진 (1W 가중치 보완)
 # ==========================================
 class QuantEngine:
     def __init__(self):
         self.weights = {
-            '1W':   [5, 5, 5, 5, 25, 20, 10, 10, 10, 5],
+            # 1W 가중치 보완: 성장성 10, 밸류 10, 기술적모멘텀 15, 수급 15, 상대강도 20 반영
+            '1W':   [10, 5, 5, 10, 15, 15, 5, 5, 20, 10],
             '1M':   [10, 10, 5, 5, 20, 15, 10, 10, 10, 5],
             '6M':   [15, 15, 10, 10, 10, 10, 5, 5, 10, 10],
             '1Y':   [20, 15, 15, 10, 5, 5, 5, 5, 10, 10],
@@ -292,17 +291,16 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 5. 대시보드 UI (v2.11 완전 보완판)
+# 5. 대시보드 UI (v2.12 주간 모델 최적화)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.11", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.12", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 프로그램 (v2.11)")
-st.caption("부제 2.11 - 환율 데이터 실시간 보정 및 중복 종목 클리닝 완료 버전")
+st.title("📈 AI 퀀트 주식 추천 프로그램 (v2.12)")
+st.caption("부제 2.12 - 월요일 10시 진입 주간(1W) 매매 알고리즘 최적화 반영 버전")
 
-# 구글 바로가기 링크 추가
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 지수 수집 및 8대 테마 종목 데이터 분석 중..."):
+with st.spinner("실시간 지수 수집 및 주간 퀀트 점수 산출 중..."):
     df, weights_map, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
@@ -358,7 +356,13 @@ if not df.empty:
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
                     with st.expander(f"🔍 {cat} Top 10 종목별 시점별 애널리스트 종합 분석"):
-                        horizon = st.radio(f"[{cat}] 분석 시점 선택", ['장중 (오늘 단기)', '주간 (월~금 리밸런싱)', '차주 (다음주 모멘텀)'], key=f"radio_{p_code}_{cat}")
+                        # 기본 선택을 '주간 (월~금 리밸런싱)'으로 설정 (index=1)
+                        horizon = st.radio(
+                            f"[{cat}] 분석 시점 선택",
+                            ['장중 (오늘 단기)', '주간 (월~금 리밸런싱)', '차주 (다음주 모멘텀)'],
+                            index=1,
+                            key=f"radio_{p_code}_{cat}"
+                        )
                         
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, signal, opinion = generate_analyst_opinion(row, horizon)
