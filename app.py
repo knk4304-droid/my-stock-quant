@@ -244,13 +244,14 @@ def get_chart_link(ticker: str, name: str) -> str:
 
 
 # ==========================================
-# 4. 🔥 매도/보유/V자 반등 진단 로직 (v2.15 보완)
+# 4. 🔥 매도/보유/V자 반등 및 종목별 맞춤 손익절 산출 (v2.16)
 # ==========================================
 def generate_sell_analysis(row):
     stock_name = row['종목명']
     total_score = row['총점']
     r_1w_val = row['r_1w_val']
     rsi_score = row['기술적모멘텀']
+    market = row['시장']
     
     # 3개월 수익률 수치 파싱
     try:
@@ -258,8 +259,22 @@ def generate_sell_analysis(row):
     except Exception:
         r_3m_val = 0.0
 
-    target_profit = "+7.0% ~ +10.0%"
-    stop_loss = "-3.0% ~ -5.0%"
+    # 📌 종목 테마별 / 총점별 동적 손익절 라인 계산
+    if "소형" in market:
+        target_p_low = round(total_score * 0.14, 1)
+        target_p_high = round(total_score * 0.19, 1)
+        target_profit = f"+{target_p_low}% ~ +{target_p_high}%"
+        stop_loss = "-5.0% ~ -7.0%"
+    elif "ETF" in market:
+        target_p_low = round(total_score * 0.07, 1)
+        target_p_high = round(total_score * 0.1, 1)
+        target_profit = f"+{target_p_low}% ~ +{target_p_high}%"
+        stop_loss = "-2.5% ~ -4.0%"
+    else:  # 대형주
+        target_p_low = round(total_score * 0.09, 1)
+        target_p_high = round(total_score * 0.13, 1)
+        target_profit = f"+{target_p_low}% ~ +{target_p_high}%"
+        stop_loss = "-3.0% ~ -5.0%"
 
     # 1. 단기 과열 익절 시그널
     if rsi_score >= 85 and r_1w_val >= 8.0:
@@ -267,13 +282,12 @@ def generate_sell_analysis(row):
         sell_reason = f"[{stock_name}] 최근 1주 수익률({r_1w_val:+.2f}%) 급등으로 단기 과열 상태입니다."
         action = "비중 50% 이상 매도하여 수익 확정"
 
-    # 2. 🔥 보완된 V자 반등 및 매도 로직
+    # 2. V자 반등 및 매도 로직
     elif r_1w_val <= -5.0:
-        # 단기 하락했으나 총점이 높거나(55점 이상) 3개월 수익률이 양수인 경우 -> V자 반등 기대!
         if total_score >= 55.0 or r_3m_val > 0:
             sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold)"
-            sell_reason = f"[{stock_name}] 단기 주가 하락({r_1w_val:+.2f}%)이 발생했으나, 퀀트 총점({total_score}점)이 상위권이고 중기 추세(3개월 {r_3m_val:+.2f}%)가 견조하여 V자 반등 가능성이 높습니다."
-            action = "매도하지 말고 금요일 리밸런싱까지 보유 유지 (손절가 -5% 엄수)"
+            sell_reason = f"[{stock_name}] 단기 주가 하락({r_1w_val:+.2f}%)이 발생했으나, 퀀트 총점({total_score}점)이 상위권이고 중기 추세가 견조하여 V자 반등 가능성이 높습니다."
+            action = f"매도하지 말고 금요일 리밸런싱까지 보유 유지 (손절가 {stop_loss} 엄수)"
         else:
             sell_signal = "🔴 즉시 매도 / 교체 (Sell)"
             sell_reason = f"[{stock_name}] 주간 하락과 함께 퀀트 총점({total_score}점) 및 중기 수급이 동반 악화되어 추세 붕괴 위험이 큽니다."
@@ -282,8 +296,8 @@ def generate_sell_analysis(row):
     # 3. 약세권 관망 시그널
     elif r_1w_val < 0 and total_score < 55.0:
         sell_signal = "🟡 손절 고려 / 관망 (Caution)"
-        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 -3% 이탈 시 손절이 필요합니다."
-        action = "손절가(-3%) 미도달 시 보유, 이탈 시 손절"
+        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 손절가 이탈 시 대응이 필요합니다."
+        action = f"손절가({stop_loss}) 미도달 시 보유, 이탈 시 손절"
 
     # 4. 일반 보유 유지
     else:
@@ -344,16 +358,16 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 6. 대시보드 UI (v2.15 V자 반등 로직 적용)
+# 6. 대시보드 UI (v2.16 동적 손익절 반영)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.15", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.16", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.15)")
-st.caption("부제 2.15 - 우량주 눌림목 V자 반등 로직 보완 및 테마별 매도/익절/손절 통합 진단판")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.16)")
+st.caption("부제 2.16 - 테마별/종목별 변동성 기반 맞춤형 동적 손익절 라인 자동 산출 모델")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 퀀트 데이터 및 V자 반등 매도 로직 계산 중..."):
+with st.spinner("실시간 퀀트 데이터 및 맞춤 손익절 라인 산출 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
@@ -361,7 +375,7 @@ m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=9"),
