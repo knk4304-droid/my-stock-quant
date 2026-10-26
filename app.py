@@ -122,20 +122,52 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 정량 채점 엔진 (1W 가중치 보완)
+# 3. 퀀트 정량 채점 엔진 (v2.13 테마별 차등 가중치 적용)
 # ==========================================
 class QuantEngine:
     def __init__(self):
-        self.weights = {
-            # 1W 가중치 보완: 성장성 10, 밸류 10, 기술적모멘텀 15, 수급 15, 상대강도 20 반영
-            '1W':   [10, 5, 5, 10, 15, 15, 5, 5, 20, 10],
-            '1M':   [10, 10, 5, 5, 20, 15, 10, 10, 10, 5],
-            '6M':   [15, 15, 10, 10, 10, 10, 5, 5, 10, 10],
-            '1Y':   [20, 15, 15, 10, 5, 5, 5, 5, 10, 10],
-            '5Y':   [20, 20, 15, 10, 5, 5, 5, 5, 5, 10],
-            '10Y':  [25, 20, 15, 10, 2, 3, 5, 5, 5, 10],
-            '10Y+': [30, 20, 15, 10, 0, 0, 5, 5, 5, 10]
+        # 10대 항목: ['성장성', '수익성', '재무건전성', '밸류에이션', '기술적모멘텀', '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성']
+        
+        # 1. 대형주 그룹 가중치 (안정성 및 밸류 중심)
+        self.largecap_weights = {
+            '1W':   [10, 10, 10, 15, 15, 10, 5, 5, 15, 5],
+            '1M':   [10, 10, 10, 15, 15, 10, 5, 5, 15, 5],
+            '6M':   [15, 15, 10, 15, 10, 10, 5, 5, 10, 5],
+            '1Y':   [20, 15, 15, 15, 5, 5, 5, 5, 10, 5],
+            '5Y':   [20, 20, 15, 15, 5, 5, 5, 5, 5, 5],
+            '10Y':  [25, 20, 15, 15, 2, 3, 5, 5, 5, 5],
+            '10Y+': [30, 20, 15, 15, 0, 0, 5, 5, 5, 5]
         }
+        
+        # 2. 소형 고성장주 그룹 가중치 (성장성, 기술적모멘텀, 수급 중심)
+        self.smallcap_weights = {
+            '1W':   [25, 5, 5, 5, 20, 20, 2, 3, 10, 5],
+            '1M':   [25, 5, 5, 5, 20, 15, 2, 3, 15, 5],
+            '6M':   [30, 10, 5, 5, 15, 10, 2, 3, 15, 5],
+            '1Y':   [35, 10, 5, 5, 10, 10, 2, 3, 15, 5],
+            '5Y':   [40, 15, 5, 5, 5, 5, 2, 3, 15, 5],
+            '10Y':  [45, 15, 5, 5, 2, 3, 2, 3, 15, 5],
+            '10Y+': [50, 15, 5, 5, 0, 0, 2, 3, 15, 5]
+        }
+
+        # 3. ETF 그룹 가중치 (상대강도, 모멘텀, 매크로 환경 중심)
+        self.etf_weights = {
+            '1W':   [5, 0, 0, 0, 20, 15, 10, 10, 30, 10],
+            '1M':   [5, 0, 0, 0, 20, 15, 10, 10, 30, 10],
+            '6M':   [10, 0, 0, 0, 15, 10, 10, 10, 35, 10],
+            '1Y':   [15, 0, 0, 0, 10, 10, 10, 10, 35, 10],
+            '5Y':   [20, 0, 0, 0, 5, 5, 10, 10, 40, 10],
+            '10Y':  [25, 0, 0, 0, 2, 3, 10, 10, 40, 10],
+            '10Y+': [30, 0, 0, 0, 0, 0, 10, 10, 40, 10]
+        }
+
+    def get_weights_by_market(self, market: str, period: str):
+        if "소형" in market:
+            return self.smallcap_weights[period]
+        elif "ETF" in market:
+            return self.etf_weights[period]
+        else:
+            return self.largecap_weights[period]
 
     def calculate_returns(self, df: pd.DataFrame):
         if df.empty or len(df) < 5:
@@ -192,8 +224,9 @@ class QuantEngine:
 
         return np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
 
-    def calculate_future_period_score(self, raw_scores: np.ndarray, df: pd.DataFrame, period: str) -> float:
-        w = np.array(self.weights[period])
+    def calculate_future_period_score(self, raw_scores: np.ndarray, df: pd.DataFrame, market: str, period: str) -> float:
+        w_list = self.get_weights_by_market(market, period)
+        w = np.array(w_list)
         base_score = np.sum(raw_scores * (w / 100.0))
         
         if not df.empty and len(df) >= 2:
@@ -283,25 +316,25 @@ def run_quant_analysis():
                 row[fname] = np.round(raw_scores[i], 1)
 
             for p in periods:
-                row[f"총점_{p}"] = engine.calculate_future_period_score(raw_scores, df, p)
+                row[f"총점_{p}"] = engine.calculate_future_period_score(raw_scores, df, market, p)
                 
             results.append(row)
 
-    return pd.DataFrame(results), engine.weights, macro
+    return pd.DataFrame(results), engine, macro
 
 
 # ==========================================
-# 5. 대시보드 UI (v2.12 주간 모델 최적화)
+# 5. 대시보드 UI (v2.13 테마별 차등 알고리즘)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.12", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.13", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 프로그램 (v2.12)")
-st.caption("부제 2.12 - 월요일 10시 진입 주간(1W) 매매 알고리즘 최적화 반영 버전")
+st.title("📈 AI 퀀트 주식 추천 프로그램 (v2.13)")
+st.caption("부제 2.13 - 대형주, 소형 고성장주, ETF 테마별 맞춤형 퀀트 평가 배점 모델 도입")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 지수 수집 및 주간 퀀트 점수 산출 중..."):
-    df, weights_map, macro_info = run_quant_analysis()
+with st.spinner("테마별 차등 가중치 계산 및 실시간 퀀트 데이터 산출 중..."):
+    df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
@@ -311,7 +344,7 @@ index_configs = [
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
@@ -329,11 +362,16 @@ if not df.empty:
 
     for tab, p_code in zip(tabs, period_codes):
         with tab:
-            st.markdown(f"### 🎯 [{p_code}] 미래 관점 항목별 가중치 배점")
+            st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
             
-            w_list = weights_map[p_code]
-            w_df = pd.DataFrame([w_list], columns=FEATURE_NAMES, index=['배점 (100점 만점)'])
-            st.dataframe(w_df, use_container_width=True)
+            w_large = engine.largecap_weights[p_code]
+            w_small = engine.smallcap_weights[p_code]
+            w_etf = engine.etf_weights[p_code]
+            
+            w_summary_df = pd.DataFrame([w_large, w_small, w_etf], 
+                                        columns=FEATURE_NAMES, 
+                                        index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹'])
+            st.dataframe(w_summary_df, use_container_width=True)
             
             st.markdown("---")
             st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 (8대 테마)")
@@ -356,7 +394,6 @@ if not df.empty:
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
                     with st.expander(f"🔍 {cat} Top 10 종목별 시점별 애널리스트 종합 분석"):
-                        # 기본 선택을 '주간 (월~금 리밸런싱)'으로 설정 (index=1)
                         horizon = st.radio(
                             f"[{cat}] 분석 시점 선택",
                             ['장중 (오늘 단기)', '주간 (월~금 리밸런싱)', '차주 (다음주 모멘텀)'],
