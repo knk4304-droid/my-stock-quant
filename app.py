@@ -129,7 +129,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진 (현재진행형 vs 순수미래형 듀얼 엔진)
+# 3. 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -245,14 +245,12 @@ class QuantEngine:
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
 
-    # 🔥 2가지 알고리즘 방식 분리 계산 (현재진행형 vs 순수미래형)
     def calculate_future_period_score(self, raw_scores: np.ndarray, df: pd.DataFrame, market: str, period: str, mode: str = "present") -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
         base_score = np.sum(raw_scores * (w / 100.0))
         
         if mode == "present":
-            # 1) 현재진행형: 실시간 등락률 보정 가산점 부여 (*2.0)
             if not df.empty and len(df.dropna()) >= 2:
                 clean_close = df['Close'].dropna()
                 realtime_change = (clean_close.iloc[-1] - clean_close.iloc[-2]) / clean_close.iloc[-2] * 100
@@ -261,7 +259,6 @@ class QuantEngine:
                 realtime_bonus = 0.0
             final_score = base_score + realtime_bonus
         else:
-            # 2) 순수미래형: 당일 급등락 착시 완전 제거 (pure base score)
             final_score = base_score
 
         final_future_score = np.clip(final_score, 10, 100)
@@ -392,7 +389,6 @@ def run_quant_analysis():
             for i, fname in enumerate(FEATURE_NAMES):
                 row[fname] = np.round(raw_scores[i], 1)
 
-            # 🔥 현재진행형 점수와 순수미래형 점수를 각각 보관
             for p in periods:
                 row[f"총점_{p}_present"] = engine.calculate_future_period_score(raw_scores, df, market, p, mode="present")
                 row[f"총점_{p}_pure"] = engine.calculate_future_period_score(raw_scores, df, market, p, mode="pure")
@@ -446,14 +442,19 @@ def render_korean_market_card(title, data, link):
     st.markdown(card_html, unsafe_allow_html=True)
 
 
-# 단위 표 렌더링 헬퍼 함수
-def render_ranking_table(cat_df, p_code, mode_suffix, title_label):
+# 🔥 v2.26 확실한 10대 지표 숨기기 표 렌더링 함수
+def render_ranking_table(cat_df, p_code, mode_suffix, title_label, show_details=False):
     st.markdown(f"#### {title_label}")
     sorted_df = cat_df.sort_values(by=f"총점_{p_code}_{mode_suffix}", ascending=False).head(10).copy()
     sorted_df['총점'] = sorted_df[f"총점_{p_code}_{mode_suffix}"]
     sorted_df['종목(차트보기)'] = sorted_df['차트링크']
     
-    show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+    # 🔥 핵심: 체크박스가 해제(False)되어 있으면 [종목명, 1주, 1달, 3개월, 총점] 5개 컬럼만 출력!
+    if show_details:
+        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+    else:
+        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점']
+
     display_df = sorted_df[show_cols].reset_index(drop=True)
     display_df.index = display_df.index + 1
     
@@ -462,35 +463,41 @@ def render_ranking_table(cat_df, p_code, mode_suffix, title_label):
 
 
 # ==========================================
-# 4. 대시보드 UI (v2.24 듀얼 비교 화면)
+# 4. 대시보드 UI (v2.26 지표 숨기기 완전 적용)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.24 (비교판)", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.26", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.24)")
-st.caption(f"부제 2.24 - 현재진행형(실시간 수급) vs 순수미래형(당일 착시 제거) 한 화면 좌우 1:1 비교 모델 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.26)")
+st.caption(f"부제 2.26 - 표 가로 찌그러짐 완벽 수정 및 10대 지표 숨기기 기본 적용 | {now_str}")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-# 🔥 비교 방식 선택 옵션 (라디오 버튼)
-view_option = st.radio(
-    "🖥️ 분석 표 출력 방식 선택:",
-    ["📊 2가지 모드 좌우 비교 (추천)", "⚡ 현재진행형만 보기 (실시간 수급반영)", "🎯 순수미래형만 보기 (당일 착시제거)"],
-    horizontal=True
-)
+col_opt1, col_opt2 = st.columns([3, 1])
 
-with st.spinner("실시간 퀀트 데이터를 현재진행형과 순수미래형 2가지 모드로 정밀 계산 중..."):
+with col_opt1:
+    view_option = st.radio(
+        "🖥️ 분석 표 출력 방식 선택:",
+        ["📊 2가지 모드 좌우 비교 (추천)", "⚡ 현재진행형만 보기 (실시간 수급반영)", "🎯 순수미래형만 보기 (당일 착시제거)"],
+        horizontal=True
+    )
+
+with col_opt2:
+    st.write("")
+    show_details = st.checkbox("👁️ 10대 지표 상세 점수 보기", value=False)
+
+with st.spinner("실시간 퀀트 데이터를 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=5"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
@@ -534,15 +541,15 @@ if not df.empty:
                     if "좌우 비교" in view_option:
                         left_col, right_col = st.columns(2)
                         with left_col:
-                            df_present = render_ranking_table(cat_df, p_code, "present", "⚡ [현재진행형] 당일 모멘텀 보정 순위")
+                            df_present = render_ranking_table(cat_df, p_code, "present", "⚡ [현재진행형] 당일 모멘텀 보정 순위", show_details)
                         with right_col:
-                            df_pure = render_ranking_table(cat_df, p_code, "pure", "🎯 [순수미래형] 당일 착시 제거 순위")
+                            df_pure = render_ranking_table(cat_df, p_code, "pure", "🎯 [순수미래형] 당일 착시 제거 순위", show_details)
                         
                         target_report_df = df_pure
                     elif "현재진행형" in view_option:
-                        target_report_df = render_ranking_table(cat_df, p_code, "present", "⚡ [현재진행형] 당일 모멘텀 보정 순위")
+                        target_report_df = render_ranking_table(cat_df, p_code, "present", "⚡ [현재진행형] 당일 모멘텀 보정 순위", show_details)
                     else:
-                        target_report_df = render_ranking_table(cat_df, p_code, "pure", "🎯 [순수미래형] 당일 착시 제거 순위")
+                        target_report_df = render_ranking_table(cat_df, p_code, "pure", "🎯 [순수미래형] 당일 착시 제거 순위", show_details)
 
                     # 종목별 통합 진단 리포트 메뉴
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
