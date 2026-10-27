@@ -73,7 +73,7 @@ def fetch_realtime_macro():
 
 
 # ==========================================
-# 2. 유니버스 로드 (상장폐지 종목 메디톡스로 교체 반영)
+# 2. 유니버스 로드
 # ==========================================
 class UniverseLoader:
     @staticmethod
@@ -122,7 +122,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진 (v2.19 안정화)
+# 3. 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -192,17 +192,13 @@ class QuantEngine:
         daily_returns = clean_close.pct_change().dropna()
         volatility = daily_returns.std() * np.sqrt(252) * 100 if len(daily_returns) > 5 else 20.0
 
-        # 1. 성장성
         s1 = np.clip(growth_rate + 50.0, 10.0, 100.0)
 
-        # 2. 수익성
         r_1y_pct = ((latest_close - start_price) / start_price * 100) if start_price > 0 else 0.0
         s2 = np.clip(50.0 + r_1y_pct * 0.4, 15.0, 95.0)
 
-        # 3. 재무건전성
         s3 = np.clip(100.0 - volatility * 1.2, 20.0, 90.0)
 
-        # 4. 밸류에이션 (소형주 이격도 감점 보정)
         ma20 = clean_close.tail(20).mean() if len(clean_close) >= 20 else latest_close
         disparity = (latest_close / ma20) * 100 if ma20 > 0 else 100.0
         if "소형" in market:
@@ -210,7 +206,6 @@ class QuantEngine:
         else:
             s4 = np.clip(100.0 - abs(disparity - 100.0) * 3.0, 15.0, 95.0)
 
-        # 5. 기술적 모멘텀 (RSI)
         delta = clean_close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
@@ -218,11 +213,9 @@ class QuantEngine:
         rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and not pd.isna(rsi_series.iloc[-1]) else 50.0
         s5 = max(10.0, 100.0 - abs(60.0 - rsi) * 2.0)
 
-        # 6. 수급 / 거래량
         avg_vol = float(vol_series.tail(20).mean()) if not vol_series.empty else vol_val
         s6 = min(100.0, max(10.0, (vol_val / avg_vol * 50.0))) if avg_vol > 0 else 50.0
 
-        # 7. 환율 민감도
         usdkrw_change = macro.get('USDKRW', {}).get('change', 0.0)
         export_stocks = ['삼성전자', 'SK하이닉스', '현대차', '기아', 'LG화학', '삼성SDI', 'POSCO홀딩스']
         
@@ -231,18 +224,15 @@ class QuantEngine:
         else:
             s7 = np.clip(45.0 - usdkrw_change * 3.0 - (volatility * 0.2), 20.0, 80.0)
 
-        # 8. 금리 환경
         vix_val = macro['VIX']['val'] if macro.get('VIX') and macro['VIX']['val'] > 0 else 15.0
         if "소형" in market or "코스닥" in market:
             s8 = np.clip(75.0 - (vix_val - 15.0) * 3.0 - (volatility * 0.3), 15.0, 85.0)
         else:
             s8 = np.clip(80.0 - (vix_val - 15.0) * 1.5, 30.0, 90.0)
 
-        # 9. 시장 상대 강도
         pct_change = float(clean_close.pct_change(5).iloc[-1]) if len(clean_close) >= 5 else 0.0
         s9 = min(100.0, max(10.0, pct_change * 1000.0 + 50.0))
 
-        # 10. 대외 변동성
         s10 = np.clip(90.0 - (volatility * 1.1), 20.0, 95.0)
 
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
@@ -382,83 +372,46 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 6. 대시보드 UI (v2.19 최종 검증판)
+# 6. 대시보드 UI (v2.20 한국 증시 표준 색상 적용)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.19", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.20", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.19)")
-st.caption("부제 2.19 - 상장폐지 종목 교체 및 전 영역 결측치 세이프티 가드 완비 버전")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.20)")
+st.caption("부제 2.20 - 주요 시장 지수 상승(빨간색 ▲) / 하락(파란색 ▼) 한국 표준 가시성 강화 적용")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("미국/국내 종목 결측치 정제 및 실시간 퀀트 데이터 산출 중..."):
+with st.spinner("지수 가시성 보완 및 실시간 퀀트 데이터 정밀 산출 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
-m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=5"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=6"),
-    (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
-    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=9"),
-    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
+    ("KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=5"),
+    ("KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=6"),
+    ("S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
+    ("NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
+    ("원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
+    ("VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
-for col, name, data, link in index_configs:
+m_cols = st.columns(6)
+
+for col, (name, data, link) in zip(m_cols, index_configs):
     with col:
-        val_str = f"{data['val']:,.2f}" if data['val'] > 0 else "N/A"
-        st.metric(label=name, value=val_str, delta=f"{data['change']:.2f}%")
-        st.markdown(f"[🔗 {name} 차트]({link})")
-
-st.markdown("---")
-
-if not df.empty:
-    tabs = st.tabs(["미래 1주일 (1W)", "미래 1개월 (1M)", "미래 6개월 (6M)", "미래 1년 (1Y)", "미래 5년 (5Y)", "미래 10년 (10Y)", "미래 10년 이상 (10Y+)"])
-    period_codes = ["1W", "1M", "6M", "1Y", "5Y", "10Y", "10Y+"]
-
-    for tab, p_code in zip(tabs, period_codes):
-        with tab:
-            st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
-            
-            w_large = engine.largecap_weights[p_code]
-            w_small = engine.smallcap_weights[p_code]
-            w_etf = engine.etf_weights[p_code]
-            
-            w_summary_df = pd.DataFrame([w_large, w_small, w_etf], 
-                                        columns=FEATURE_NAMES, 
-                                        index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹'])
-            st.dataframe(w_summary_df, use_container_width=True)
-            
-            st.markdown("---")
-            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매도/보유 진단")
-
-            categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주']
-            
-            for cat in categories:
-                st.markdown(f"### 🏆 {cat} Top 10")
-                cat_df = df[df['시장'] == cat].copy()
-                
-                if not cat_df.empty:
-                    cat_df = cat_df.sort_values(by=f"총점_{p_code}", ascending=False).head(10)
-                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                    cat_df['종목(차트보기)'] = cat_df['차트링크']
-                    
-                    show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '1년 수익률', '총점'] + FEATURE_NAMES
-                    display_df = cat_df[show_cols].reset_index(drop=True)
-                    display_df.index = display_df.index + 1
-                    
-                    st.write(display_df.to_markdown(), unsafe_allow_html=True)
-                    
-                    with st.expander(f"🔴 [{cat}] 보유 종목 언제 팔아야 할까? (매도/익절/손절 진단 리포트)"):
-                        for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
-                            s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
-                            
-                            st.markdown(f"**{idx}. {row['종목명']}** | **미래 총점:** `{row['총점']}`점 | **현재 매도 시그널:** `{s_signal}`")
-                            st.markdown(f"- 🎯 **권장 목표 익절가:** `{target_p}` | 🛑 **자동 손절 기준:** `{stop_l}`")
-                            st.warning(f"💡 **매도 진단 이유:** {s_reason}\n\n👉 **대응 방법:** {action}")
-                            st.markdown("---")
-                else:
-                    st.info("해당 카테고리 데이터가 없습니다.")
-                st.write("")
+        val = data['val']
+        change = data['change']
+        val_str = f"{val:,.2f}" if val > 0 else "N/A"
+        
+        # 🔥 상승(빨간색) / 하락(파란색) 한국 표준 컬러링
+        if change > 0:
+            color = "#E03131"  # 빨간색
+            symbol = "▲"
+            change_str = f"{symbol} +{change:.2f}%"
+        elif change < 0:
+            color = "#1C7ED6"  # 파란색
+            symbol = "▼"
+            change_str = f"{symbol} {change:.2f}%"
+        else:
+            color = "#868E96"  # 보합 회색
+            symbol = "-"
