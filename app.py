@@ -263,6 +263,35 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
+# ==========================================
+# 4. 🔥 매수 시그널 분석 함수 (기존 v2.12 기능 복원)
+# ==========================================
+def generate_buy_analysis(row):
+    total_score = row['총점']
+    rsi_score = row['기술적모멘텀']
+    vol_score = row['수급/거래량']
+    macro_score = row['대외변동성']
+    stock_name = row['종목명']
+
+    # 주간 리밸런싱 관점 기대 상승 확률 계산
+    prob = int(np.clip(total_score * 0.7 + vol_score * 0.2 + macro_score * 0.1, 10, 95))
+
+    if prob >= 70:
+        buy_signal = "🟢 강력 매수 (Buy)"
+        buy_opinion = f"[{stock_name}] 주간 관점의 미래 추세 모멘텀이 매우 우수합니다. 기대 상승 확률이 약 {prob}%로 높게 형성되어 적극 매수/보유를 권장합니다."
+    elif prob >= 55:
+        buy_signal = "🟡 분할 매수 / 관망 (Hold)"
+        buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 주간 지수 숨고르기가 지속될 수 있습니다 (기대 상승 확률 {prob}%). 눌림목 접근을 권장합니다."
+    else:
+        buy_signal = "🔴 관망 / 매도 (Sell/Wait)"
+        buy_opinion = f"[{stock_name}] 단기 차익 실현 물량이 존재하여 기대 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
+
+    return prob, buy_signal, buy_opinion
+
+
+# ==========================================
+# 5. 🔥 매도/보유/V자 반등 및 손익절 산출
+# ==========================================
 def generate_sell_analysis(row):
     stock_name = row['종목명']
     total_score = row['총점'] if not pd.isna(row['총점']) else 50.0
@@ -366,7 +395,7 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 4. 🔥 한국 증시 표준 지수 카드 커스텀 렌더링 함수 (v2.21)
+# 6. 한국 증시 표준 지수 카드 커스텀 렌더링
 # ==========================================
 def render_korean_market_card(title, data, link):
     val = data.get('val', 0.0)
@@ -374,17 +403,16 @@ def render_korean_market_card(title, data, link):
     
     val_str = f"{val:,.2f}" if val > 0 else "N/A"
     
-    # 한국 증시 표기 표준: 상승(빨간색 ▲), 하락(파란색 ▼)
     if change > 0:
-        color = "#FF3B30"  # 빨간색
+        color = "#FF3B30"
         sign = "▲ "
         change_str = f"{sign}+{change:.2f}%"
     elif change < 0:
-        color = "#007AFF"  # 파란색
+        color = "#007AFF"
         sign = "▼ "
         change_str = f"{sign}{change:.2f}%"
     else:
-        color = "#8E8E93"  # 보합 회색
+        color = "#8E8E93"
         change_str = "0.00%"
 
     card_html = f"""
@@ -415,23 +443,23 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 5. 대시보드 UI (v2.21 한국 표준 색상 적용)
+# 7. 대시보드 UI (v2.22 매수/매도 시그널 통합)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.21", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.22", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.21)")
-st.caption("부제 2.21 - 실시간 주요 지수 상승(빨간색 ▲) / 하락(파란색 ▼) 한국 표준 색상 적용 완료")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.22)")
+st.caption("부제 2.22 - 매수 시그널/상승 확률 복원 및 매도/손익절 진단 리포트 완전 통합 버전")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 퀀트 데이터 및 주요 시장 지수 수집 중..."):
+with st.spinner("실시간 퀀트 데이터 및 통합 분석 리포트 생성 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
@@ -463,7 +491,7 @@ if not df.empty:
             st.dataframe(w_summary_df, use_container_width=True)
             
             st.markdown("---")
-            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매도/보유 진단")
+            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
             categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주']
             
@@ -482,11 +510,17 @@ if not df.empty:
                     
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
-                    with st.expander(f"🔴 [{cat}] 보유 종목 언제 팔아야 할까? (매도/익절/손절 진단 리포트)"):
+                    # 💡 매수 추천 시그널 + 매도 진단 리포트 통합 메뉴
+                    with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
+                            prob, buy_signal, buy_opinion = generate_buy_analysis(row)
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
-                            st.markdown(f"**{idx}. {row['종목명']}** | **미래 총점:** `{row['총점']}`점 | **현재 매도 시그널:** `{s_signal}`")
+                            st.markdown(f"### {idx}. {row['종목명']} (미래 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
+                            st.info(f"💡 **매수 의견:** {buy_opinion}")
+                            
+                            st.markdown(f"#### 📉 **[매도 분석]** 현재 매도 시그널: `{s_signal}`")
                             st.markdown(f"- 🎯 **권장 목표 익절가:** `{target_p}` | 🛑 **자동 손절 기준:** `{stop_l}`")
                             st.warning(f"💡 **매도 진단 이유:** {s_reason}\n\n👉 **대응 방법:** {action}")
                             st.markdown("---")
