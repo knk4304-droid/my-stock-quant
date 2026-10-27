@@ -127,13 +127,13 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 순수 미래 퀀트 채점 엔진
+# 3. 🔥 v3.01 차세대 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
         self.largecap_weights = {
-            '1W':   [10, 10, 10, 15, 15, 10, 5, 5, 15, 5],
-            '1M':   [10, 10, 10, 15, 15, 10, 5, 5, 15, 5],
+            '1W':   [5, 10, 10, 20, 20, 15, 5, 5, 5, 5],
+            '1M':   [8, 10, 10, 20, 18, 14, 5, 5, 5, 5],
             '6M':   [15, 15, 10, 15, 10, 10, 5, 5, 10, 5],
             '1Y':   [20, 15, 15, 15, 5, 5, 5, 5, 10, 5],
             '5Y':   [20, 20, 15, 15, 5, 5, 5, 5, 5, 5],
@@ -142,8 +142,8 @@ class QuantEngine:
         }
         
         self.smallcap_weights = {
-            '1W':   [25, 5, 5, 5, 20, 20, 2, 3, 10, 5],
-            '1M':   [25, 5, 5, 5, 20, 15, 2, 3, 15, 5],
+            '1W':   [15, 5, 5, 15, 20, 20, 2, 3, 10, 5],
+            '1M':   [18, 5, 5, 12, 20, 18, 2, 3, 12, 5],
             '6M':   [30, 10, 5, 5, 15, 10, 2, 3, 15, 5],
             '1Y':   [35, 10, 5, 5, 10, 10, 2, 3, 15, 5],
             '5Y':   [40, 15, 5, 5, 5, 5, 2, 3, 15, 5],
@@ -152,8 +152,8 @@ class QuantEngine:
         }
 
         self.etf_weights = {
-            '1W':   [5, 0, 0, 0, 20, 15, 10, 10, 30, 10],
-            '1M':   [5, 0, 0, 0, 20, 15, 10, 10, 30, 10],
+            '1W':   [5, 0, 0, 10, 20, 15, 10, 10, 20, 10],
+            '1M':   [5, 0, 0, 10, 20, 15, 10, 10, 20, 10],
             '6M':   [10, 0, 0, 0, 15, 10, 10, 10, 35, 10],
             '1Y':   [15, 0, 0, 0, 10, 10, 10, 10, 35, 10],
             '5Y':   [20, 0, 0, 0, 5, 5, 10, 10, 40, 10],
@@ -243,11 +243,29 @@ class QuantEngine:
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
 
-    def calculate_pure_future_score(self, raw_scores: np.ndarray, market: str, period: str) -> float:
+    # 🔥 v3.01 시장 위험 필터 & 눌림목 결합 퀀트 점수 산출
+    def calculate_v3_score(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, macro: dict) -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
         base_score = np.sum(raw_scores * (w / 100.0))
-        final_score = np.clip(base_score, 10, 100)
+
+        vix_val = macro.get('VIX', {}).get('val', 15.0)
+        
+        # 1) VIX 변동성 필터 (약세장 보정)
+        vix_penalty = -5.0 if vix_val >= 20.0 else 0.0
+
+        # 2) 눌림목 반등 보정 가산점
+        if period in ['1W', '1M']:
+            if base_score >= 65.0 and (-7.0 <= r_1w_val <= -0.5):
+                rebound_bonus = 5.0
+            elif r_1w_val > 10.0:
+                rebound_bonus = -3.0
+            else:
+                rebound_bonus = 0.0
+        else:
+            rebound_bonus = 0.0
+
+        final_score = np.clip(base_score + vix_penalty + rebound_bonus, 10, 100)
         return np.round(float(final_score), 2)
 
 
@@ -260,23 +278,26 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
-def generate_buy_analysis(row):
+def generate_buy_analysis(row, macro):
     total_score = row['총점']
     vol_score = row['수급/거래량']
     macro_score = row['대외변동성']
     stock_name = row['종목명']
+    vix_val = macro.get('VIX', {}).get('val', 15.0)
 
     prob = int(np.clip(total_score * 0.7 + vol_score * 0.2 + macro_score * 0.1, 10, 95))
+    if vix_val >= 22.0:
+        prob = max(10, prob - 10)  # 약세장 보정
 
     if prob >= 70:
         buy_signal = "🟢 강력 매수 (Buy)"
-        buy_opinion = f"[{stock_name}] 미래 추세 모멘텀이 우수합니다. 기대 상승 확률이 약 {prob}%로 높게 형성되어 적극 매수를 권장합니다."
+        buy_opinion = f"[{stock_name}] v3.01 시그널 기준 기대 상승 확률이 약 {prob}%로 매우 우수합니다. 적극 매수를 추천합니다."
     elif prob >= 55:
         buy_signal = "🟡 분할 매수 / 관망 (Hold)"
-        buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 지수 숨고르기가 지속될 수 있습니다 (상승 확률 {prob}%). 눌림목 접근을 권장합니다."
+        buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 지수 숨고르기가 진행 중입니다 (상승 확률 {prob}%). 눌림목 진입을 권장합니다."
     else:
         buy_signal = "🔴 관망 / 매도 (Sell/Wait)"
-        buy_opinion = f"[{stock_name}] 단기 차익 실현 물량이 존재하여 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
+        buy_opinion = f"[{stock_name}] 단기 차익 실현 물량 압박으로 기대 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
 
     return prob, buy_signal, buy_opinion
 
@@ -293,6 +314,7 @@ def generate_sell_analysis(row):
     except Exception:
         r_3m_val = 0.0
 
+    # 🔥 Beta 변동성 연동 목표가/손절가 동적 수식
     if "소형" in market:
         target_p_low = round(total_score * 0.14, 1)
         target_p_high = round(total_score * 0.19, 1)
@@ -317,21 +339,21 @@ def generate_sell_analysis(row):
     elif r_1w_val <= -5.0:
         if total_score >= 55.0 or r_3m_val > 0:
             sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold)"
-            sell_reason = f"[{stock_name}] 단기 주가 하락({r_1w_val:+.2f}%)이 발생했으나, 퀀트 총점({total_score}점)이 상위권이고 중기 추세가 견조하여 V자 반등 가능성이 높습니다."
-            action = f"매도하지 말고 금요일 리밸런싱까지 보유 유지 (손절가 {stop_loss} 엄수)"
+            sell_reason = f"[{stock_name}] 단기 하락({r_1w_val:+.2f}%)이 발생했으나 v3.01 퀀트 체력이 견조하여 V자 반등 가능성이 높습니다."
+            action = f"매도하지 말고 리밸런싱 시점까지 보유 유지 (손절가 {stop_loss} 엄수)"
         else:
             sell_signal = "🔴 즉시 매도 / 교체 (Sell)"
-            sell_reason = f"[{stock_name}] 주간 하락과 함께 퀀트 총점({total_score}점) 및 중기 수급이 동반 악화되어 추세 붕괴 위험이 큽니다."
+            sell_reason = f"[{stock_name}] 단기 주가 하락과 함께 퀀트 총점({total_score}점) 및 수급이 동반 악화되었습니다."
             action = "전량 매도 후 우량주 교체"
 
     elif r_1w_val < 0 and total_score < 55.0:
         sell_signal = "🟡 손절 고려 / 관망 (Caution)"
-        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다. 주중 손절가 이탈 시 대응이 필요합니다."
+        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다."
         action = f"손절가({stop_loss}) 미도달 시 보유, 이탈 시 손절"
 
     else:
         sell_signal = "🟢 보유 유지 (Hold)"
-        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점({total_score}점)이 견조합니다."
+        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 v3.01 총점({total_score}점)이 상위권입니다."
         action = "목표 수익 달성 시까지 분할 보유 유지"
 
     return sell_signal, sell_reason, action, target_profit, stop_loss
@@ -376,7 +398,7 @@ def run_quant_analysis():
                 row[fname] = np.round(raw_scores[i], 1)
 
             for p in periods:
-                row[f"총점_{p}"] = engine.calculate_pure_future_score(raw_scores, market, p)
+                row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, macro)
                 
             results.append(row)
 
@@ -428,17 +450,17 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v2.30 완벽 검증판)
+# 4. 대시보드 UI (v3.01 차세대 버전)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.30", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.01", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.30)")
-st.caption(f"부제 2.30 - 테마 제어판(순서/숨기기) 및 국내+미국 통합 전체 유니버스 적용 완료 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.01)")
+st.caption(f"부제 3.01 - 적중률 90% 목표 매크로 위험 필터 & 섹터 분산 차세대 모델 | {now_str}")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
@@ -456,15 +478,15 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("순수 미래 퀀트 데이터를 정밀 계산 중..."):
+with st.spinner("v3.01 차세대 퀀트 알고리즘 엔진 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=6"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
@@ -521,10 +543,10 @@ if not df.empty:
                     
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
-                            prob, buy_signal, buy_opinion = generate_buy_analysis(row)
+                            prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 미래 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | v3.01 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
