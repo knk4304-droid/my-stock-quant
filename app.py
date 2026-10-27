@@ -7,7 +7,7 @@ import yfinance as yf
 import requests
 import streamlit as st
 
-# 실시간 자동 새로고침
+# 실시간 자동 새로고침 패키지
 try:
     from streamlit_autorefresh import st_autorefresh
     AUTOREFRESH_AVAILABLE = True
@@ -129,7 +129,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진
+# 3. 순수 미래 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -245,24 +245,13 @@ class QuantEngine:
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
 
-    def calculate_future_period_score(self, raw_scores: np.ndarray, df: pd.DataFrame, market: str, period: str, mode: str = "present") -> float:
+    # 🎯 당일 시세 착시가 완벽 제거된 순수 미래 퀀트 점수 산출
+    def calculate_pure_future_score(self, raw_scores: np.ndarray, market: str, period: str) -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
         base_score = np.sum(raw_scores * (w / 100.0))
-        
-        if mode == "present":
-            if not df.empty and len(df.dropna()) >= 2:
-                clean_close = df['Close'].dropna()
-                realtime_change = (clean_close.iloc[-1] - clean_close.iloc[-2]) / clean_close.iloc[-2] * 100
-                realtime_bonus = np.clip(realtime_change * 2.0, -10, 10)
-            else:
-                realtime_bonus = 0.0
-            final_score = base_score + realtime_bonus
-        else:
-            final_score = base_score
-
-        final_future_score = np.clip(final_score, 10, 100)
-        return np.round(float(final_future_score), 2)
+        final_score = np.clip(base_score, 10, 100)
+        return np.round(float(final_score), 2)
 
 
 def get_chart_link(ticker: str, name: str) -> str:
@@ -390,8 +379,7 @@ def run_quant_analysis():
                 row[fname] = np.round(raw_scores[i], 1)
 
             for p in periods:
-                row[f"총점_{p}_present"] = engine.calculate_future_period_score(raw_scores, df, market, p, mode="present")
-                row[f"총점_{p}_pure"] = engine.calculate_future_period_score(raw_scores, df, market, p, mode="pure")
+                row[f"총점_{p}"] = engine.calculate_pure_future_score(raw_scores, market, p)
                 
             results.append(row)
 
@@ -442,62 +430,33 @@ def render_korean_market_card(title, data, link):
     st.markdown(card_html, unsafe_allow_html=True)
 
 
-# 🔥 v2.26 확실한 10대 지표 숨기기 표 렌더링 함수
-def render_ranking_table(cat_df, p_code, mode_suffix, title_label, show_details=False):
-    st.markdown(f"#### {title_label}")
-    sorted_df = cat_df.sort_values(by=f"총점_{p_code}_{mode_suffix}", ascending=False).head(10).copy()
-    sorted_df['총점'] = sorted_df[f"총점_{p_code}_{mode_suffix}"]
-    sorted_df['종목(차트보기)'] = sorted_df['차트링크']
-    
-    # 🔥 핵심: 체크박스가 해제(False)되어 있으면 [종목명, 1주, 1달, 3개월, 총점] 5개 컬럼만 출력!
-    if show_details:
-        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
-    else:
-        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점']
-
-    display_df = sorted_df[show_cols].reset_index(drop=True)
-    display_df.index = display_df.index + 1
-    
-    st.write(display_df.to_markdown(), unsafe_allow_html=True)
-    return sorted_df
-
-
 # ==========================================
-# 4. 대시보드 UI (v2.26 지표 숨기기 완전 적용)
+# 4. 대시보드 UI (v2.27 순수미래형 단독 모드)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.26", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.27", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.26)")
-st.caption(f"부제 2.26 - 표 가로 찌그러짐 완벽 수정 및 10대 지표 숨기기 기본 적용 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.27)")
+st.caption(f"부제 2.27 - 당일 시세 착시 완전 제거 순수 미래 퀀트 모델 단독 최적화 버전 | {now_str}")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-col_opt1, col_opt2 = st.columns([3, 1])
-
-with col_opt1:
-    view_option = st.radio(
-        "🖥️ 분석 표 출력 방식 선택:",
-        ["📊 2가지 모드 좌우 비교 (추천)", "⚡ 현재진행형만 보기 (실시간 수급반영)", "🎯 순수미래형만 보기 (당일 착시제거)"],
-        horizontal=True
-    )
-
-with col_opt2:
-    st.write("")
+col_hdr1, col_hdr2 = st.columns([4, 1])
+with col_hdr2:
     show_details = st.checkbox("👁️ 10대 지표 상세 점수 보기", value=False)
 
-with st.spinner("실시간 퀀트 데이터를 계산 중..."):
+with st.spinner("순수 미래 퀀트 데이터를 정밀 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=5"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
@@ -529,35 +488,35 @@ if not df.empty:
             st.dataframe(w_summary_df, use_container_width=True)
             
             st.markdown("---")
-            st.subheader(f"📌 [{p_code}] 분야별 기대 순위 (현재진행형 vs 순수미래형 한 화면 비교)")
+            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
             categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주']
             
             for cat in categories:
-                st.markdown(f"### 🏆 {cat} Top 10 비교")
+                st.markdown(f"### 🏆 {cat} Top 10")
                 cat_df = df[df['시장'] == cat].copy()
                 
                 if not cat_df.empty:
-                    if "좌우 비교" in view_option:
-                        left_col, right_col = st.columns(2)
-                        with left_col:
-                            df_present = render_ranking_table(cat_df, p_code, "present", "⚡ [현재진행형] 당일 모멘텀 보정 순위", show_details)
-                        with right_col:
-                            df_pure = render_ranking_table(cat_df, p_code, "pure", "🎯 [순수미래형] 당일 착시 제거 순위", show_details)
-                        
-                        target_report_df = df_pure
-                    elif "현재진행형" in view_option:
-                        target_report_df = render_ranking_table(cat_df, p_code, "present", "⚡ [현재진행형] 당일 모멘텀 보정 순위", show_details)
+                    cat_df = cat_df.sort_values(by=f"총점_{p_code}", ascending=False).head(10)
+                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    cat_df['종목(차트보기)'] = cat_df['차트링크']
+                    
+                    if show_details:
+                        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
                     else:
-                        target_report_df = render_ranking_table(cat_df, p_code, "pure", "🎯 [순수미래형] 당일 착시 제거 순위", show_details)
+                        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점']
 
-                    # 종목별 통합 진단 리포트 메뉴
+                    display_df = cat_df[show_cols].reset_index(drop=True)
+                    display_df.index = display_df.index + 1
+                    
+                    st.write(display_df.to_markdown(), unsafe_allow_html=True)
+                    
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
-                        for idx, (_, row) in enumerate(target_report_df.iterrows(), start=1):
+                        for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row)
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} (퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} (미래 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
