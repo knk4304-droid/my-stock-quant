@@ -73,7 +73,7 @@ def fetch_realtime_macro():
 
 
 # ==========================================
-# 2. 유니버스 로드
+# 2. 유니버스 로드 (상장폐지 종목 메디톡스로 교체 반영)
 # ==========================================
 class UniverseLoader:
     @staticmethod
@@ -84,7 +84,7 @@ class UniverseLoader:
             '051910.KS': 'LG화학', '006400.KS': '삼성SDI',
             '247540.KQ': '엘앤에프', '086520.KQ': '에코프로비엠', '196170.KQ': '알테오젠', '028300.KQ': 'HLB',
             '293490.KQ': '카카오게임즈', '278280.KQ': '천보', '035900.KQ': 'JYP Ent.',
-            '041510.KQ': 'SM', '035760.KQ': 'CJ ENM', '091990.KQ': '셀트리온헬스케어',
+            '041510.KQ': 'SM', '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스',
             'AAPL': '애플', 'MSFT': '마이크로소프트', 'AMZN': '아마존', 'NVDA': '엔비디아', 'GOOGL': '알파벳',
             'META': '메타', 'BRK-B': '버크셔해서웨이', 'TSLA': '테슬라', 'UNH': '유나이티드헬스', 'JNJ': '존슨앤드존슨',
             'AVGO': '브로드컴', 'COST': '코스트코', 'AMD': 'AMD', 'PEP': '펩시코', 'NFLX': '넷플릭스',
@@ -110,7 +110,7 @@ class UniverseLoader:
 
         universe = {
             '코스피200': ['068270.KS', '006400.KS', '000270.KS', '005490.KS', '051910.KS', '035420.KS', '005380.KS', '005930.KS', '035720.KS', '000660.KS'],
-            '코스닥100': ['247540.KQ', '086520.KQ', '196170.KQ', '028300.KQ', '293490.KQ', '278280.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '091990.KQ'],
+            '코스닥100': ['247540.KQ', '086520.KQ', '196170.KQ', '028300.KQ', '293490.KQ', '278280.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '086900.KQ'],
             'S&P500': ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'BRK-B', 'TSLA', 'UNH', 'JNJ'],
             '나스닥100': ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD'],
             '국내 ETF': ['069500.KS', '102110.KQ', '305540.KS', '458730.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '360750.KS', '229200.KS'],
@@ -122,7 +122,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진 (v2.18 10대 지표 완전 개별 차등화)
+# 3. 퀀트 채점 엔진 (v2.19 안정화)
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -165,60 +165,64 @@ class QuantEngine:
             return self.largecap_weights[period]
 
     def calculate_returns(self, df: pd.DataFrame):
-        if df.empty or len(df) < 5:
-            return 0.0, "0.0%", "0.0%", "0.0%", "0.0%"
+        if df.empty or len(df.dropna()) < 5:
+            return 0.0, "0.00%", "0.00%", "0.00%", "0.00%"
 
-        latest_price = df['Close'].iloc[-1]
+        clean_close = df['Close'].dropna()
+        latest_price = clean_close.iloc[-1]
 
-        r_1w_val = ((latest_price - df['Close'].iloc[-5]) / df['Close'].iloc[-5] * 100) if len(df) >= 5 else 0.0
-        r_1m_val = ((latest_price - df['Close'].iloc[-20]) / df['Close'].iloc[-20] * 100) if len(df) >= 20 else 0.0
-        r_3m_val = ((latest_price - df['Close'].iloc[-60]) / df['Close'].iloc[-60] * 100) if len(df) >= 60 else ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100)
-        r_1y_val = ((latest_price - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100) if len(df) > 0 else 0.0
+        r_1w_val = ((latest_price - clean_close.iloc[-5]) / clean_close.iloc[-5] * 100) if len(clean_close) >= 5 else 0.0
+        r_1m_val = ((latest_price - clean_close.iloc[-20]) / clean_close.iloc[-20] * 100) if len(clean_close) >= 20 else 0.0
+        r_3m_val = ((latest_price - clean_close.iloc[-60]) / clean_close.iloc[-60] * 100) if len(clean_close) >= 60 else ((latest_price - clean_close.iloc[0]) / clean_close.iloc[0] * 100)
+        r_1y_val = ((latest_price - clean_close.iloc[0]) / clean_close.iloc[0] * 100) if len(clean_close) > 0 else 0.0
 
         return r_1w_val, f"{r_1w_val:+.2f}%", f"{r_1m_val:+.2f}%", f"{r_3m_val:+.2f}%", f"{r_1y_val:+.2f}%"
 
     def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, market: str, stock_name: str) -> np.ndarray:
-        if df.empty or len(df) < 2:
-            return np.array([50, 50, 50, 50, 50, 50, 50, 50, 50, 50])
+        if df.empty or len(df.dropna()) < 2:
+            return np.array([50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0])
 
-        latest = df.iloc[-1]
-        close_val = float(latest['Close'])
-        vol_val = float(latest['Volume']) if 'Volume' in latest and latest['Volume'] > 0 else 100000
+        clean_close = df['Close'].dropna()
+        latest_close = float(clean_close.iloc[-1])
+        vol_series = df['Volume'].dropna() if 'Volume' in df else pd.Series([100000])
+        vol_val = float(vol_series.iloc[-1]) if not vol_series.empty else 100000.0
 
-        # 기본 수익률 및 변동성 변수 선언
-        start_price = float(df['Close'].iloc[0])
-        growth_rate = (close_val - start_price) / start_price * 100
-        daily_returns = df['Close'].pct_change().dropna()
+        start_price = float(clean_close.iloc[0])
+        growth_rate = (latest_close - start_price) / start_price * 100 if start_price > 0 else 0.0
+        daily_returns = clean_close.pct_change().dropna()
         volatility = daily_returns.std() * np.sqrt(252) * 100 if len(daily_returns) > 5 else 20.0
 
-        # 1. 성장성 (CAGR 기반)
-        s1 = min(100, max(10, growth_rate + 50))
+        # 1. 성장성
+        s1 = np.clip(growth_rate + 50.0, 10.0, 100.0)
 
-        # 2. 수익성 (ROE 추정: 1년 수익률 성과 연동)
-        r_1y_pct = ((close_val - start_price) / start_price * 100)
+        # 2. 수익성
+        r_1y_pct = ((latest_close - start_price) / start_price * 100) if start_price > 0 else 0.0
         s2 = np.clip(50.0 + r_1y_pct * 0.4, 15.0, 95.0)
 
-        # 3. 재무건전성 (주가 변동성 기반)
+        # 3. 재무건전성
         s3 = np.clip(100.0 - volatility * 1.2, 20.0, 90.0)
 
-        # 4. 밸류에이션 (20일 이격도 기반)
-        ma20 = df['Close'].tail(20).mean() if len(df) >= 20 else close_val
-        disparity = (close_val / ma20) * 100 if ma20 > 0 else 100.0
-        s4 = np.clip(100.0 - abs(disparity - 100.0) * 3.0, 15.0, 95.0)
+        # 4. 밸류에이션 (소형주 이격도 감점 보정)
+        ma20 = clean_close.tail(20).mean() if len(clean_close) >= 20 else latest_close
+        disparity = (latest_close / ma20) * 100 if ma20 > 0 else 100.0
+        if "소형" in market:
+            s4 = np.clip(100.0 - abs(disparity - 100.0) * 1.5, 30.0, 95.0)
+        else:
+            s4 = np.clip(100.0 - abs(disparity - 100.0) * 3.0, 15.0, 95.0)
 
         # 5. 기술적 모멘텀 (RSI)
-        delta = df['Close'].diff()
+        delta = clean_close.diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rsi_series = 100 - (100 / (1 + gain / loss))
         rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and not pd.isna(rsi_series.iloc[-1]) else 50.0
-        s5 = max(10, 100 - abs(60 - rsi) * 2)
+        s5 = max(10.0, 100.0 - abs(60.0 - rsi) * 2.0)
 
         # 6. 수급 / 거래량
-        avg_vol = float(df['Volume'].tail(20).mean()) if 'Volume' in df else vol_val
-        s6 = min(100, max(10, (vol_val / avg_vol * 50))) if avg_vol > 0 else 50.0
+        avg_vol = float(vol_series.tail(20).mean()) if not vol_series.empty else vol_val
+        s6 = min(100.0, max(10.0, (vol_val / avg_vol * 50.0))) if avg_vol > 0 else 50.0
 
-        # 🔥 7. 환율 민감도 (수출주 / 내수주 / 해외주 개별 차등화)
+        # 7. 환율 민감도
         usdkrw_change = macro.get('USDKRW', {}).get('change', 0.0)
         export_stocks = ['삼성전자', 'SK하이닉스', '현대차', '기아', 'LG화학', '삼성SDI', 'POSCO홀딩스']
         
@@ -227,7 +231,7 @@ class QuantEngine:
         else:
             s7 = np.clip(45.0 - usdkrw_change * 3.0 - (volatility * 0.2), 20.0, 80.0)
 
-        # 🔥 8. 금리 환경 (성장주 vs 대형 가치주 개별 민감도 차등화)
+        # 8. 금리 환경
         vix_val = macro['VIX']['val'] if macro.get('VIX') and macro['VIX']['val'] > 0 else 15.0
         if "소형" in market or "코스닥" in market:
             s8 = np.clip(75.0 - (vix_val - 15.0) * 3.0 - (volatility * 0.3), 15.0, 85.0)
@@ -235,27 +239,29 @@ class QuantEngine:
             s8 = np.clip(80.0 - (vix_val - 15.0) * 1.5, 30.0, 90.0)
 
         # 9. 시장 상대 강도
-        pct_change = float(df['Close'].pct_change(5).iloc[-1]) if len(df) >= 5 else 0.0
-        s9 = min(100, max(10, pct_change * 1000 + 50))
+        pct_change = float(clean_close.pct_change(5).iloc[-1]) if len(clean_close) >= 5 else 0.0
+        s9 = min(100.0, max(10.0, pct_change * 1000.0 + 50.0))
 
-        # 🔥 10. 대외 변동성 (개별 종목 변동성 Beta에 완전 연동)
+        # 10. 대외 변동성
         s10 = np.clip(90.0 - (volatility * 1.1), 20.0, 95.0)
 
-        return np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
+        scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
+        return np.nan_to_num(scores, nan=50.0)
 
     def calculate_future_period_score(self, raw_scores: np.ndarray, df: pd.DataFrame, market: str, period: str) -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
         base_score = np.sum(raw_scores * (w / 100.0))
         
-        if not df.empty and len(df) >= 2:
-            realtime_change = (df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100
+        if not df.empty and len(df.dropna()) >= 2:
+            clean_close = df['Close'].dropna()
+            realtime_change = (clean_close.iloc[-1] - clean_close.iloc[-2]) / clean_close.iloc[-2] * 100
             realtime_bonus = np.clip(realtime_change * 2.0, -10, 10)
         else:
             realtime_bonus = 0.0
 
         final_future_score = np.clip(base_score + realtime_bonus, 10, 100)
-        return np.round(final_future_score, 2)
+        return np.round(float(final_future_score), 2)
 
 
 def get_chart_link(ticker: str, name: str) -> str:
@@ -268,13 +274,13 @@ def get_chart_link(ticker: str, name: str) -> str:
 
 
 # ==========================================
-# 4. 매도/보유/V자 반등 및 종목별 맞춤 손익절 산출
+# 4. 매도/보유/V자 반등 및 손익절 산출
 # ==========================================
 def generate_sell_analysis(row):
     stock_name = row['종목명']
-    total_score = row['총점']
-    r_1w_val = row['r_1w_val']
-    rsi_score = row['기술적모멘텀']
+    total_score = row['총점'] if not pd.isna(row['총점']) else 50.0
+    r_1w_val = row['r_1w_val'] if not pd.isna(row['r_1w_val']) else 0.0
+    rsi_score = row['기술적모멘텀'] if not pd.isna(row['기술적모멘텀']) else 50.0
     market = row['시장']
     
     try:
@@ -376,23 +382,23 @@ def run_quant_analysis():
 
 
 # ==========================================
-# 6. 대시보드 UI (v2.18 지표 완벽 개별화)
+# 6. 대시보드 UI (v2.19 최종 검증판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.18", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.19", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.18)")
-st.caption("부제 2.18 - 환율민감도/금리환경/대외변동성 포함 10대 항목 완벽 종목별 차등화 채점 알고리즘")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.19)")
+st.caption("부제 2.19 - 상장폐지 종목 교체 및 전 영역 결측치 세이프티 가드 완비 버전")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("종목별 10대 항목 개별 차등 채점 및 퀀트 데이터 정밀 산출 중..."):
+with st.spinner("미국/국내 종목 결측치 정제 및 실시간 퀀트 데이터 산출 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=5"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
