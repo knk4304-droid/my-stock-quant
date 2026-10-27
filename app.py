@@ -7,6 +7,13 @@ import yfinance as yf
 import requests
 import streamlit as st
 
+# 🔥 실시간 자동 새로고침 패키지
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTOREFRESH_AVAILABLE = True
+except ImportError:
+    AUTOREFRESH_AVAILABLE = False
+
 warnings.filterwarnings('ignore')
 
 FEATURE_NAMES = [
@@ -246,7 +253,7 @@ class QuantEngine:
         if not df.empty and len(df.dropna()) >= 2:
             clean_close = df['Close'].dropna()
             realtime_change = (clean_close.iloc[-1] - clean_close.iloc[-2]) / clean_close.iloc[-2] * 100
-            realtime_bonus = np.clip(realtime_change * 2.0, -10, 10)
+            realtime_bonus = np.clip(realtime_change * 0.5, -5, 5)  # 🔥 미래 예측 강화를 위해 당일 등락 반영폭 축소 (2.0 -> 0.5)
         else:
             realtime_bonus = 0.0
 
@@ -263,9 +270,6 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
-# ==========================================
-# 4. 🔥 매수 시그널 분석 함수 (기존 v2.12 기능 복원)
-# ==========================================
 def generate_buy_analysis(row):
     total_score = row['총점']
     rsi_score = row['기술적모멘텀']
@@ -273,7 +277,6 @@ def generate_buy_analysis(row):
     macro_score = row['대외변동성']
     stock_name = row['종목명']
 
-    # 주간 리밸런싱 관점 기대 상승 확률 계산
     prob = int(np.clip(total_score * 0.7 + vol_score * 0.2 + macro_score * 0.1, 10, 95))
 
     if prob >= 70:
@@ -289,9 +292,6 @@ def generate_buy_analysis(row):
     return prob, buy_signal, buy_opinion
 
 
-# ==========================================
-# 5. 🔥 매도/보유/V자 반등 및 손익절 산출
-# ==========================================
 def generate_sell_analysis(row):
     stock_name = row['종목명']
     total_score = row['총점'] if not pd.isna(row['총점']) else 50.0
@@ -348,7 +348,8 @@ def generate_sell_analysis(row):
     return sell_signal, sell_reason, action, target_profit, stop_loss
 
 
-@st.cache_data(ttl=60)
+# TTL을 10초로 줄여 실시간 리프레시와 동기화
+@st.cache_data(ttl=10)
 def run_quant_analysis():
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
@@ -394,13 +395,9 @@ def run_quant_analysis():
     return pd.DataFrame(results), engine, macro
 
 
-# ==========================================
-# 6. 한국 증시 표준 지수 카드 커스텀 렌더링
-# ==========================================
 def render_korean_market_card(title, data, link):
     val = data.get('val', 0.0)
     change = data.get('change', 0.0)
-    
     val_str = f"{val:,.2f}" if val > 0 else "N/A"
     
     if change > 0:
@@ -443,23 +440,29 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 7. 대시보드 UI (v2.22 매수/매도 시그널 통합)
+# 5. 대시보드 UI (v2.23 실시간 자동 리프레시 엔진 적용)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.22", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.23 (실시간)", layout="wide")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.22)")
-st.caption("부제 2.22 - 매수 시그널/상승 확률 복원 및 매도/손익절 진단 리포트 완전 통합 버전")
+# 🔥 30초 자동 리프레시 루프 실행
+if AUTOREFRESH_AVAILABLE:
+    st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
+
+now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.23 실시간)")
+st.caption(f"부제 2.23 - 30초 주기 실시간 주가/지수 자동 갱신 시스템 | 최근 업데이트: {now_str}")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
-with st.spinner("실시간 퀀트 데이터 및 통합 분석 리포트 생성 중..."):
+with st.spinner("실시간 퀀트 데이터 자동 업데이트 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
@@ -510,7 +513,6 @@ if not df.empty:
                     
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
                     
-                    # 💡 매수 추천 시그널 + 매도 진단 리포트 통합 메뉴
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row)
