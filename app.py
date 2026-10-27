@@ -428,19 +428,33 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v2.28 10대 지표 기본 활성화)
+# 4. 대시보드 UI (v2.30 완벽 검증판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.28", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.30", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.28)")
-st.caption(f"부제 2.28 - 10대 평가 항목 전체 점수 기본 표시 버전 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.30)")
+st.caption(f"부제 2.30 - 테마 제어판(순서/숨기기) 및 국내+미국 통합 전체 유니버스 적용 완료 | {now_str}")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
+
+DEFAULT_CATEGORIES = [
+    '🏆 통합 전체 유니버스 (국내+미국 종합)',
+    '코스피200', '코스닥100', 'S&P500', '나스닥100', 
+    '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주'
+]
+
+# 🔥 테마 제어판 (순서 드래그 및 멀티 선택 숨기기)
+with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순서 변경하기 (클릭하여 닫기/열기)", expanded=True):
+    selected_categories = st.multiselect(
+        "화면에 표시할 테마를 선택하고 순서를 조정하세요 (드래그/클릭으로 자유 변경):",
+        options=DEFAULT_CATEGORIES,
+        default=DEFAULT_CATEGORIES
+    )
 
 with st.spinner("순수 미래 퀀트 데이터를 정밀 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
@@ -449,8 +463,8 @@ st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차�
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
@@ -483,19 +497,22 @@ if not df.empty:
             st.markdown("---")
             st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
-            categories = ['코스피200', '코스닥100', 'S&P500', '나스닥100', '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주']
+            display_categories = selected_categories if selected_categories else DEFAULT_CATEGORIES
             
-            for cat in categories:
+            for cat in display_categories:
                 st.markdown(f"### 🏆 {cat} Top 10")
-                cat_df = df[df['시장'] == cat].copy()
+                
+                if "통합 전체 유니버스" in cat:
+                    cat_df = df.drop_duplicates(subset=['종목명']).copy()
+                else:
+                    cat_df = df[df['시장'] == cat].copy()
                 
                 if not cat_df.empty:
                     cat_df = cat_df.sort_values(by=f"총점_{p_code}", ascending=False).head(10)
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    # 🔥 10대 세부 평가 지표 열을 기본으로 무조건 전체 포함해서 출력!
-                    show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    show_cols = ['종목(차트보기)', '시장', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
 
                     display_df = cat_df[show_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
@@ -507,7 +524,7 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row)
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} (미래 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 미래 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
