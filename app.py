@@ -104,12 +104,10 @@ class UniverseLoader:
             'TQQQ': 'ProShares UltraPro QQQ', 'SQQQ': 'ProShares Short QQQ',
             'SCHD': 'Schwab U.S. Dividend Equity', 'XLK': 'Technology Select Sector SPDR', 'XLE': 'Energy Select Sector SPDR',
             
-            # 국내 소형 고성장주
             '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스', '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템',
             '053690.KQ': '한미반도체', '081660.KQ': '플리토', '060280.KQ': '큐렉소', '058470.KQ': '리노공업',
             '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
             
-            # 미국 소형 고성장주
             'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
             'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스',
             'DKNG': '드래프트킹스', 'AFRM': '어펌홀딩스'
@@ -245,7 +243,6 @@ class QuantEngine:
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
 
-    # 🎯 당일 시세 착시가 완벽 제거된 순수 미래 퀀트 점수 산출
     def calculate_pure_future_score(self, raw_scores: np.ndarray, market: str, period: str) -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
@@ -431,23 +428,19 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v2.27 순수미래형 단독 모드)
+# 4. 대시보드 UI (v2.28 10대 지표 기본 활성화)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.27", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v2.28", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.27)")
-st.caption(f"부제 2.27 - 당일 시세 착시 완전 제거 순수 미래 퀀트 모델 단독 최적화 버전 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v2.28)")
+st.caption(f"부제 2.28 - 10대 평가 항목 전체 점수 기본 표시 버전 | {now_str}")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
-
-col_hdr1, col_hdr2 = st.columns([4, 1])
-with col_hdr2:
-    show_details = st.checkbox("👁️ 10대 지표 상세 점수 보기", value=False)
 
 with st.spinner("순수 미래 퀀트 데이터를 정밀 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
@@ -457,7 +450,7 @@ m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
@@ -501,10 +494,8 @@ if not df.empty:
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    if show_details:
-                        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
-                    else:
-                        show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점']
+                    # 🔥 10대 세부 평가 지표 열을 기본으로 무조건 전체 포함해서 출력!
+                    show_cols = ['종목(차트보기)', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
 
                     display_df = cat_df[show_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
