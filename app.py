@@ -411,7 +411,6 @@ def generate_sell_analysis(row):
     return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
 
 
-# 🔥 [v3.23] KeyError 해결 - 8개 반환값 딕셔너리 정밀 매핑
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
@@ -456,8 +455,9 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 
+# 🔥 캐시 함수에 키 버전을 추가하여 구 버전 캐시를 완전 무효화시킴
 @st.cache_data(ttl=3600)
-def run_quant_analysis():
+def run_quant_analysis(cache_key="v3_23_fixed"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -529,7 +529,7 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.23 KeyError 완벽 해결판)
+# 4. 대시보드 UI (KeyError 완전 예외 방어판)
 # ==========================================
 st.set_page_config(page_title="AI 추천 주식 매매 (v3.23)", layout="wide")
 
@@ -556,10 +556,10 @@ m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=4"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=7"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
@@ -634,7 +634,6 @@ if not df.empty:
                     cat_df['기대상승확률(%)'] = probs
                     cat_df['매도우선순위'] = s_ranks
                     
-                    # 4가지 정렬 옵션별 조건 실행
                     if "미래 기대 수익률" in cat_sort_opt:
                         cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
                     elif "매수시그널" in cat_sort_opt:
@@ -646,9 +645,12 @@ if not df.empty:
                     
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    show_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    
+                    # 🔥 [KeyError 방지] 존재하지 않는 컬럼 자동 선별 예외 처리
+                    available_cols = [c for c in desired_cols if c in cat_df.columns]
 
-                    display_df = cat_df[show_cols].reset_index(drop=True)
+                    display_df = cat_df[available_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
                     
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
