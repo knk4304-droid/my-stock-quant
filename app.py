@@ -35,7 +35,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
             notification.notify(
                 title=f"🚨 [{title}] {stock_name}",
                 message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.08 AI 퀀트 시스템",
+                app_name="v3.09 AI 퀀트 시스템",
                 timeout=7
             )
         except Exception:
@@ -55,7 +55,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     text_content += f"- 권장 매수 비중: {ratio_msg}\n"
     if price_info:
         text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.08 정렬 옵션 시스템"
+    text_content += f"\n💡 AI 퀀트 v3.09 정렬 옵션 시스템"
 
     payload = {
         "template_object": json.dumps({
@@ -329,7 +329,7 @@ def get_chart_link(ticker: str, name: str) -> str:
         code = ticker.split('.')[0]
         url = f"https://finance.naver.com/item/main.naver?code={code}"
     else:
-        url = f"https://finance.yahoo.com/quote/{ticker}"
+        url = f"https://finance.yahoo.com/quote/{ticker}/"
     return f"[{name}]({url})"
 
 
@@ -509,17 +509,17 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.08 영역별 3가지 정렬 선택판)
+# 4. 대시보드 UI (v3.09 표준 표 구조 원복판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.08", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.09", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.08)")
-st.caption(f"부제 3.08 - 테마 영역별 3가지(퀀트점수 / 매수시그널 / 매도시그널) 맞춤 정렬판 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.09)")
+st.caption(f"부제 3.09 - 깔끔한 표준 표 원복 및 테마 영역별 3가지 정렬 선택판 | {now_str}")
 
 # 🔥 카카오 토큰 입력 창
 with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]** 클릭하여 내 토큰 등록", expanded=False):
@@ -531,8 +531,8 @@ with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]
     )
 
 st.info("""
-**📊 [v3.08 정렬 선택 가이드]**  
-각 테마 제목 바로 오른쪽 선택 박스에서 **`퀀트점수 순`**, **`매수시그널 순 (기대 상승 확률 %)`**, **`매도시그널 순 (익절/손절 우선)`** 중 원하는 기준을 각각 자유롭게 선택하여 Top 10을 조회할 수 있습니다.
+**📊 [v3.09 정렬 가이드]**  
+이전의 가독성 높은 표준 표 레이아웃으로 원복되었습니다. 각 테마 제목 우측 선택 박스에서 **`퀀트점수 순`**, **`매수시그널 순 (확률 %)`**, **`매도시그널 순 (대응 우선)`** 중 원하는 기준을 자유롭게 선택하세요.
 """)
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
@@ -551,19 +551,19 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.08 영역별 3가지 정렬 옵션 엔진 계산 중..."):
+with st.spinner("v3.09 퀀트 정렬 엔진 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
-    (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
-    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
-    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
+    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
 for col, name, data, link in index_configs:
