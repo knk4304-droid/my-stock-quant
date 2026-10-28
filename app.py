@@ -35,7 +35,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
             notification.notify(
                 title=f"🚨 [{title}] {stock_name}",
                 message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.09 AI 퀀트 시스템",
+                app_name="v3.11 AI 퀀트 시스템",
                 timeout=7
             )
         except Exception:
@@ -55,7 +55,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     text_content += f"- 권장 매수 비중: {ratio_msg}\n"
     if price_info:
         text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.09 정렬 옵션 시스템"
+    text_content += f"\n💡 AI 퀀트 v3.11 시스템 시그널"
 
     payload = {
         "template_object": json.dumps({
@@ -368,7 +368,6 @@ def generate_sell_analysis(row):
     stock_name = row['종목명']
     total_score = row['총점'] if not pd.isna(row['총점']) else 50.0
     r_1w_val = row['r_1w_val'] if not pd.isna(row['r_1w_val']) else 0.0
-    rsi_score = row['기술적모멘텀'] if not pd.isna(row['기술적모멘텀']) else 50.0
     market = row['시장']
 
     base_target = total_score * 0.12
@@ -442,6 +441,7 @@ def run_quant_analysis():
 
             chart_link = get_chart_link(ticker, stock_name)
             
+            # 🔥 1주, 1달, 3개월 수익률 컬럼 완전 노출 구성!
             row = {
                 '시장': market,
                 '종목명': stock_name,
@@ -509,17 +509,17 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.09 표준 표 구조 원복판)
+# 4. 대시보드 UI (v3.11 수익률 완전 포함 및 원복판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.09", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.11", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.09)")
-st.caption(f"부제 3.09 - 깔끔한 표준 표 원복 및 테마 영역별 3가지 정렬 선택판 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.11)")
+st.caption(f"부제 3.11 - 1주/1달/3개월 수익률 표 완전 노출 및 퀀트점수 기본 정렬판 | {now_str}")
 
 # 🔥 카카오 토큰 입력 창
 with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]** 클릭하여 내 토큰 등록", expanded=False):
@@ -531,8 +531,8 @@ with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]
     )
 
 st.info("""
-**📊 [v3.09 정렬 가이드]**  
-이전의 가독성 높은 표준 표 레이아웃으로 원복되었습니다. 각 테마 제목 우측 선택 박스에서 **`퀀트점수 순`**, **`매수시그널 순 (확률 %)`**, **`매도시그널 순 (대응 우선)`** 중 원하는 기준을 자유롭게 선택하세요.
+**📊 [v3.11 화면 안내]**  
+`1주 수익률`, `1달 수익률`, `3개월 수익률` 컬럼이 표 전면에 직관적으로 완전히 노출되도록 구성했습니다. 기본 정렬은 **`퀀트점수 순`**이며 우측 드롭다운 선택 시 해당 정렬 알고리즘대로 상위 10개 종목 순위가 변경됩니다.
 """)
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
@@ -551,18 +551,18 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.09 퀀트 정렬 엔진 계산 중..."):
+with st.spinner("v3.11 퀀트 정렬 엔진 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
@@ -602,6 +602,7 @@ if not df.empty:
                     cat_sort_opt = st.selectbox(
                         "정렬 옵션 선택:",
                         options=["퀀트점수 순", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
+                        index=0,  # 🔥 기본설정을 '퀀트점수 순'으로 지정
                         key=f"sort_{cat}_{p_code}"
                     )
                 
@@ -627,10 +628,9 @@ if not df.empty:
                         s_ranks.append(s_rank)
                     
                     cat_df['기대상승확률(%)'] = probs
-                    cat_df['매수시그널'] = b_signals
-                    cat_df['매도시그널'] = s_signals
                     cat_df['매도우선순위'] = s_ranks
                     
+                    # 🔥 정렬 드롭다운 선택 조건 반영
                     if "매수시그널" in cat_sort_opt:
                         cat_df = cat_df.sort_values(by=['기대상승확률(%)', '총점'], ascending=[False, False]).head(10)
                     elif "매도시그널" in cat_sort_opt:
@@ -640,7 +640,8 @@ if not df.empty:
                     
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    show_cols = ['종목(차트보기)', '시장', '기대상승확률(%)', '매수시그널', '매도시그널', '1주 수익률', '총점'] + FEATURE_NAMES
+                    # 💡 1주, 1달, 3개월 수익률 컬럼이 명확히 포함된 예전 표 컬럼 원복!
+                    show_cols = ['종목(차트보기)', '시장', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
 
                     display_df = cat_df[show_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
