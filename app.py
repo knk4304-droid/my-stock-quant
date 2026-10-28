@@ -26,7 +26,7 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 🔔 카카오톡 API 설정 (Kakao Developers 토큰 입력)
 # ==========================================
-KAKAO_TOKEN = "YOUR_KAKAO_ACCESS_TOKEN"  # 발급받은 카카오 액세스 토큰 입력
+KAKAO_TOKEN = "Tm7iF0dnx-8OBJYFI0XX-fxQvtCR5lDJAAAAAQoXNd0AAAGhgAS4MOAsyCcGfplL"  # 발급받은 카카오 액세스 토큰 입력
 
 def send_kakao_alert(title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
     # 1. PC 윈도우 우측 하단 팝업 알림 발송
