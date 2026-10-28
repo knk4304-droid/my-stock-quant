@@ -1,4 +1,5 @@
 import datetime
+import json
 import time
 import warnings
 import numpy as np
@@ -24,11 +25,11 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 🔔 카카오톡 API 설정 (Kakao Developers 토큰 입력)
+# 🔔 카카오톡 API 설정 (발급받으신 토큰 적용 완료)
 # ==========================================
-KAKAO_TOKEN = "Tm7iF0dnx-8OBJYFI0XX-fxQvtCR5lDJAAAAAQoXNd0AAAGhgAS4MOAsyCcGfplL"  # 발급받은 카카오 액세스 토큰 입력
+DEFAULT_KAKAO_TOKEN = "Tm7iF0dnx-8OBJYFI0XX-fxQvtCR5lDJAAAAAQoXNd0AAAGhgAS4MOAsyCcGfplL"
 
-def send_kakao_alert(title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
+def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
     # 1. PC 윈도우 우측 하단 팝업 알림 발송
     if PLYER_AVAILABLE:
         try:
@@ -41,12 +42,13 @@ def send_kakao_alert(title, stock_name, market, prob, step_msg, ratio_msg, price
         except Exception:
             pass
 
-    # 2. 카카오톡 나에게 보내기 발송
-    if KAKAO_TOKEN == "YOUR_KAKAO_ACCESS_TOKEN" or not KAKAO_TOKEN:
+    # 2. 카카오톡 나에게 보내기 API 발송
+    active_token = token if token else DEFAULT_KAKAO_TOKEN
+    if not active_token:
         return
 
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {"Authorization": f"Bearer {KAKAO_TOKEN}"}
+    headers = {"Authorization": f"Bearer {active_token}"}
     
     text_content = f"🚨 [{title}] 🚨\n\n"
     text_content += f"📌 종목: {stock_name} ({market})\n"
@@ -58,7 +60,7 @@ def send_kakao_alert(title, stock_name, market, prob, step_msg, ratio_msg, price
     text_content += f"\n💡 AI 퀀트 v3.04 자동 매수 타점 시그널"
 
     payload = {
-        "template_object": pd.io.json.dumps({
+        "template_object": json.dumps({
             "object_type": "text",
             "text": text_content,
             "link": {"web_url": "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app"}
@@ -328,7 +330,7 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
-def generate_buy_analysis(row, macro):
+def generate_buy_analysis(row, macro, user_token=""):
     total_score = row['총점']
     r_1w_val = row['r_1w_val']
     stock_name = row['종목명']
@@ -349,16 +351,16 @@ def generate_buy_analysis(row, macro):
     if prob >= 70:
         buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
         buy_opinion = f"[{stock_name}] 백테스팅 검증 우수 종목입니다. 기대 상승 확률이 약 {prob}%로 높게 산출되어 적극 매수를 추천합니다."
-        # 3차 진입 알림 전송 (PC 팝업 & 카카오톡)
-        send_kakao_alert("3차 매수 알림", stock_name, market, prob, "3차 진입 (🟢 강력 매수 시그널 전환 완료)", "전체 예산의 잔여 30%", "V자 반등 확정 구간")
+        # 3차 진입 알림 전송
+        send_kakao_alert(user_token, "3차 매수 알림", stock_name, market, prob, "3차 진입 (🟢 강력 매수 시그널 전환 완료)", "전체 예산의 잔여 30%", "V자 반등 확정 구간")
     elif prob >= 55:
         buy_signal = "🟡 분할 매수 / 관망 (Hold) [55% ~ 69%]"
         buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 눌림목 구간입니다 (상승 확률 {prob}%). 분할 진입을 권장합니다."
-        # 1차/2차 진입 세분화 알림 조건 처리
+        # 1차/2차 진입 세분화 알림 처리
         if -2.5 <= r_1w_val <= -0.8:
-            send_kakao_alert("1차 매수 알림", stock_name, market, prob, "1차 진입 (시가 대비 -1%~-2% 눌림 발생)", "전체 예산의 40%", f"1주 등락률: {r_1w_val:+.2f}%")
+            send_kakao_alert(user_token, "1차 매수 알림", stock_name, market, prob, "1차 진입 (시가 대비 -1%~-2% 눌림 발생)", "전체 예산의 40%", f"1주 등락률: {r_1w_val:+.2f}%")
         elif -6.0 <= r_1w_val < -2.5:
-            send_kakao_alert("2차 매수 알림", stock_name, market, prob, "2차 진입 (20일선 눌림목 지지선 도달)", "추가 30%", f"1주 등락률: {r_1w_val:+.2f}%")
+            send_kakao_alert(user_token, "2차 매수 알림", stock_name, market, prob, "2차 진입 (20일선 눌림목 지지선 도달)", "추가 30%", f"1주 등락률: {r_1w_val:+.2f}%")
     else:
         buy_signal = "🔴 관망 / 매도 (Sell/Wait) [55% 미만]"
         buy_opinion = f"[{stock_name}] 단기 차익 실현 및 추세 하방 압력으로 기대 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
@@ -513,7 +515,7 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.04 카카오톡 & PC 토스트 알림판)
+# 4. 대시보드 UI (v3.04 공유자 개별 알림 연동판)
 # ==========================================
 st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.04", layout="wide")
 
@@ -523,9 +525,17 @@ if AUTOREFRESH_AVAILABLE:
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.04)")
-st.caption(f"부제 3.04 - 카카오톡 알림 & PC 토스트 팝업 알림 무텔레그램 세분화 연동판 | {now_str}")
+st.caption(f"부제 3.04 - 공유자 개별 카카오톡 알림 & PC 토스트 팝업 연동 완결판 | {now_str}")
 
-# 🔥 시그널 및 알림 시스템 안내 박스
+# 🔥 웹 공유자를 위한 개별 카카오 토큰 입력 창
+with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]** 클릭하여 내 토큰 등록", expanded=False):
+    user_kakao_token = st.text_input(
+        "본인의 카카오 Access Token을 입력하시면 타점 발생 시 내 핸드폰 카카오톡으로도 메시지가 전송됩니다:",
+        value="",
+        placeholder="예: Tm7iF0dnx-8OBJYFI0XX-fxQvtCR5lDJAAAAAQoXNd0AAAGhgAS4MOAsyCcGfplL",
+        type="password"
+    )
+
 st.info("""
 **📊 [카카오톡 & PC 팝업 분할 매수 3단계 알림 가이드]**  
 - **🎯 1차 매수 알림 (40% 비중):** 시가 대비 `-1.0% ~ -2.5%` 눌림목 발생 시 PC 팝업/카톡 발송  
@@ -549,7 +559,7 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.04 카카오톡 & PC 토스트 알림 엔진 계산 중..."):
+with st.spinner("v3.04 공유 사용자 카카오톡 알림 연동 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
@@ -557,10 +567,10 @@ m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
@@ -614,7 +624,7 @@ if not df.empty:
                     
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
-                            prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
+                            prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info, user_kakao_token)
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
                             st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | v3.04 퀀트 총점: `{row['총점']}`점)")
