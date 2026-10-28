@@ -25,9 +25,9 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 🔔 카카오톡 API 설정 (발급받으신 토큰 적용 완료)
+# 🔔 카카오톡 API 설정 (전달주신 모바일 키 적용 완료)
 # ==========================================
-DEFAULT_KAKAO_TOKEN = "Tm7iF0dnx-8OBJYFI0XX-fxQvtCR5lDJAAAAAQoXNd0AAAGhgAS4MOAsyCcGfplL"
+DEFAULT_KAKAO_TOKEN = "u8kop9h2zb64gyug7athkkxwp23xbz"
 
 def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
     # 1. PC 윈도우 우측 하단 팝업 알림 발송
@@ -525,14 +525,14 @@ if AUTOREFRESH_AVAILABLE:
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.04)")
-st.caption(f"부제 3.04 - 공유자 개별 카카오톡 알림 & PC 토스트 팝업 연동 완결판 | {now_str}")
+st.caption(f"부제 3.04 - 모바일 웹 발급 키 적용 및 공유자 개별 카카오톡 알림 연동 완결판 | {now_str}")
 
 # 🔥 웹 공유자를 위한 개별 카카오 토큰 입력 창
 with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]** 클릭하여 내 토큰 등록", expanded=False):
     user_kakao_token = st.text_input(
         "본인의 카카오 Access Token을 입력하시면 타점 발생 시 내 핸드폰 카카오톡으로도 메시지가 전송됩니다:",
         value="",
-        placeholder="예: Tm7iF0dnx-8OBJYFI0XX-fxQvtCR5lDJAAAAAQoXNd0AAAGhgAS4MOAsyCcGfplL",
+        placeholder="예: u8kop9h2zb64gyug7athkkxwp23xbz",
         type="password"
     )
 
@@ -566,11 +566,11 @@ st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차�
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
