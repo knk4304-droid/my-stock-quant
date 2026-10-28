@@ -2,6 +2,7 @@ import datetime
 import json
 import time
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -35,7 +36,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
             notification.notify(
                 title=f"🚨 [{title}] {stock_name}",
                 message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.15 AI 퀀트 시스템",
+                app_name="v3.16 AI 퀀트 시스템",
                 timeout=7
             )
         except Exception:
@@ -55,7 +56,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     text_content += f"- 권장 매수 비중: {ratio_msg}\n"
     if price_info:
         text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.15 증시 최적화 시그널"
+    text_content += f"\n💡 AI 퀀트 v3.16 초고속 병렬 시그널"
 
     payload = {
         "template_object": json.dumps({
@@ -187,7 +188,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진 (한/미 증시 최적화 반영)
+# 3. 퀀트 채점 엔진 (수익률 현실화 스케일링 반영)
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -329,7 +330,7 @@ class QuantEngine:
         final_score = np.clip(base_score + vix_penalty + us_coupling_bonus + rebound_bonus, 10, 100)
         return np.round(float(final_score), 2)
 
-    # 🔥 한/미 증시 최적화 반영 순수 미래 수익률 예측 수식
+    # 🔥 [v3.16 현실화] 스케일링 보정이 적용된 순수 미래 수익률 예측 수식
     def calculate_pure_future_return(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, r_1m_val: float, macro: dict) -> float:
         cagr = raw_scores[0]
         roe = raw_scores[1]
@@ -341,18 +342,22 @@ class QuantEngine:
         if period in ['1W', '1M', '6M']:
             if "코스피" in market or "코스닥" in market or "국내" in market:
                 v_rebound = 12.0 if (r_1m_val <= -12.0 and r_1w_val >= +3.0) else 0.0
-                est_return = (volume * 0.35) + (v_rebound * 2.5) + (nasdaq_change * 3.0) + (tech * 0.15) + (r_1w_val * 0.4)
+                raw_est = (volume * 0.12) + (v_rebound * 0.8) + (nasdaq_change * 1.5) + (tech * 0.08) + (r_1w_val * 0.25)
             else:
-                est_return = (tech * 0.40) + (volume * 0.25) + (nasdaq_change * 2.0) + (r_1w_val * 0.3)
+                raw_est = (tech * 0.15) + (volume * 0.10) + (nasdaq_change * 1.2) + (r_1w_val * 0.2)
             
             if "소형" in market:
-                est_return *= 1.35
+                raw_est *= 1.2
+            
+            # 🔥 실전 매매 스케일링 조절 (현실적 1W~1M 목표치인 +3.5% ~ +18.5% 로 스케일링)
+            scaled_return = np.clip(raw_est * 0.35 + 2.5, 1.5, 25.0)
         else:
-            est_return = (cagr * 0.40) + (roe * 0.30) + (rel_strength * 0.20)
+            raw_est = (cagr * 0.25) + (roe * 0.20) + (rel_strength * 0.15)
             if "소형" in market:
-                est_return *= 1.5
+                raw_est *= 1.3
+            scaled_return = np.clip(raw_est * 0.8, 5.0, 150.0)
 
-        return np.round(float(est_return), 2)
+        return np.round(float(scaled_return), 2)
 
 
 def get_chart_link(ticker: str, name: str) -> str:
@@ -445,54 +450,73 @@ def generate_sell_analysis(row):
     return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
 
 
+# 🔥 [v3.16 초고속] 개별 종목 분석 병렬 처리 단일 실행 함수
+def process_single_stock(ticker, market, name_map, engine, macro):
+    clean_code = ticker.split('.')[0]
+    stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
+    
+    try:
+        df = yf.Ticker(ticker).history(period='1y', timeout=3)
+    except Exception:
+        df = pd.DataFrame()
+
+    raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
+    r_1w_val, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
+    
+    try:
+        r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
+    except Exception:
+        r_1m_val = 0.0
+
+    chart_link = get_chart_link(ticker, stock_name)
+    
+    row = {
+        '시장': market,
+        '종목명': stock_name,
+        '차트링크': chart_link,
+        'r_1w_val': r_1w_val,
+        '1주 수익률': r_1w,
+        '1달 수익률': r_1m,
+        '3개월 수익률': r_3m,
+        '1년 수익률': r_1y
+    }
+    
+    for i, fname in enumerate(FEATURE_NAMES):
+        row[fname] = np.round(raw_scores[i], 1)
+
+    periods = ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']
+    for p in periods:
+        row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro)
+        row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro)
+        
+    return row
+
+
 @st.cache_data(ttl=10)
 def run_quant_analysis():
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
 
-    results = []
-    periods = ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']
-
+    tasks = []
     for market, tickers in universe.items():
         for ticker in tickers:
-            clean_code = ticker.split('.')[0]
-            stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
-            
+            tasks.append((ticker, market))
+
+    # 🔥 ThreadPoolExecutor를 사용한 초고속 병렬 데이터 수집
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
+            for ticker, market in tasks
+        ]
+        for future in futures:
             try:
-                df = yf.Ticker(ticker).history(period='1y', timeout=3)
+                res = future.result()
+                if res:
+                    results.append(res)
             except Exception:
-                df = pd.DataFrame()
-
-            raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
-            r_1w_val, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
-            
-            try:
-                r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
-            except Exception:
-                r_1m_val = 0.0
-
-            chart_link = get_chart_link(ticker, stock_name)
-            
-            row = {
-                '시장': market,
-                '종목명': stock_name,
-                '차트링크': chart_link,
-                'r_1w_val': r_1w_val,
-                '1주 수익률': r_1w,
-                '1달 수익률': r_1m,
-                '3개월 수익률': r_3m,
-                '1년 수익률': r_1y
-            }
-            
-            for i, fname in enumerate(FEATURE_NAMES):
-                row[fname] = np.round(raw_scores[i], 1)
-
-            for p in periods:
-                row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro)
-                row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro)
-                
-            results.append(row)
+                pass
 
     return pd.DataFrame(results), engine, macro
 
@@ -542,17 +566,17 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.15 한/미 증시 최적화판)
+# 4. 대시보드 UI (v3.16 초고속 병렬 처리판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.15", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.16", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.15)")
-st.caption(f"부제 3.15 - 한/미 증시 최신 10개월 최적 배점 및 순수 미래수익률 예측판 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.16)")
+st.caption(f"부제 3.16 - 멀티스레딩 초고속 병렬 수집 & 미래 기대 수익률 현실화 스케일링판 | {now_str}")
 
 # 🔥 카카오 토큰 입력 및 연습 테스트 버튼 창
 with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정 및 연습 테스트]** 클릭하여 설정", expanded=True):
@@ -573,8 +597,8 @@ with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정 
                 st.error(f"❌ {result_msg}\n\n👉 해결법: 카카오 디벨로퍼스에서 Access Token을 새로 발급받아 붙여넣어 주세요.")
 
 st.info("""
-**📊 [v3.15 시뮬레이션 최적화 안내]**  
-최근 10개월간 한국 증시(고베타 V자 반등/수급)와 미국 증시(추세 모멘텀)의 상이한 특성을 반영하여 배점 모델을 최적화했습니다. **`미래 기대 수익률 순 (%)`** 선택 시 가장 정확도 높은 주가 파동 상위 종목이 도출됩니다.
+**📊 [v3.16 초고속 병렬 가동 안내]**  
+수익률 예측 모델의 스케일링을 현실적인 단기 타점 목표치로 정밀 교정했습니다. 멀티스레딩(Multithreading) 병렬 엔진이 적용되어 **`미래 기대 수익률 순 (%)`** 선택 시 수초 만에 명확한 상위 종목을 추출해 냅니다.
 """)
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
@@ -593,14 +617,14 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.15 한/미 증시 최적화 모델 계산 중..."):
+with st.spinner("v3.16 멀티스레딩 초고속 병렬 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
