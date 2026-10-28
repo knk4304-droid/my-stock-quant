@@ -35,7 +35,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
             notification.notify(
                 title=f"🚨 [{title}] {stock_name}",
                 message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.06 AI 퀀트 시스템",
+                app_name="v3.08 AI 퀀트 시스템",
                 timeout=7
             )
         except Exception:
@@ -55,7 +55,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     text_content += f"- 권장 매수 비중: {ratio_msg}\n"
     if price_info:
         text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.06 실시간 동적 익절/반등 시그널"
+    text_content += f"\n💡 AI 퀀트 v3.08 정렬 옵션 시스템"
 
     payload = {
         "template_object": json.dumps({
@@ -297,7 +297,6 @@ class QuantEngine:
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
 
-    # 🔥 v3.06 과낙폭 우량주 V자 반등 가산점 수식
     def calculate_v3_score(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, r_1m_val: float, macro: dict) -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
@@ -306,16 +305,12 @@ class QuantEngine:
         vix_val = macro.get('VIX', {}).get('val', 15.0)
         nasdaq_change = macro.get('NASDAQ', {}).get('change', 0.0)
         
-        # 1) VIX 변동성 필터
         vix_penalty = -5.0 if vix_val >= 20.0 else 0.0
-
-        # 2) 미증시 커플링 가산점
         us_coupling_bonus = np.clip(nasdaq_change * 2.0, -6.0, 6.0)
 
-        # 3) 과낙폭 우량주(SK하이닉스 등) V자 반등 전용 보정 가산점 (+8점)
         if period in ['1W', '1M']:
             if base_score >= 55.0 and (r_1m_val <= -12.0) and (r_1w_val >= +3.0):
-                rebound_bonus = 8.0  # 과낙폭 반등 강하게 포착
+                rebound_bonus = 8.0
             elif base_score >= 65.0 and (-7.0 <= r_1w_val <= -0.5):
                 rebound_bonus = 5.0
             elif r_1w_val > 10.0:
@@ -353,23 +348,22 @@ def generate_buy_analysis(row, macro, user_token=""):
 
     if prob >= 70:
         buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
-        buy_opinion = f"[{stock_name}] 과낙폭 반등 및 퀀트 체력 최상위 종목입니다. 기대 상승 확률 약 {prob}%로 적극 매수를 추천합니다."
+        buy_opinion = f"[{stock_name}] 기대 상승 확률 약 {prob}%로 최상위 매수 시그널입니다. 적극 매수를 추천합니다."
         send_kakao_alert(user_token, "3차 매수 알림", stock_name, market, prob, "3차 진입 (🟢 강력 매수 시그널 전환 완료)", "전체 예산의 잔여 30%", "V자 반등 확정 구간")
     elif prob >= 55:
         buy_signal = "🟡 분할 매수 / 관망 (Hold) [55% ~ 69%]"
-        buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 눌림목 구간입니다 (상승 확률 {prob}%). 분할 진입을 권장합니다."
+        buy_opinion = f"[{stock_name}] 눌림목 및 상승 시그널 구간입니다 (기대 확률 {prob}%). 분할 진입을 권장합니다."
         if -2.5 <= r_1w_val <= -0.8:
             send_kakao_alert(user_token, "1차 매수 알림", stock_name, market, prob, "1차 진입 (시가 대비 -1%~-2% 눌림 발생)", "전체 예산의 40%", f"1주 등락률: {r_1w_val:+.2f}%")
         elif -6.0 <= r_1w_val < -2.5:
             send_kakao_alert(user_token, "2차 매수 알림", stock_name, market, prob, "2차 진입 (20일선 눌림목 지지선 도달)", "추가 30%", f"1주 등락률: {r_1w_val:+.2f}%")
     else:
         buy_signal = "🔴 관망 / 매도 (Sell/Wait) [55% 미만]"
-        buy_opinion = f"[{stock_name}] 단기 차익 실현 및 추세 하방 압력으로 기대 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
+        buy_opinion = f"[{stock_name}] 기대 상승 확률({prob}%)이 다소 낮습니다. 신규 매수를 보류하세요."
 
     return prob, buy_signal, buy_opinion
 
 
-# 🔥 v3.06 실시간 동적 익절/손절 트레일링 스탑 보정 함수
 def generate_sell_analysis(row):
     stock_name = row['종목명']
     total_score = row['총점'] if not pd.isna(row['총점']) else 50.0
@@ -377,7 +371,6 @@ def generate_sell_analysis(row):
     rsi_score = row['기술적모멘텀'] if not pd.isna(row['기술적모멘텀']) else 50.0
     market = row['시장']
 
-    # 실시간 1주 등락폭 기준 동적 익절가 상향 보정
     base_target = total_score * 0.12
     dynamic_target_low = round(max(base_target, r_1w_val + 1.5), 1)
     dynamic_target_high = round(max(base_target + 3.0, r_1w_val + 4.0), 1)
@@ -385,33 +378,39 @@ def generate_sell_analysis(row):
     target_profit = f"+{dynamic_target_low}% ~ +{dynamic_target_high}%"
     stop_loss = "-3.5% ~ -5.5%" if "대형" in market or "코스피" in market else "-5.0% ~ -7.5%"
 
-    # 🚨 실시간 시세가 7%~9% 이상 오버슈팅 급등한 경우 자동 익절 시그널 전환
+    sell_rank_score = 10
+
     if r_1w_val >= 8.0 or (r_1w_val >= dynamic_target_low and r_1w_val > 5.0):
         sell_signal = f"🟠 익절 권장 (Take Profit) [실시간 오버슈팅: +{r_1w_val:.1f}% 달성]"
-        sell_reason = f"[{stock_name}] 실시간 등락률(+{r_1w_val:.2f}%)이 목표가를 돌파하여 단기 과열 상투 구간에 진입했습니다."
+        sell_reason = f"[{stock_name}] 실시간 등락률(+{r_1w_val:.2f}%)이 목표가를 돌파하여 과열 상투 구간에 진입했습니다."
         action = "현재 구간에서 비중 50% 이상 분할 매도하여 수익을 확정하세요!"
+        sell_rank_score = 100
 
     elif r_1w_val <= -5.0:
         if total_score >= 55.0:
             sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold) [눌림목: 1주≤-5% & 총점≥55]"
-            sell_reason = f"[{stock_name}] 단기 하락({r_1w_val:+.2f}%)이 발생했으나 퀀트 체력이 견조하여 V자 반등 가능성이 높습니다."
+            sell_reason = f"[{stock_name}] 단기 하락({r_1w_val:+.2f}%)이 발생했으나 V자 반등 가능성이 높습니다."
             action = f"매도하지 말고 리밸런싱 시점까지 보유 유지 (손절가 {stop_loss} 엄수)"
+            sell_rank_score = 60
         else:
             sell_signal = "🔴 즉시 매도 / 교체 (Sell) [추세붕괴: 1주≤-5% & 총점<55]"
             sell_reason = f"[{stock_name}] 단기 주가 하락과 함께 퀀트 총점({total_score}점) 및 수급이 동반 악화되었습니다."
             action = "전량 매도 후 우량주 교체"
+            sell_rank_score = 90
 
     elif r_1w_val < 0 and total_score < 55.0:
         sell_signal = "🟡 손절 고려 / 관망 (Caution) [약세: 1주<0% & 총점<55]"
         sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다."
         action = f"손절가({stop_loss}) 미도달 시 보유, 이탈 시 손절"
+        sell_rank_score = 40
 
     else:
         sell_signal = "🟢 보유 유지 (Hold) [안정 추세 유지]"
-        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점이 상위권입니다."
+        sell_reason = f"[{stock_name}] 주간 추세가 안정적입니다."
         action = f"실시간 상향 목표가({target_profit}) 도달 시까지 보유 유지"
+        sell_rank_score = 20
 
-    return sell_signal, sell_reason, action, target_profit, stop_loss
+    return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
 
 
 @st.cache_data(ttl=10)
@@ -436,7 +435,6 @@ def run_quant_analysis():
             raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
             r_1w_val, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
             
-            # 실시간 1개월 수익률 수치 안전 파싱
             try:
                 r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
             except Exception:
@@ -511,19 +509,19 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.06 과낙폭 반등 & 실시간 익절판)
+# 4. 대시보드 UI (v3.08 영역별 3가지 정렬 선택판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.06", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.08", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.06)")
-st.caption(f"부제 3.06 - 과낙폭 우량주 V자 반등 가산점 & 실시간 익절가 동적 상향 보정판 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.08)")
+st.caption(f"부제 3.08 - 테마 영역별 3가지(퀀트점수 / 매수시그널 / 매도시그널) 맞춤 정렬판 | {now_str}")
 
-# 🔥 공유사용자 카카오 토큰 입력 창
+# 🔥 카카오 토큰 입력 창
 with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]** 클릭하여 내 토큰 등록", expanded=False):
     user_kakao_token = st.text_input(
         "본인의 카카오 Access Token을 입력하시면 타점 발생 시 내 핸드폰 카카오톡으로도 메시지가 전송됩니다:",
@@ -533,9 +531,8 @@ with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]
     )
 
 st.info("""
-**📊 [v3.06 과낙폭 반등 & 실시간 동적 익절 시스템 안내]**  
-- **📉 과낙폭 우량주 V자 반등 포착:** 최근 1~3개월 급락 후 반등을 시작하는 SK하이닉스/삼성전자 등에 `기대상승확률 +8.0점` 가산점 부여  
-- **⚡ 실시간 트레일링 스탑:** 주가가 당일 +8%~+9% 오버슈팅 시 목표가를 실시간으로 동적 상향하고 `🟠 익절 권장` 시그널로 즉시 전환  
+**📊 [v3.08 정렬 선택 가이드]**  
+각 테마 제목 바로 오른쪽 선택 박스에서 **`퀀트점수 순`**, **`매수시그널 순 (기대 상승 확률 %)`**, **`매도시그널 순 (익절/손절 우선)`** 중 원하는 기준을 각각 자유롭게 선택하여 Top 10을 조회할 수 있습니다.
 """)
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
@@ -549,23 +546,23 @@ DEFAULT_CATEGORIES = [
 # 🔥 테마 제어판
 with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순서 변경하기 (클릭하여 닫기/열기)", expanded=True):
     selected_categories = st.multiselect(
-        "화면에 표시할 테마를 선택하고 순서를 조정하세요 (드래그/클릭으로 자유 변경):",
+        "화면에 표시할 테마를 선택하고 순서를 조정하세요:",
         options=DEFAULT_CATEGORIES,
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.06 과낙폭 반등 & 실시간 익절 수식 계산 중..."):
+with st.spinner("v3.08 영역별 3가지 정렬 옵션 엔진 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
@@ -598,7 +595,15 @@ if not df.empty:
             display_categories = selected_categories if selected_categories else DEFAULT_CATEGORIES
             
             for cat in display_categories:
-                st.markdown(f"### 🏆 {cat} Top 10")
+                col_head1, col_head2 = st.columns([3, 1])
+                with col_head1:
+                    st.markdown(f"### 🏆 {cat} Top 10")
+                with col_head2:
+                    cat_sort_opt = st.selectbox(
+                        "정렬 옵션 선택:",
+                        options=["퀀트점수 순", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
+                        key=f"sort_{cat}_{p_code}"
+                    )
                 
                 if "통합 전체 유니버스" in cat:
                     cat_df = df.drop_duplicates(subset=['종목명']).copy()
@@ -606,11 +611,36 @@ if not df.empty:
                     cat_df = df[df['시장'] == cat].copy()
                 
                 if not cat_df.empty:
-                    cat_df = cat_df.sort_values(by=f"총점_{p_code}", ascending=False).head(10)
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    
+                    probs = []
+                    b_signals = []
+                    s_signals = []
+                    s_ranks = []
+                    
+                    for _, r in cat_df.iterrows():
+                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info, "")
+                        s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
+                        probs.append(p_val)
+                        b_signals.append(b_sig)
+                        s_signals.append(s_sig)
+                        s_ranks.append(s_rank)
+                    
+                    cat_df['기대상승확률(%)'] = probs
+                    cat_df['매수시그널'] = b_signals
+                    cat_df['매도시그널'] = s_signals
+                    cat_df['매도우선순위'] = s_ranks
+                    
+                    if "매수시그널" in cat_sort_opt:
+                        cat_df = cat_df.sort_values(by=['기대상승확률(%)', '총점'], ascending=[False, False]).head(10)
+                    elif "매도시그널" in cat_sort_opt:
+                        cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
+                    else:
+                        cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
+                    
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    show_cols = ['종목(차트보기)', '시장', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    show_cols = ['종목(차트보기)', '시장', '기대상승확률(%)', '매수시그널', '매도시그널', '1주 수익률', '총점'] + FEATURE_NAMES
 
                     display_df = cat_df[show_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
@@ -620,9 +650,9 @@ if not df.empty:
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info, user_kakao_token)
-                            s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
+                            s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | v3.06 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 상승 확률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
