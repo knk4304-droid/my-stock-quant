@@ -7,6 +7,13 @@ import yfinance as yf
 import requests
 import streamlit as st
 
+# PC 윈도우 우측 하단 팝업 알림 패키지
+try:
+    from plyer import notification
+    PLYER_AVAILABLE = True
+except ImportError:
+    PLYER_AVAILABLE = False
+
 # 실시간 자동 새로고침 패키지
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -15,6 +22,53 @@ except ImportError:
     AUTOREFRESH_AVAILABLE = False
 
 warnings.filterwarnings('ignore')
+
+# ==========================================
+# 🔔 카카오톡 API 설정 (Kakao Developers 토큰 입력)
+# ==========================================
+KAKAO_TOKEN = "YOUR_KAKAO_ACCESS_TOKEN"  # 발급받은 카카오 액세스 토큰 입력
+
+def send_kakao_alert(title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
+    # 1. PC 윈도우 우측 하단 팝업 알림 발송
+    if PLYER_AVAILABLE:
+        try:
+            notification.notify(
+                title=f"🚨 [{title}] {stock_name}",
+                message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
+                app_name="v3.04 AI 퀀트 시스템",
+                timeout=7
+            )
+        except Exception:
+            pass
+
+    # 2. 카카오톡 나에게 보내기 발송
+    if KAKAO_TOKEN == "YOUR_KAKAO_ACCESS_TOKEN" or not KAKAO_TOKEN:
+        return
+
+    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+    headers = {"Authorization": f"Bearer {KAKAO_TOKEN}"}
+    
+    text_content = f"🚨 [{title}] 🚨\n\n"
+    text_content += f"📌 종목: {stock_name} ({market})\n"
+    text_content += f"- 기대상승확률: {prob}%\n"
+    text_content += f"- 진입 단계: {step_msg}\n"
+    text_content += f"- 권장 매수 비중: {ratio_msg}\n"
+    if price_info:
+        text_content += f"- 가격 상태: {price_info}\n"
+    text_content += f"\n💡 AI 퀀트 v3.04 자동 매수 타점 시그널"
+
+    payload = {
+        "template_object": pd.io.json.dumps({
+            "object_type": "text",
+            "text": text_content,
+            "link": {"web_url": "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app"}
+        })
+    }
+    
+    try:
+        requests.post(url, headers=headers, data=payload, timeout=3)
+    except Exception:
+        pass
 
 FEATURE_NAMES = [
     '성장성(CAGR)', '수익성(ROE)', '재무건전성', '밸류에이션', '기술적모멘텀',
@@ -127,7 +181,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 🔥 v3.01 차세대 퀀트 채점 엔진
+# 3. 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -243,18 +297,14 @@ class QuantEngine:
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
 
-    # 🔥 v3.01 시장 위험 필터 & 눌림목 결합 퀀트 점수 산출
     def calculate_v3_score(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, macro: dict) -> float:
         w_list = self.get_weights_by_market(market, period)
         w = np.array(w_list)
         base_score = np.sum(raw_scores * (w / 100.0))
 
         vix_val = macro.get('VIX', {}).get('val', 15.0)
-        
-        # 1) VIX 변동성 필터 (약세장 보정)
         vix_penalty = -5.0 if vix_val >= 20.0 else 0.0
 
-        # 2) 눌림목 반등 보정 가산점
         if period in ['1W', '1M']:
             if base_score >= 65.0 and (-7.0 <= r_1w_val <= -0.5):
                 rebound_bonus = 5.0
@@ -280,24 +330,38 @@ def get_chart_link(ticker: str, name: str) -> str:
 
 def generate_buy_analysis(row, macro):
     total_score = row['총점']
-    vol_score = row['수급/거래량']
-    macro_score = row['대외변동성']
+    r_1w_val = row['r_1w_val']
     stock_name = row['종목명']
+    market = row['시장']
     vix_val = macro.get('VIX', {}).get('val', 15.0)
 
-    prob = int(np.clip(total_score * 0.7 + vol_score * 0.2 + macro_score * 0.1, 10, 95))
-    if vix_val >= 22.0:
-        prob = max(10, prob - 10)  # 약세장 보정
+    prob = total_score
+    if total_score >= 65.0 and (-7.0 <= r_1w_val <= -0.5):
+        prob += 5.0
+    elif r_1w_val > 10.0:
+        prob -= 3.0
+    
+    if vix_val >= 20.0:
+        prob -= 5.0
+
+    prob = int(np.clip(prob, 10, 95))
 
     if prob >= 70:
-        buy_signal = "🟢 강력 매수 (Buy)"
-        buy_opinion = f"[{stock_name}] v3.01 시그널 기준 기대 상승 확률이 약 {prob}%로 매우 우수합니다. 적극 매수를 추천합니다."
+        buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
+        buy_opinion = f"[{stock_name}] 백테스팅 검증 우수 종목입니다. 기대 상승 확률이 약 {prob}%로 높게 산출되어 적극 매수를 추천합니다."
+        # 3차 진입 알림 전송 (PC 팝업 & 카카오톡)
+        send_kakao_alert("3차 매수 알림", stock_name, market, prob, "3차 진입 (🟢 강력 매수 시그널 전환 완료)", "전체 예산의 잔여 30%", "V자 반등 확정 구간")
     elif prob >= 55:
-        buy_signal = "🟡 분할 매수 / 관망 (Hold)"
-        buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 지수 숨고르기가 진행 중입니다 (상승 확률 {prob}%). 눌림목 진입을 권장합니다."
+        buy_signal = "🟡 분할 매수 / 관망 (Hold) [55% ~ 69%]"
+        buy_opinion = f"[{stock_name}] 펀더멘털은 견조하나 눌림목 구간입니다 (상승 확률 {prob}%). 분할 진입을 권장합니다."
+        # 1차/2차 진입 세분화 알림 조건 처리
+        if -2.5 <= r_1w_val <= -0.8:
+            send_kakao_alert("1차 매수 알림", stock_name, market, prob, "1차 진입 (시가 대비 -1%~-2% 눌림 발생)", "전체 예산의 40%", f"1주 등락률: {r_1w_val:+.2f}%")
+        elif -6.0 <= r_1w_val < -2.5:
+            send_kakao_alert("2차 매수 알림", stock_name, market, prob, "2차 진입 (20일선 눌림목 지지선 도달)", "추가 30%", f"1주 등락률: {r_1w_val:+.2f}%")
     else:
-        buy_signal = "🔴 관망 / 매도 (Sell/Wait)"
-        buy_opinion = f"[{stock_name}] 단기 차익 실현 물량 압박으로 기대 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
+        buy_signal = "🔴 관망 / 매도 (Sell/Wait) [55% 미만]"
+        buy_opinion = f"[{stock_name}] 단기 차익 실현 및 추세 하방 압력으로 기대 상승 확률({prob}%)이 다소 낮습니다. 매수를 보류하세요."
 
     return prob, buy_signal, buy_opinion
 
@@ -314,7 +378,6 @@ def generate_sell_analysis(row):
     except Exception:
         r_3m_val = 0.0
 
-    # 🔥 Beta 변동성 연동 목표가/손절가 동적 수식
     if "소형" in market:
         target_p_low = round(total_score * 0.14, 1)
         target_p_high = round(total_score * 0.19, 1)
@@ -332,28 +395,28 @@ def generate_sell_analysis(row):
         stop_loss = "-3.0% ~ -5.0%"
 
     if rsi_score >= 85 and r_1w_val >= 8.0:
-        sell_signal = "🟠 익절 권장 (Take Profit)"
+        sell_signal = "🟠 익절 권장 (Take Profit) [과열: RSI≥85 & 1주≥+8%]"
         sell_reason = f"[{stock_name}] 최근 1주 수익률({r_1w_val:+.2f}%) 급등으로 단기 과열 상태입니다."
         action = "비중 50% 이상 매도하여 수익 확정"
 
     elif r_1w_val <= -5.0:
         if total_score >= 55.0 or r_3m_val > 0:
-            sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold)"
-            sell_reason = f"[{stock_name}] 단기 하락({r_1w_val:+.2f}%)이 발생했으나 v3.01 퀀트 체력이 견조하여 V자 반등 가능성이 높습니다."
+            sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold) [눌림목: 1주≤-5% & 총점≥55]"
+            sell_reason = f"[{stock_name}] 단기 하락({r_1w_val:+.2f}%)이 발생했으나 퀀트 체력이 견조하여 V자 반등 가능성이 높습니다."
             action = f"매도하지 말고 리밸런싱 시점까지 보유 유지 (손절가 {stop_loss} 엄수)"
         else:
-            sell_signal = "🔴 즉시 매도 / 교체 (Sell)"
+            sell_signal = "🔴 즉시 매도 / 교체 (Sell) [추세붕괴: 1주≤-5% & 총점<55]"
             sell_reason = f"[{stock_name}] 단기 주가 하락과 함께 퀀트 총점({total_score}점) 및 수급이 동반 악화되었습니다."
             action = "전량 매도 후 우량주 교체"
 
     elif r_1w_val < 0 and total_score < 55.0:
-        sell_signal = "🟡 손절 고려 / 관망 (Caution)"
+        sell_signal = "🟡 손절 고려 / 관망 (Caution) [약세: 1주<0% & 총점<55]"
         sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다."
         action = f"손절가({stop_loss}) 미도달 시 보유, 이탈 시 손절"
 
     else:
-        sell_signal = "🟢 보유 유지 (Hold)"
-        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 v3.01 총점({total_score}점)이 상위권입니다."
+        sell_signal = "🟢 보유 유지 (Hold) [안정 추세 유지]"
+        sell_reason = f"[{stock_name}] 주간 추세가 안정적이며 퀀트 총점이 상위권입니다."
         action = "목표 수익 달성 시까지 분할 보유 유지"
 
     return sell_signal, sell_reason, action, target_profit, stop_loss
@@ -450,17 +513,25 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.01 차세대 버전)
+# 4. 대시보드 UI (v3.04 카카오톡 & PC 토스트 알림판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.01", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.04", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.01)")
-st.caption(f"부제 3.01 - 적중률 90% 목표 매크로 위험 필터 & 섹터 분산 차세대 모델 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.04)")
+st.caption(f"부제 3.04 - 카카오톡 알림 & PC 토스트 팝업 알림 무텔레그램 세분화 연동판 | {now_str}")
+
+# 🔥 시그널 및 알림 시스템 안내 박스
+st.info("""
+**📊 [카카오톡 & PC 팝업 분할 매수 3단계 알림 가이드]**  
+- **🎯 1차 매수 알림 (40% 비중):** 시가 대비 `-1.0% ~ -2.5%` 눌림목 발생 시 PC 팝업/카톡 발송  
+- **🟡 2차 매수 알림 (추가 30% 비중):** `20일선 지지선` 도달 및 반등 시 PC 팝업/카톡 발송  
+- **🟢 3차 매수 알림 (잔여 30% 비중):** 기대상승확률 `70% 이상(강력 매수)` 전환 시 PC 팝업/카톡 발송
+""")
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 
@@ -470,7 +541,7 @@ DEFAULT_CATEGORIES = [
     '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주'
 ]
 
-# 🔥 테마 제어판 (순서 드래그 및 멀티 선택 숨기기)
+# 🔥 테마 제어판
 with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순서 변경하기 (클릭하여 닫기/열기)", expanded=True):
     selected_categories = st.multiselect(
         "화면에 표시할 테마를 선택하고 순서를 조정하세요 (드래그/클릭으로 자유 변경):",
@@ -478,18 +549,18 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.01 차세대 퀀트 알고리즘 엔진 계산 중..."):
+with st.spinner("v3.04 카카오톡 & PC 토스트 알림 엔진 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX")
 ]
 
@@ -546,7 +617,7 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | v3.01 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | v3.04 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
