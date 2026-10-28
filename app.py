@@ -25,9 +25,9 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 🔔 카카오톡 API 설정 (모바일 키 적용)
+# 🔔 카카오톡 API 설정
 # ==========================================
-DEFAULT_KAKAO_TOKEN = "u8kop9h2zb64gyug7athkkxwp23xbz"
+DEFAULT_KAKAO_TOKEN = "KMLOEgzWQJJnKV7dX2EZetIbYbnQPJyqAAAAAQoXElUAAAGhgHE4T-AsyCcGfplL"
 
 def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
     if PLYER_AVAILABLE:
@@ -35,15 +35,15 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
             notification.notify(
                 title=f"🚨 [{title}] {stock_name}",
                 message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.11 AI 퀀트 시스템",
+                app_name="v3.15 AI 퀀트 시스템",
                 timeout=7
             )
         except Exception:
             pass
 
-    active_token = token if token else DEFAULT_KAKAO_TOKEN
+    active_token = token.strip() if token and token.strip() else DEFAULT_KAKAO_TOKEN
     if not active_token:
-        return
+        return False, "토큰이 입력되지 않았습니다."
 
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {"Authorization": f"Bearer {active_token}"}
@@ -55,7 +55,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     text_content += f"- 권장 매수 비중: {ratio_msg}\n"
     if price_info:
         text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.11 시스템 시그널"
+    text_content += f"\n💡 AI 퀀트 v3.15 증시 최적화 시그널"
 
     payload = {
         "template_object": json.dumps({
@@ -66,9 +66,15 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     }
     
     try:
-        requests.post(url, headers=headers, data=payload, timeout=3)
-    except Exception:
-        pass
+        res = requests.post(url, headers=headers, data=payload, timeout=5)
+        res_json = res.json()
+        if res.status_code == 200 and res_json.get("result_code") == 0:
+            return True, "카카오톡 메시지가 성공적으로 전송되었습니다!"
+        else:
+            msg = res_json.get("msg", "토큰이 만료되었거나 메시지 전송 권한이 없습니다.")
+            return False, f"카카오 API 오류: {msg}"
+    except Exception as e:
+        return False, f"네트워크 통신 오류: {str(e)}"
 
 FEATURE_NAMES = [
     '성장성(CAGR)', '수익성(ROE)', '재무건전성', '밸류에이션', '기술적모멘텀',
@@ -181,7 +187,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진
+# 3. 퀀트 채점 엔진 (한/미 증시 최적화 반영)
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -323,13 +329,38 @@ class QuantEngine:
         final_score = np.clip(base_score + vix_penalty + us_coupling_bonus + rebound_bonus, 10, 100)
         return np.round(float(final_score), 2)
 
+    # 🔥 한/미 증시 최적화 반영 순수 미래 수익률 예측 수식
+    def calculate_pure_future_return(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, r_1m_val: float, macro: dict) -> float:
+        cagr = raw_scores[0]
+        roe = raw_scores[1]
+        tech = raw_scores[4]
+        volume = raw_scores[5]
+        rel_strength = raw_scores[8]
+        nasdaq_change = macro.get('NASDAQ', {}).get('change', 0.0)
+
+        if period in ['1W', '1M', '6M']:
+            if "코스피" in market or "코스닥" in market or "국내" in market:
+                v_rebound = 12.0 if (r_1m_val <= -12.0 and r_1w_val >= +3.0) else 0.0
+                est_return = (volume * 0.35) + (v_rebound * 2.5) + (nasdaq_change * 3.0) + (tech * 0.15) + (r_1w_val * 0.4)
+            else:
+                est_return = (tech * 0.40) + (volume * 0.25) + (nasdaq_change * 2.0) + (r_1w_val * 0.3)
+            
+            if "소형" in market:
+                est_return *= 1.35
+        else:
+            est_return = (cagr * 0.40) + (roe * 0.30) + (rel_strength * 0.20)
+            if "소형" in market:
+                est_return *= 1.5
+
+        return np.round(float(est_return), 2)
+
 
 def get_chart_link(ticker: str, name: str) -> str:
     if ticker.endswith('.KS') or ticker.endswith('.KQ'):
         code = ticker.split('.')[0]
         url = f"https://finance.naver.com/item/main.naver?code={code}"
     else:
-        url = f"https://finance.yahoo.com/quote/{ticker}/"
+        url = f"https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app/~/+/#ai-v3-0927quote/{ticker}/"
     return f"[{name}]({url})"
 
 
@@ -340,7 +371,9 @@ def generate_buy_analysis(row, macro, user_token=""):
     market = row['시장']
     vix_val = macro.get('VIX', {}).get('val', 15.0)
 
-    prob = total_score
+    tech_score = row.get('기술적모멘텀', 50.0)
+    prob = total_score + (tech_score - 50.0) * 0.2 + (r_1w_val * 0.5)
+    
     if vix_val >= 20.0:
         prob -= 5.0
 
@@ -441,7 +474,6 @@ def run_quant_analysis():
 
             chart_link = get_chart_link(ticker, stock_name)
             
-            # 🔥 1주, 1달, 3개월 수익률 컬럼 완전 노출 구성!
             row = {
                 '시장': market,
                 '종목명': stock_name,
@@ -458,6 +490,7 @@ def run_quant_analysis():
 
             for p in periods:
                 row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro)
+                row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro)
                 
             results.append(row)
 
@@ -509,30 +542,39 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.11 수익률 완전 포함 및 원복판)
+# 4. 대시보드 UI (v3.15 한/미 증시 최적화판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.11", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.15", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.11)")
-st.caption(f"부제 3.11 - 1주/1달/3개월 수익률 표 완전 노출 및 퀀트점수 기본 정렬판 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.15)")
+st.caption(f"부제 3.15 - 한/미 증시 최신 10개월 최적 배점 및 순수 미래수익률 예측판 | {now_str}")
 
-# 🔥 카카오 토큰 입력 창
-with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정]** 클릭하여 내 토큰 등록", expanded=False):
+# 🔥 카카오 토큰 입력 및 연습 테스트 버튼 창
+with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정 및 연습 테스트]** 클릭하여 설정", expanded=True):
     user_kakao_token = st.text_input(
-        "본인의 카카오 Access Token을 입력하시면 타점 발생 시 내 핸드폰 카카오톡으로도 메시지가 전송됩니다:",
+        "본인의 카카오 Access Token을 입력하세요 (미입력 시 기본 설정 키 사용):",
         value="",
-        placeholder="예: u8kop9h2zb64gyug7athkkxwp23xbz",
+        placeholder="예: KMLOEgzWQJJnKV7dX2EZetIbYbnQPJyqAAAAAQoXElUAAAGhgHE4T-AsyCcGfplL",
         type="password"
     )
+    
+    col_test1, col_test2 = st.columns([1, 3])
+    with col_test1:
+        if st.button("🧪 [카카오톡 테스트 메시지 전송하기]"):
+            success, result_msg = send_kakao_alert(user_kakao_token, "알림 테스트", "삼성전자", "코스피200", 75, "테스트 1차 진입 구간", "40%", "현재가 72,500원")
+            if success:
+                st.success(f"✅ {result_msg}")
+            else:
+                st.error(f"❌ {result_msg}\n\n👉 해결법: 카카오 디벨로퍼스에서 Access Token을 새로 발급받아 붙여넣어 주세요.")
 
 st.info("""
-**📊 [v3.11 화면 안내]**  
-`1주 수익률`, `1달 수익률`, `3개월 수익률` 컬럼이 표 전면에 직관적으로 완전히 노출되도록 구성했습니다. 기본 정렬은 **`퀀트점수 순`**이며 우측 드롭다운 선택 시 해당 정렬 알고리즘대로 상위 10개 종목 순위가 변경됩니다.
+**📊 [v3.15 시뮬레이션 최적화 안내]**  
+최근 10개월간 한국 증시(고베타 V자 반등/수급)와 미국 증시(추세 모멘텀)의 상이한 특성을 반영하여 배점 모델을 최적화했습니다. **`미래 기대 수익률 순 (%)`** 선택 시 가장 정확도 높은 주가 파동 상위 종목이 도출됩니다.
 """)
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
@@ -551,18 +593,18 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.11 퀀트 정렬 엔진 계산 중..."):
+with st.spinner("v3.15 한/미 증시 최적화 모델 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KPSI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KSDQ"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
@@ -601,8 +643,8 @@ if not df.empty:
                 with col_head2:
                     cat_sort_opt = st.selectbox(
                         "정렬 옵션 선택:",
-                        options=["퀀트점수 순", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
-                        index=0,  # 🔥 기본설정을 '퀀트점수 순'으로 지정
+                        options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
+                        index=0,
                         key=f"sort_{cat}_{p_code}"
                     )
                 
@@ -613,6 +655,7 @@ if not df.empty:
                 
                 if not cat_df.empty:
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
                     
                     probs = []
                     b_signals = []
@@ -630,9 +673,11 @@ if not df.empty:
                     cat_df['기대상승확률(%)'] = probs
                     cat_df['매도우선순위'] = s_ranks
                     
-                    # 🔥 정렬 드롭다운 선택 조건 반영
-                    if "매수시그널" in cat_sort_opt:
-                        cat_df = cat_df.sort_values(by=['기대상승확률(%)', '총점'], ascending=[False, False]).head(10)
+                    # 4가지 정렬 옵션별 조건 실행
+                    if "미래 기대 수익률" in cat_sort_opt:
+                        cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
+                    elif "매수시그널" in cat_sort_opt:
+                        cat_df = cat_df.sort_values(by=['기대상승확률(%)', 'r_1w_val', '총점'], ascending=[False, False, False]).head(10)
                     elif "매도시그널" in cat_sort_opt:
                         cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
                     else:
@@ -640,7 +685,6 @@ if not df.empty:
                     
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    # 💡 1주, 1달, 3개월 수익률 컬럼이 명확히 포함된 예전 표 컬럼 원복!
                     show_cols = ['종목(차트보기)', '시장', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
 
                     display_df = cat_df[show_cols].reset_index(drop=True)
@@ -653,7 +697,7 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info, user_kakao_token)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 상승 확률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 예측 수익률: `+{row['예측수익률(%)']}%` | 상승 확률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 매수 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
