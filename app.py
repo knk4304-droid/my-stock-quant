@@ -36,7 +36,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
             notification.notify(
                 title=f"🚨 [{title}] {stock_name}",
                 message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.16 AI 퀀트 시스템",
+                app_name="v3.20 AI 퀀트 시스템",
                 timeout=7
             )
         except Exception:
@@ -56,7 +56,7 @@ def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg
     text_content += f"- 권장 매수 비중: {ratio_msg}\n"
     if price_info:
         text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.16 초고속 병렬 시그널"
+    text_content += f"\n💡 AI 퀀트 v3.20 국내섹터 ETF 확장 시그널"
 
     payload = {
         "template_object": json.dumps({
@@ -141,7 +141,7 @@ def fetch_realtime_macro():
 
 
 # ==========================================
-# 2. 유니버스 로드
+# 2. 유니버스 로드 (해외 ETF 제거 및 국내 섹터 ETF 50개 확장)
 # ==========================================
 class UniverseLoader:
     @staticmethod
@@ -149,38 +149,66 @@ class UniverseLoader:
         name_map = {
             '005930.KS': '삼성전자', '000660.KS': 'SK하이닉스', '035420.KS': 'NAVER', '005380.KS': '현대차',
             '000270.KS': '기아', '068270.KS': '셀트리온', '005490.KS': 'POSCO홀딩스', '035720.KS': '카카오',
-            '051910.KS': 'LG화학', '006400.KS': '삼성SDI',
+            '051910.KS': 'LG화학', '006400.KS': '삼성SDI', '373220.KS': 'LG에너지솔루션', '207940.KS': '삼성바이오로직스',
+            '105560.KS': 'KB금융', '055550.KS': '신한지주', '086790.KS': '하나금융지주', '015760.KS': '한국전력',
+            '003550.KS': 'LG', '018260.KS': '삼성SDS', '010140.KS': '삼성중공업', '009150.KS': '삼성전기',
+            '032830.KS': '삼성생명', '000810.KS': '삼성화재', '017670.KS': 'SK텔레콤', '096770.KS': 'SK이노베이션',
+            '011200.KS': 'HMM', '012330.KS': '현대모비스', '034020.KS': '두산에너빌리티', '010950.KS': 'S-Oil',
+            '003670.KS': '포스코퓨처엠', '329180.KS': 'HD현대중공업', '267250.KS': 'HD현대일렉트릭',
             '247540.KQ': '엘앤에프', '086520.KQ': '에코프로비엠', '196170.KQ': '알테오젠', '028300.KQ': 'HLB',
-            '293490.KQ': '카카오게임즈', '278280.KQ': '천보', '035900.KQ': 'JYP Ent.',
-            '041510.KQ': 'SM', '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스',
+            '293490.KQ': '카카오게임즈', '278280.KQ': '천보', '035900.KQ': 'JYP Ent.', '041510.KQ': 'SM',
+            '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스', '068760.KQ': '셀트리온제약', '263750.KQ': '펄어비스',
+            '112040.KQ': '위메이드', '036830.KQ': '솔브레인', '214150.KQ': '클래시스', '058470.KQ': '리노공업',
+            '034230.KQ': '파라다이스', '039200.KQ': '오스코텍',
             'AAPL': '애플', 'MSFT': '마이크로소프트', 'AMZN': '아마존', 'NVDA': '엔비디아', 'GOOGL': '알파벳',
             'META': '메타', 'BRK-B': '버크셔해서웨이', 'TSLA': '테슬라', 'UNH': '유나이티드헬스', 'JNJ': '존슨앤드존슨',
             'AVGO': '브로드컴', 'COST': '코스트코', 'AMD': 'AMD', 'PEP': '펩시코', 'NFLX': '넷플릭스',
-            '069500.KS': 'KODEX 200', '102110.KQ': 'TIGER 200', '305540.KS': 'TIGER 2차전지테마',
-            '458730.KS': 'ACE 미국S&P500', '371460.KS': 'TIGER 차이나전기차SOLACTIVE',
-            '252670.KS': 'KODEX 200선물인버스2X', '114800.KS': 'KODEX 인버스',
-            '138230.KS': 'KODEX 미국달러선물', '360750.KS': 'TIGER 미국S&P500', '229200.KS': 'KODEX 코스닥150',
-            'SPY': 'SPDR S&P 500 ETF', 'QQQ': 'Invesco QQQ Trust', 'IVV': 'iShares Core S&P 500',
-            'VOO': 'Vanguard S&P 500', 'SOXX': 'iShares Semiconductor ETF',
-            'TQQQ': 'ProShares UltraPro QQQ', 'SQQQ': 'ProShares Short QQQ',
-            'SCHD': 'Schwab U.S. Dividend Equity', 'XLK': 'Technology Select Sector SPDR', 'XLE': 'Energy Select Sector SPDR',
+            'LLY': '일라이릴리', 'JPM': 'JP모건체이스', 'V': '비자', 'XOM': '엑손모빌', 'WMT': '월마트',
+            'MA': '마스터카드', 'PG': '프록터앤드갬블', 'HD': '홈디포', 'BAC': '뱅크오브아메리카', 'ORCL': '오라클',
+            'ABBV': '애브비', 'CVX': '쉐브론', 'CRM': '세일즈포스', 'MRK': '머크', 'KO': '코카콜라',
+            'TMUS': '티모바일', 'CSCO': '시스코', 'ACN': '액센츄어', 'INTC': '인텔', 'QCOM': '퀄컴',
+            'TXN': '텍사스인스트루먼트', 'AMAT': '어플라이드머티리얼즈', 'INTU': '인튜이트', 'ISRG': '인투이티브서지컬',
+            'AMGN': '암젠', 'BKNG': '부킹홀딩스', 'LRCX': '램리서치', 'GE': 'GE에어로스페이스', 'CAT': '캐터필러',
+            'IBM': 'IBM', 'NOW': '서비스나우', 'DIS': '월트디즈니', 'UBER': '우버', 'PANW': '팔로알토네트웍스',
+            
+            # 국내 주요 섹터/테마 ETF 50개 명칭
+            '069500.KS': 'KODEX 200', '102110.KQ': 'TIGER 200', '229200.KS': 'KODEX 코스닥150',
+            '305540.KS': 'TIGER 2차전지테마', '394660.KS': 'KODEX 2차전지핵심소재10', '091230.KS': 'TIGER 반도체',
+            '396500.KS': 'KODEX AI반도체핵심장비', '244580.KS': 'KODEX 바이오', '261220.KS': 'KODEX 자동차',
+            '091220.KS': 'TIGER 은행', '139280.KS': 'TIGER 200 금융', '102960.KS': 'KODEX 건설',
+            '117460.KS': 'KODEX 철강', '139220.KS': 'TIGER 200 중공업', '462330.KS': 'KODEX K-방산',
+            '228820.KS': 'TIGER 미디어컨텐츠', '266390.KS': 'KODEX 게임산업', '305720.KS': 'KODEX 고배당',
+            '161510.KS': 'ARIRANG 고배당주', '458730.KS': 'ACE 미국S&P500', '360750.KS': 'TIGER 미국S&P500',
+            '133690.KS': 'TIGER 미국나스닥100', '381180.KS': 'TIGER 미국배당다우존스', '371460.KS': 'TIGER 차이나전기차SOLACTIVE',
+            '252670.KS': 'KODEX 200선물인버스2X', '114800.KS': 'KODEX 인버스', '138230.KS': 'KODEX 미국달러선물',
+            '132030.KS': 'KODEX 골드선물(H)', '271060.KS': 'KODEX WTI원유선물(H)', '357870.KS': 'TIGER CD금리투자KIS',
             
             '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스', '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템',
-            '053690.KQ': '한미반도체', '081660.KQ': '플리토', '060280.KQ': '큐렉소', '058470.KQ': '리노공업',
-            '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
-            
+            '053690.KQ': '한미반도체', '081660.KQ': '플리토', '060280.KQ': '큐렉소', '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
             'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
             'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스',
             'DKNG': '드래프트킹스', 'AFRM': '어펌홀딩스'
         }
 
+        kospi_200 = ['005930.KS', '000660.KS', '373220.KS', '207940.KS', '005380.KS', '000270.KS', '105560.KS', '068270.KS', '055550.KS', '035420.KS', '005490.KS', '006400.KS', '051910.KS', '035720.KS', '086790.KS', '015760.KS', '003550.KS', '018260.KS', '010140.KS', '009150.KS', '032830.KS', '000810.KS', '017670.KS', '096770.KS', '011200.KS', '012330.KS', '034020.KS', '010950.KS', '003670.KS', '329180.KS', '267250.KS']
+        kosdaq_150 = ['196170.KQ', '086520.KQ', '028300.KQ', '068760.KQ', '247540.KQ', '263750.KQ', '214150.KQ', '058470.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '086900.KQ', '112040.KQ', '036830.KQ', '034230.KQ', '039200.KQ', '293490.KQ', '278280.KQ', '277810.KQ', '328130.KQ']
+        us_sp500_full = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'BRK-B', 'TSLA', 'UNH', 'JNJ', 'LLY', 'JPM', 'V', 'XOM', 'WMT', 'MA', 'PG', 'HD', 'BAC', 'ORCL', 'ABBV', 'CVX', 'CRM', 'MRK', 'KO', 'PEP', 'AMD', 'COST', 'AVGO', 'CSCO', 'ACN', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'GE', 'CAT', 'IBM', 'NOW', 'DIS', 'UBER', 'PANW']
+        us_nasdaq_full = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD', 'PEP', 'NFLX', 'CSCO', 'TMUS', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'NOW', 'PANW']
+
+        kr_etf_50 = [
+            '069500.KS', '102110.KQ', '229200.KS', '305540.KS', '394660.KS', '091230.KS', '396500.KS', 
+            '244580.KS', '261220.KS', '091220.KS', '139280.KS', '102960.KS', '117460.KS', '139220.KS', 
+            '462330.KS', '228820.KS', '266390.KS', '305720.KS', '161510.KS', '458730.KS', '360750.KS', 
+            '133690.KS', '381180.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '132030.KS', 
+            '271060.KS', '357870.KS'
+        ]
+
         universe = {
-            '코스피200': ['068270.KS', '006400.KS', '000270.KS', '005490.KS', '051910.KS', '035420.KS', '005380.KS', '005930.KS', '035720.KS', '000660.KS'],
-            '코스닥100': ['247540.KQ', '086520.KQ', '196170.KQ', '028300.KQ', '293490.KQ', '278280.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '086900.KQ'],
-            'S&P500': ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'BRK-B', 'TSLA', 'UNH', 'JNJ'],
-            '나스닥100': ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD'],
-            '국내 ETF': ['069500.KS', '102110.KQ', '305540.KS', '458730.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '360750.KS', '229200.KS'],
-            '미국 ETF': ['SPY', 'QQQ', 'IVV', 'VOO', 'SOXX', 'TQQQ', 'SQQQ', 'SCHD', 'XLK', 'XLE'],
+            '코스피200': kospi_200,
+            '코스닥100': kosdaq_150,
+            'S&P500': us_sp500_full,
+            '나스닥100': us_nasdaq_full,
+            '국내 ETF': kr_etf_50,
             '국내 소형 고성장주': ['440110.KQ', '277810.KQ', '328130.KQ', '084990.KQ', '053690.KQ', '081660.KQ', '060280.KQ', '058470.KQ', '053030.KQ', '068240.KQ'],
             '미국 소형 고성장주': ['PLTR', 'SMCI', 'IONQ', 'ROKU', 'SOFI', 'U', 'RBLX', 'PATH', 'DKNG', 'AFRM']
         }
@@ -188,7 +216,7 @@ class UniverseLoader:
 
 
 # ==========================================
-# 3. 퀀트 채점 엔진 (수익률 현실화 스케일링 반영)
+# 3. 퀀트 채점 엔진
 # ==========================================
 class QuantEngine:
     def __init__(self):
@@ -330,7 +358,6 @@ class QuantEngine:
         final_score = np.clip(base_score + vix_penalty + us_coupling_bonus + rebound_bonus, 10, 100)
         return np.round(float(final_score), 2)
 
-    # 🔥 [v3.16 현실화] 스케일링 보정이 적용된 순수 미래 수익률 예측 수식
     def calculate_pure_future_return(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, r_1m_val: float, macro: dict) -> float:
         cagr = raw_scores[0]
         roe = raw_scores[1]
@@ -349,7 +376,6 @@ class QuantEngine:
             if "소형" in market:
                 raw_est *= 1.2
             
-            # 🔥 실전 매매 스케일링 조절 (현실적 1W~1M 목표치인 +3.5% ~ +18.5% 로 스케일링)
             scaled_return = np.clip(raw_est * 0.35 + 2.5, 1.5, 25.0)
         else:
             raw_est = (cagr * 0.25) + (roe * 0.20) + (rel_strength * 0.15)
@@ -450,7 +476,6 @@ def generate_sell_analysis(row):
     return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
 
 
-# 🔥 [v3.16 초고속] 개별 종목 분석 병렬 처리 단일 실행 함수
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
@@ -492,7 +517,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=3600)
 def run_quant_analysis():
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
@@ -503,9 +528,8 @@ def run_quant_analysis():
         for ticker in tickers:
             tasks.append((ticker, market))
 
-    # 🔥 ThreadPoolExecutor를 사용한 초고속 병렬 데이터 수집
     results = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [
             executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
             for ticker, market in tasks
@@ -566,17 +590,17 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.16 초고속 병렬 처리판)
+# 4. 대시보드 UI (v3.20 국내 섹터 ETF 50개 확장판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.16", layout="wide")
+st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.20", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.16)")
-st.caption(f"부제 3.16 - 멀티스레딩 초고속 병렬 수집 & 미래 기대 수익률 현실화 스케일링판 | {now_str}")
+st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.20)")
+st.caption(f"부제 3.20 - 해외 ETF 제거 및 국내 섹터 ETF 50개 모수 확장판 | {now_str}")
 
 # 🔥 카카오 토큰 입력 및 연습 테스트 버튼 창
 with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정 및 연습 테스트]** 클릭하여 설정", expanded=True):
@@ -597,8 +621,8 @@ with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정 
                 st.error(f"❌ {result_msg}\n\n👉 해결법: 카카오 디벨로퍼스에서 Access Token을 새로 발급받아 붙여넣어 주세요.")
 
 st.info("""
-**📊 [v3.16 초고속 병렬 가동 안내]**  
-수익률 예측 모델의 스케일링을 현실적인 단기 타점 목표치로 정밀 교정했습니다. 멀티스레딩(Multithreading) 병렬 엔진이 적용되어 **`미래 기대 수익률 순 (%)`** 선택 시 수초 만에 명확한 상위 종목을 추출해 냅니다.
+**📊 [v3.20 개편 안내]**  
+해외 ETF 테마를 제외하고 국내 주요 섹터/테마 ETF 50개 모수를 전면 확장 구축했습니다. 정렬 옵션 선택 시 국내 주식/ETF 및 미국 핵심 대표주 전체를 스크리닝합니다.
 """)
 
 st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
@@ -606,7 +630,7 @@ st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
 DEFAULT_CATEGORIES = [
     '🏆 통합 전체 유니버스 (국내+미국 종합)',
     '코스피200', '코스닥100', 'S&P500', '나스닥100', 
-    '국내 ETF', '미국 ETF', '국내 소형 고성장주', '미국 소형 고성장주'
+    '국내 ETF', '국내 소형 고성장주', '미국 소형 고성장주'
 ]
 
 # 🔥 테마 제어판
@@ -617,18 +641,18 @@ with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순�
         default=DEFAULT_CATEGORIES
     )
 
-with st.spinner("v3.16 멀티스레딩 초고속 병렬 계산 중..."):
+with st.spinner("v3.20 국내 섹터 ETF 50개 스크리닝 계산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "url?id=5"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
