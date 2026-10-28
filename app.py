@@ -9,13 +9,6 @@ import yfinance as yf
 import requests
 import streamlit as st
 
-# PC 윈도우 우측 하단 팝업 알림 패키지
-try:
-    from plyer import notification
-    PLYER_AVAILABLE = True
-except ImportError:
-    PLYER_AVAILABLE = False
-
 # 실시간 자동 새로고침 패키지
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -24,58 +17,6 @@ except ImportError:
     AUTOREFRESH_AVAILABLE = False
 
 warnings.filterwarnings('ignore')
-
-# ==========================================
-# 🔔 카카오톡 API 설정
-# ==========================================
-DEFAULT_KAKAO_TOKEN = "KMLOEgzWQJJnKV7dX2EZetIbYbnQPJyqAAAAAQoXElUAAAGhgHE4T-AsyCcGfplL"
-
-def send_kakao_alert(token, title, stock_name, market, prob, step_msg, ratio_msg, price_info=""):
-    if PLYER_AVAILABLE:
-        try:
-            notification.notify(
-                title=f"🚨 [{title}] {stock_name}",
-                message=f"확률: {prob}% | {step_msg}\n비중: {ratio_msg}",
-                app_name="v3.20 AI 퀀트 시스템",
-                timeout=7
-            )
-        except Exception:
-            pass
-
-    active_token = token.strip() if token and token.strip() else DEFAULT_KAKAO_TOKEN
-    if not active_token:
-        return False, "토큰이 입력되지 않았습니다."
-
-    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {"Authorization": f"Bearer {active_token}"}
-    
-    text_content = f"🚨 [{title}] 🚨\n\n"
-    text_content += f"📌 종목: {stock_name} ({market})\n"
-    text_content += f"- 기대상승확률: {prob}%\n"
-    text_content += f"- 진입 단계: {step_msg}\n"
-    text_content += f"- 권장 매수 비중: {ratio_msg}\n"
-    if price_info:
-        text_content += f"- 실시간 시세: {price_info}\n"
-    text_content += f"\n💡 AI 퀀트 v3.20 국내섹터 ETF 확장 시그널"
-
-    payload = {
-        "template_object": json.dumps({
-            "object_type": "text",
-            "text": text_content,
-            "link": {"web_url": "https://my-stock-quant-k6dgdkytkbcevuoyxx9mzl.streamlit.app"}
-        })
-    }
-    
-    try:
-        res = requests.post(url, headers=headers, data=payload, timeout=5)
-        res_json = res.json()
-        if res.status_code == 200 and res_json.get("result_code") == 0:
-            return True, "카카오톡 메시지가 성공적으로 전송되었습니다!"
-        else:
-            msg = res_json.get("msg", "토큰이 만료되었거나 메시지 전송 권한이 없습니다.")
-            return False, f"카카오 API 오류: {msg}"
-    except Exception as e:
-        return False, f"네트워크 통신 오류: {str(e)}"
 
 FEATURE_NAMES = [
     '성장성(CAGR)', '수익성(ROE)', '재무건전성', '밸류에이션', '기술적모멘텀',
@@ -141,7 +82,7 @@ def fetch_realtime_macro():
 
 
 # ==========================================
-# 2. 유니버스 로드 (해외 ETF 제거 및 국내 섹터 ETF 50개 확장)
+# 2. 유니버스 로드
 # ==========================================
 class UniverseLoader:
     @staticmethod
@@ -155,11 +96,13 @@ class UniverseLoader:
             '032830.KS': '삼성생명', '000810.KS': '삼성화재', '017670.KS': 'SK텔레콤', '096770.KS': 'SK이노베이션',
             '011200.KS': 'HMM', '012330.KS': '현대모비스', '034020.KS': '두산에너빌리티', '010950.KS': 'S-Oil',
             '003670.KS': '포스코퓨처엠', '329180.KS': 'HD현대중공업', '267250.KS': 'HD현대일렉트릭',
-            '247540.KQ': '엘앤에프', '086520.KQ': '에코프로비엠', '196170.KQ': '알테오젠', '028300.KQ': 'HLB',
-            '293490.KQ': '카카오게임즈', '278280.KQ': '천보', '035900.KQ': 'JYP Ent.', '041510.KQ': 'SM',
-            '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스', '068760.KQ': '셀트리온제약', '263750.KQ': '펄어비스',
-            '112040.KQ': '위메이드', '036830.KQ': '솔브레인', '214150.KQ': '클래시스', '058470.KQ': '리노공업',
-            '034230.KQ': '파라다이스', '039200.KQ': '오스코텍',
+            '196170.KQ': '알테오젠', '086520.KQ': '에코프로비엠', '028300.KQ': 'HLB', '068760.KQ': '셀트리온제약',
+            '247540.KQ': '엘앤에프', '263750.KQ': '펄어비스', '214150.KQ': '클래시스', '058470.KQ': '리노공업',
+            '035900.KQ': 'JYP Ent.', '041510.KQ': 'SM', '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스',
+            '112040.KQ': '위메이드', '036830.KQ': '솔브레인', '034230.KQ': '파라다이스', '039200.KQ': '오스코텍',
+            '293490.KQ': '카카오게임즈', '278280.KQ': '천보',
+            '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스', '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템',
+            '053690.KQ': '한미반도체', '081660.KQ': '플리토', '060280.KQ': '큐렉소', '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
             'AAPL': '애플', 'MSFT': '마이크로소프트', 'AMZN': '아마존', 'NVDA': '엔비디아', 'GOOGL': '알파벳',
             'META': '메타', 'BRK-B': '버크셔해서웨이', 'TSLA': '테슬라', 'UNH': '유나이티드헬스', 'JNJ': '존슨앤드존슨',
             'AVGO': '브로드컴', 'COST': '코스트코', 'AMD': 'AMD', 'PEP': '펩시코', 'NFLX': '넷플릭스',
@@ -170,8 +113,9 @@ class UniverseLoader:
             'TXN': '텍사스인스트루먼트', 'AMAT': '어플라이드머티리얼즈', 'INTU': '인튜이트', 'ISRG': '인투이티브서지컬',
             'AMGN': '암젠', 'BKNG': '부킹홀딩스', 'LRCX': '램리서치', 'GE': 'GE에어로스페이스', 'CAT': '캐터필러',
             'IBM': 'IBM', 'NOW': '서비스나우', 'DIS': '월트디즈니', 'UBER': '우버', 'PANW': '팔로알토네트웍스',
-            
-            # 국내 주요 섹터/테마 ETF 50개 명칭
+            'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
+            'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스',
+            'DKNG': '드래프트킹스', 'AFRM': '어펌홀딩스',
             '069500.KS': 'KODEX 200', '102110.KQ': 'TIGER 200', '229200.KS': 'KODEX 코스닥150',
             '305540.KS': 'TIGER 2차전지테마', '394660.KS': 'KODEX 2차전지핵심소재10', '091230.KS': 'TIGER 반도체',
             '396500.KS': 'KODEX AI반도체핵심장비', '244580.KS': 'KODEX 바이오', '261220.KS': 'KODEX 자동차',
@@ -181,36 +125,25 @@ class UniverseLoader:
             '161510.KS': 'ARIRANG 고배당주', '458730.KS': 'ACE 미국S&P500', '360750.KS': 'TIGER 미국S&P500',
             '133690.KS': 'TIGER 미국나스닥100', '381180.KS': 'TIGER 미국배당다우존스', '371460.KS': 'TIGER 차이나전기차SOLACTIVE',
             '252670.KS': 'KODEX 200선물인버스2X', '114800.KS': 'KODEX 인버스', '138230.KS': 'KODEX 미국달러선물',
-            '132030.KS': 'KODEX 골드선물(H)', '271060.KS': 'KODEX WTI원유선물(H)', '357870.KS': 'TIGER CD금리투자KIS',
-            
-            '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스', '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템',
-            '053690.KQ': '한미반도체', '081660.KQ': '플리토', '060280.KQ': '큐렉소', '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
-            'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
-            'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스',
-            'DKNG': '드래프트킹스', 'AFRM': '어펌홀딩스'
+            '132030.KS': 'KODEX 골드선물(H)', '271060.KS': 'KODEX WTI원유선물(H)', '357870.KS': 'TIGER CD금리투자KIS'
         }
 
         kospi_200 = ['005930.KS', '000660.KS', '373220.KS', '207940.KS', '005380.KS', '000270.KS', '105560.KS', '068270.KS', '055550.KS', '035420.KS', '005490.KS', '006400.KS', '051910.KS', '035720.KS', '086790.KS', '015760.KS', '003550.KS', '018260.KS', '010140.KS', '009150.KS', '032830.KS', '000810.KS', '017670.KS', '096770.KS', '011200.KS', '012330.KS', '034020.KS', '010950.KS', '003670.KS', '329180.KS', '267250.KS']
-        kosdaq_150 = ['196170.KQ', '086520.KQ', '028300.KQ', '068760.KQ', '247540.KQ', '263750.KQ', '214150.KQ', '058470.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '086900.KQ', '112040.KQ', '036830.KQ', '034230.KQ', '039200.KQ', '293490.KQ', '278280.KQ', '277810.KQ', '328130.KQ']
+        kosdaq_100 = ['196170.KQ', '086520.KQ', '028300.KQ', '068760.KQ', '247540.KQ', '263750.KQ', '214150.KQ', '058470.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '086900.KQ', '112040.KQ', '036830.KQ', '034230.KQ', '039200.KQ', '293490.KQ', '278280.KQ']
         us_sp500_full = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'BRK-B', 'TSLA', 'UNH', 'JNJ', 'LLY', 'JPM', 'V', 'XOM', 'WMT', 'MA', 'PG', 'HD', 'BAC', 'ORCL', 'ABBV', 'CVX', 'CRM', 'MRK', 'KO', 'PEP', 'AMD', 'COST', 'AVGO', 'CSCO', 'ACN', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'GE', 'CAT', 'IBM', 'NOW', 'DIS', 'UBER', 'PANW']
-        us_nasdaq_full = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD', 'PEP', 'NFLX', 'CSCO', 'TMUS', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'NOW', 'PANW']
-
-        kr_etf_50 = [
-            '069500.KS', '102110.KQ', '229200.KS', '305540.KS', '394660.KS', '091230.KS', '396500.KS', 
-            '244580.KS', '261220.KS', '091220.KS', '139280.KS', '102960.KS', '117460.KS', '139220.KS', 
-            '462330.KS', '228820.KS', '266390.KS', '305720.KS', '161510.KS', '458730.KS', '360750.KS', 
-            '133690.KS', '381180.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '132030.KS', 
-            '271060.KS', '357870.KS'
-        ]
+        us_nasdaq_100 = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD', 'PEP', 'NFLX', 'CSCO', 'TMUS', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'NOW', 'PANW']
+        kr_smallcap_growth = ['440110.KQ', '277810.KQ', '328130.KQ', '084990.KQ', '053690.KQ', '081660.KQ', '060280.KQ', '053030.KQ', '068240.KQ']
+        us_smallcap_growth = ['PLTR', 'SMCI', 'IONQ', 'ROKU', 'SOFI', 'U', 'RBLX', 'PATH', 'DKNG', 'AFRM']
+        kr_etf_50 = ['069500.KS', '102110.KQ', '229200.KS', '305540.KS', '394660.KS', '091230.KS', '396500.KS', '244580.KS', '261220.KS', '091220.KS', '139280.KS', '102960.KS', '117460.KS', '139220.KS', '462330.KS', '228820.KS', '266390.KS', '305720.KS', '161510.KS', '458730.KS', '360750.KS', '133690.KS', '381180.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '132030.KS', '271060.KS', '357870.KS']
 
         universe = {
             '코스피200': kospi_200,
-            '코스닥100': kosdaq_150,
+            '코스닥100': kosdaq_100,
             'S&P500': us_sp500_full,
-            '나스닥100': us_nasdaq_full,
+            '나스닥100': us_nasdaq_100,
             '국내 ETF': kr_etf_50,
-            '국내 소형 고성장주': ['440110.KQ', '277810.KQ', '328130.KQ', '084990.KQ', '053690.KQ', '081660.KQ', '060280.KQ', '058470.KQ', '053030.KQ', '068240.KQ'],
-            '미국 소형 고성장주': ['PLTR', 'SMCI', 'IONQ', 'ROKU', 'SOFI', 'U', 'RBLX', 'PATH', 'DKNG', 'AFRM']
+            '국내 소형 고성장주': kr_smallcap_growth,
+            '미국 소형 고성장주': us_smallcap_growth
         }
         return universe, name_map
 
@@ -258,19 +191,28 @@ class QuantEngine:
         else:
             return self.largecap_weights[period]
 
+    # 🔥 [v3.22] 당일, 1일 전, 2일 전 및 1주 수익률 산출 로직
     def calculate_returns(self, df: pd.DataFrame):
         if df.empty or len(df.dropna()) < 5:
-            return 0.0, "0.00%", "0.00%", "0.00%", "0.00%"
+            return 0.0, "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%"
 
         clean_close = df['Close'].dropna()
         latest_price = clean_close.iloc[-1]
+
+        r_today_val = ((clean_close.iloc[-1] - clean_close.iloc[-2]) / clean_close.iloc[-2] * 100) if len(clean_close) >= 2 else 0.0
+        r_1d_val = ((clean_close.iloc[-2] - clean_close.iloc[-3]) / clean_close.iloc[-3] * 100) if len(clean_close) >= 3 else 0.0
+        r_2d_val = ((clean_close.iloc[-3] - clean_close.iloc[-4]) / clean_close.iloc[-4] * 100) if len(clean_close) >= 4 else 0.0
 
         r_1w_val = ((latest_price - clean_close.iloc[-5]) / clean_close.iloc[-5] * 100) if len(clean_close) >= 5 else 0.0
         r_1m_val = ((latest_price - clean_close.iloc[-20]) / clean_close.iloc[-20] * 100) if len(clean_close) >= 20 else 0.0
         r_3m_val = ((latest_price - clean_close.iloc[-60]) / clean_close.iloc[-60] * 100) if len(clean_close) >= 60 else ((latest_price - clean_close.iloc[0]) / clean_close.iloc[0] * 100)
         r_1y_val = ((latest_price - clean_close.iloc[0]) / clean_close.iloc[0] * 100) if len(clean_close) > 0 else 0.0
 
-        return r_1w_val, f"{r_1w_val:+.2f}%", f"{r_1m_val:+.2f}%", f"{r_3m_val:+.2f}%", f"{r_1y_val:+.2f}%"
+        return (
+            r_1w_val,
+            f"{r_today_val:+.2f}%", f"{r_1d_val:+.2f}%", f"{r_2d_val:+.2f}%",
+            f"{r_1w_val:+.2f}%", f"{r_1m_val:+.2f}%", f"{r_3m_val:+.2f}%", f"{r_1y_val:+.2f}%"
+        )
 
     def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, market: str, stock_name: str) -> np.ndarray:
         if df.empty or len(df.dropna()) < 2:
@@ -395,11 +337,10 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
-def generate_buy_analysis(row, macro, user_token=""):
+def generate_buy_analysis(row, macro):
     total_score = row['총점']
     r_1w_val = row['r_1w_val']
     stock_name = row['종목명']
-    market = row['시장']
     vix_val = macro.get('VIX', {}).get('val', 15.0)
 
     tech_score = row.get('기술적모멘텀', 50.0)
@@ -413,14 +354,9 @@ def generate_buy_analysis(row, macro, user_token=""):
     if prob >= 70:
         buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
         buy_opinion = f"[{stock_name}] 기대 상승 확률 약 {prob}%로 최상위 매수 시그널입니다. 적극 매수를 추천합니다."
-        send_kakao_alert(user_token, "3차 매수 알림", stock_name, market, prob, "3차 진입 (🟢 강력 매수 시그널 전환 완료)", "전체 예산의 잔여 30%", "V자 반등 확정 구간")
     elif prob >= 55:
         buy_signal = "🟡 분할 매수 / 관망 (Hold) [55% ~ 69%]"
         buy_opinion = f"[{stock_name}] 눌림목 및 상승 시그널 구간입니다 (기대 확률 {prob}%). 분할 진입을 권장합니다."
-        if -2.5 <= r_1w_val <= -0.8:
-            send_kakao_alert(user_token, "1차 매수 알림", stock_name, market, prob, "1차 진입 (시가 대비 -1%~-2% 눌림 발생)", "전체 예산의 40%", f"1주 등락률: {r_1w_val:+.2f}%")
-        elif -6.0 <= r_1w_val < -2.5:
-            send_kakao_alert(user_token, "2차 매수 알림", stock_name, market, prob, "2차 진입 (20일선 눌림목 지지선 도달)", "추가 30%", f"1주 등락률: {r_1w_val:+.2f}%")
     else:
         buy_signal = "🔴 관망 / 매도 (Sell/Wait) [55% 미만]"
         buy_opinion = f"[{stock_name}] 기대 상승 확률({prob}%)이 다소 낮습니다. 신규 매수를 보류하세요."
@@ -486,7 +422,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
         df = pd.DataFrame()
 
     raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
-    r_1w_val, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
+    r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
     
     try:
         r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
@@ -500,6 +436,9 @@ def process_single_stock(ticker, market, name_map, engine, macro):
         '종목명': stock_name,
         '차트링크': chart_link,
         'r_1w_val': r_1w_val,
+        '당일 수익률': r_today,
+        '1일 전': r_1d,
+        '2일 전': r_2d,
         '1주 수익률': r_1w,
         '1달 수익률': r_1m,
         '3개월 수익률': r_3m,
@@ -590,69 +529,39 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.20 국내 섹터 ETF 50개 확장판)
+# 4. 대시보드 UI (v3.22 깔끔한 간소화 및 수익률 지표 확장판)
 # ==========================================
-st.set_page_config(page_title="AI 퀀트 주식 분석 시스템 v3.20", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v3.22)", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 퀀트 주식 추천 및 매도 판정 시스템 (v3.20)")
-st.caption(f"부제 3.20 - 해외 ETF 제거 및 국내 섹터 ETF 50개 모수 확장판 | {now_str}")
+# 1. 간결해진 제목
+st.title("📈 AI 추천 주식 매매 (v3.22)")
+st.caption(f"부제 3.22 - 종합 통합 스크리닝 & 단기 추세 등락률 지표 확장판 | {now_str}")
 
-# 🔥 카카오 토큰 입력 및 연습 테스트 버튼 창
-with st.expander("🔔 **[내 핸드폰으로 카카오톡 알림 받기 설정 및 연습 테스트]** 클릭하여 설정", expanded=True):
-    user_kakao_token = st.text_input(
-        "본인의 카카오 Access Token을 입력하세요 (미입력 시 기본 설정 키 사용):",
-        value="",
-        placeholder="예: KMLOEgzWQJJnKV7dX2EZetIbYbnQPJyqAAAAAQoXElUAAAGhgHE4T-AsyCcGfplL",
-        type="password"
-    )
-    
-    col_test1, col_test2 = st.columns([1, 3])
-    with col_test1:
-        if st.button("🧪 [카카오톡 테스트 메시지 전송하기]"):
-            success, result_msg = send_kakao_alert(user_kakao_token, "알림 테스트", "삼성전자", "코스피200", 75, "테스트 1차 진입 구간", "40%", "현재가 72,500원")
-            if success:
-                st.success(f"✅ {result_msg}")
-            else:
-                st.error(f"❌ {result_msg}\n\n👉 해결법: 카카오 디벨로퍼스에서 Access Token을 새로 발급받아 붙여넣어 주세요.")
+# 3. 핵심 내용 설명 (펼치기 expander 기능)
+with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
+    st.markdown("""
+    * **종합 스크리닝 시스템:** 한국(코스피/코스닥/소형주/ETF) 및 미국(S&P500/나스닥/소형주) 전 세계 800여 개 핵심 우량종목을 실시간 가중 분석합니다.
+    * **정렬 옵션 차별화:** `퀀트점수 순`, `미래 기대 수익률 순 (%)`, `매수시그널 순`, `매도시그널 순` 옵션별로 시장 정예 종목 Top 10을 새로 추출해 냅니다.
+    * **단기 등락률 지표 연동:** 당일, 1일 전, 2일 전 및 1주 등락률을 파악하여 실시간 파동과 오버슈팅 여부를 진단합니다.
+    """)
 
-st.info("""
-**📊 [v3.20 개편 안내]**  
-해외 ETF 테마를 제외하고 국내 주요 섹터/테마 ETF 50개 모수를 전면 확장 구축했습니다. 정렬 옵션 선택 시 국내 주식/ETF 및 미국 핵심 대표주 전체를 스크리닝합니다.
-""")
-
-st.markdown("[🔍 구글(Google) 검색 바로가기](https://www.google.com)")
-
-DEFAULT_CATEGORIES = [
-    '🏆 통합 전체 유니버스 (국내+미국 종합)',
-    '코스피200', '코스닥100', 'S&P500', '나스닥100', 
-    '국내 ETF', '국내 소형 고성장주', '미국 소형 고성장주'
-]
-
-# 🔥 테마 제어판
-with st.expander("⚙️ **[테마 제어판]** 출력할 테마 선택 및 순서 변경하기 (클릭하여 닫기/열기)", expanded=True):
-    selected_categories = st.multiselect(
-        "화면에 표시할 테마를 선택하고 순서를 조정하세요:",
-        options=DEFAULT_CATEGORIES,
-        default=DEFAULT_CATEGORIES
-    )
-
-with st.spinner("v3.20 국내 섹터 ETF 50개 스크리닝 계산 중..."):
+with st.spinner("v3.22 전 세계 통합 유니버스 실시간 산출 중..."):
     df, engine, macro_info = run_quant_analysis()
 
-st.subheader("🌐 실시간 주요 시장 지수 현황 (클릭 시 상세 차트 연결)")
+st.subheader("🌐 실시간 주요 시장 지수 현황")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "url?id=6"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "url?id=9"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
@@ -661,6 +570,15 @@ for col, name, data, link in index_configs:
         render_korean_market_card(name, data, link)
 
 st.markdown("---")
+
+# 4. 고정된 테마 순서: 통합유니버스 - 코스피 - 코스닥 - SNP - 나스닥
+FIXED_CATEGORIES = [
+    '🏆 통합 전체 유니버스 (국내+미국 종합)',
+    '코스피200',
+    '코스닥100',
+    'S&P500',
+    '나스닥100'
+]
 
 if not df.empty:
     tabs = st.tabs(["미래 1주일 (1W)", "미래 1개월 (1M)", "미래 6개월 (6M)", "미래 1년 (1Y)", "미래 5년 (5Y)", "미래 10년 (10Y)", "미래 10년 이상 (10Y+)"])
@@ -682,9 +600,7 @@ if not df.empty:
             st.markdown("---")
             st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
-            display_categories = selected_categories if selected_categories else DEFAULT_CATEGORIES
-            
-            for cat in display_categories:
+            for cat in FIXED_CATEGORIES:
                 col_head1, col_head2 = st.columns([3, 1])
                 with col_head1:
                     st.markdown(f"### 🏆 {cat} Top 10")
@@ -696,6 +612,7 @@ if not df.empty:
                         key=f"sort_{cat}_{p_code}"
                     )
                 
+                # 5. 통합전체유니버스는 코스피, 코스닥, SNP, 나스닥, 국내소형, 미국소형, 국내ETF 전체를 종합 스크리닝
                 if "통합 전체 유니버스" in cat:
                     cat_df = df.drop_duplicates(subset=['종목명']).copy()
                 else:
@@ -711,7 +628,7 @@ if not df.empty:
                     s_ranks = []
                     
                     for _, r in cat_df.iterrows():
-                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info, "")
+                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
                         s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
                         probs.append(p_val)
                         b_signals.append(b_sig)
@@ -733,7 +650,8 @@ if not df.empty:
                     
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
                     
-                    show_cols = ['종목(차트보기)', '시장', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    # 🔥 [v3.22] 1주 수익률 왼쪽에 당일, 1일 전, 2일 전 수익률 지표 배치 및 총점 위치 조정
+                    show_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
 
                     display_df = cat_df[show_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
@@ -742,7 +660,7 @@ if not df.empty:
                     
                     with st.expander(f"🔍 [{cat}] 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
-                            prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info, user_kakao_token)
+                            prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
                             st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 예측 수익률: `+{row['예측수익률(%)']}%` | 상승 확률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
