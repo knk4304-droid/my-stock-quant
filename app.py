@@ -89,7 +89,6 @@ class UniverseLoader:
     @st.cache_data(ttl=86400)
     def get_full_universe():
         name_map = {
-            # 코스피 200 대표 종목 한글 매핑
             '005930.KS': '삼성전자', '000660.KS': 'SK하이닉스', '373220.KS': 'LG에너지솔루션', '207940.KS': '삼성바이오로직스',
             '005380.KS': '현대차', '000270.KS': '기아', '105560.KS': 'KB금융', '068270.KS': '셀트리온',
             '055550.KS': '신한지주', '035420.KS': 'NAVER', '005490.KS': 'POSCO홀딩스', '006400.KS': '삼성SDI',
@@ -102,8 +101,6 @@ class UniverseLoader:
             '036570.KS': '엔씨소프트', '251270.KS': '넷마블', '000150.KS': '두산밥캣', '010120.KS': 'LS electric',
             '028260.KS': '삼성물산', '034730.KS': 'SK', '011170.KS': '롯데케미칼', '004020.KS': '현대제철',
             '001040.KS': 'CJ', '000100.KS': '유한양행', '128940.KS': '한미약품', '001450.KS': '현대해상',
-            
-            # 코스닥 150 대표 종목 한글 매핑
             '196170.KQ': '알테오젠', '086520.KQ': '에코프로비엠', '028300.KQ': 'HLB', '068760.KQ': '셀트리온제약',
             '247540.KQ': '엘앤에프', '263750.KQ': '펄어비스', '214150.KQ': '클래시스', '058470.KQ': '리노공업',
             '035900.KQ': 'JYP Ent.', '041510.KQ': 'SM', '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스',
@@ -111,8 +108,6 @@ class UniverseLoader:
             '293490.KQ': '카카오게임즈', '278280.KQ': '천보', '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스',
             '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템', '053690.KQ': '한미반도체', '081660.KQ': '플리토',
             '060280.KQ': '큐렉소', '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
-            
-            # 미국 주요 대표주 한글 매핑
             'AAPL': '애플', 'MSFT': '마이크로소프트', 'AMZN': '아마존', 'NVDA': '엔비디아', 'GOOGL': '알파벳',
             'META': '메타', 'BRK-B': '버크셔해서웨이', 'TSLA': '테슬라', 'UNH': '유나이티드헬스', 'JNJ': '존슨앤드존슨',
             'AVGO': '브로드컴', 'COST': '코스트코', 'AMD': 'AMD', 'PEP': '펩시코', 'NFLX': '넷플릭스',
@@ -122,8 +117,6 @@ class UniverseLoader:
             'TMUS': '티모바일', 'CSCO': '시스코', 'ACN': '액센츄어', 'INTC': '인텔', 'QCOM': '퀄컴',
             'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
             'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스', 'NOW': '서비스나우',
-            
-            # 국내 주요 ETF 50개 한글 매핑
             '069500.KS': 'KODEX 200', '102110.KQ': 'TIGER 200', '229200.KS': 'KODEX 코스닥150',
             '305540.KS': 'TIGER 2차전지테마', '394660.KS': 'KODEX 2차전지핵심소재10', '091230.KS': 'TIGER 반도체',
             '396500.KS': 'KODEX AI반도체핵심장비', '244580.KS': 'KODEX 바이오', '261220.KS': 'KODEX 자동차',
@@ -136,7 +129,6 @@ class UniverseLoader:
             '132030.KS': 'KODEX 골드선물(H)', '271060.KS': 'KODEX WTI원유선물(H)', '357870.KS': 'TIGER CD금리투자KIS'
         }
 
-        # S&P500 & 나스닥100 위키피디아 실시간 연동
         try:
             sp500_table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
             sp500_tickers = sp500_table['Symbol'].str.replace('.', '-').tolist()
@@ -363,6 +355,7 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
+# 🔥 [v3.27 핵심 개편] 오버슈팅/단기 과열 시 매수 보류 안전장치 로직 적용
 def generate_buy_analysis(row, macro):
     total_score = row['총점']
     r_1w_val = row['r_1w_val']
@@ -377,7 +370,11 @@ def generate_buy_analysis(row, macro):
 
     prob = int(np.clip(prob, 10, 95))
 
-    if prob >= 70:
+    # 🛑 오버슈팅 안전장치: 1주 등락률이 +8.0% 이상이면 매수 시그널을 강제로 '매수 보류'로 전환
+    if r_1w_val >= 8.0:
+        buy_signal = f"🟡 매수 보류 / 눌림목 대기 (Wait for Dip) [단기 오버슈팅: {r_1w_val:+.1f}% 달성]"
+        buy_opinion = f"[{stock_name}] 상승 모멘텀(기대 확률 {prob}%)은 우수하나, 주가가 최근 1주 동안 과도하게 급등({r_1w_val:+.2f}%)하여 과열 상태입니다. 신규 매수를 보류하고 눌림목 조정을 기다리세요."
+    elif prob >= 70:
         buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
         buy_opinion = f"[{stock_name}] 기대 상승 확률 약 {prob}%로 최상위 매수 시그널입니다. 적극 매수를 추천합니다."
     elif prob >= 55:
@@ -438,7 +435,6 @@ def generate_sell_analysis(row):
     return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
 
 
-# 🔥 [한글 종목명 변환 핵심 보완]
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
@@ -484,7 +480,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
 
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_26_korean_name_fixed"):
+def run_quant_analysis(cache_key="v3_27_buy_safety_filter"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -556,26 +552,26 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 4. 대시보드 UI (v3.26 한글 종목명 변환 완벽판)
+# 4. 대시보드 UI (v3.27 오버슈팅 매수 안전장치 개편판)
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v3.26)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v3.27)", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 추천 주식 매매 (v3.26)")
-st.caption(f"부제 3.26 - 한글 종목명 100% 동기화 & 스크리닝 시스템 | {now_str}")
+st.title("📈 AI 추천 주식 매매 (v3.27)")
+st.caption(f"부제 3.27 - 매수 안전장치(과열 시 매수 보류 자동 전환) 개편판 | {now_str}")
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
     * **종합 스크리닝 시스템:** 한국(코스피200/코스닥150/소형주/ETF) 및 미국(S&P500/나스닥100/소형주) 전 세계 규격 고정 유니버스를 가중 분석합니다.
     * **정렬 옵션 차별화:** `퀀트점수 순`, `미래 기대 수익률 순 (%)`, `매수시그널 순`, `매도시그널 순` 옵션별로 정예 종목 Top 10을 새로 추출해 냅니다.
-    * **단기 등락률 지표 연동:** 당일, 1일 전, 2일 전 및 1주 등락률을 파악하여 실시간 파동과 오버슈팅 여부를 진단합니다.
+    * **매수 안전장치 필터:** 상승 모멘텀이 뛰어나더라도, **단기 등락률이 급등(+8% 이상)한 과열 종목은 '매수 보류' 시그널로 자동 전환**하여 추격 매수 위험을 완벽히 차단합니다.
     """)
 
-with st.spinner("v3.26 규격 고정 유니버스 실시간 연산 중..."):
+with st.spinner("v3.27 개편 필터 실시간 연산 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황")
