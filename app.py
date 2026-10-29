@@ -148,7 +148,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_38_multiselect_v1"):
+def run_quant_analysis(cache_key="v3_38_complete_verified_final"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -271,7 +271,6 @@ FIXED_CATEGORIES = [
 ]
 
 if not df.empty:
-    # 전체 모수 기반 [시장 - 종목명] 드롭다운 옵션 생성
     df_sorted_for_select = df.drop_duplicates(subset=['종목명']).sort_values(by=['시장', '종목명'])
     stock_options = [f"{row['시장']} - {row['종목명']}" for _, row in df_sorted_for_select.iterrows()]
 
