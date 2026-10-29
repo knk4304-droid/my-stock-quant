@@ -148,7 +148,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_38_etf_included"):
+def run_quant_analysis(cache_key="v3_38_force_refresh_fixed"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -259,7 +259,6 @@ if not df.empty:
 
 st.markdown("---")
 
-# 국내 ETF 테마 추가된 카테고리 목록
 FIXED_CATEGORIES = [
     '🎯 [MY] 관심 종목 개별 진단',
     '🏆 [AI 종합 필터] 기간별 최우선 매수 추천 Top 10 (강력 추천)',
@@ -363,7 +362,7 @@ if not df.empty:
                         elif "매수시그널" in cat_sort_opt:
                             cat_df = cat_df.sort_values(by=['기대상승확률(%)', 'r_1w_val', '총점'], ascending=[False, False, False]).head(10)
                         elif "매도시그널" in cat_sort_opt:
-                            cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
+                            cat_sort_opt_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
