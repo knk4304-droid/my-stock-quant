@@ -1,6 +1,4 @@
 import datetime
-import json
-import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
@@ -9,7 +7,9 @@ import requests
 import streamlit as st
 import yfinance as yf
 
-# 실시간 자동 새로고침 패키지
+from universe import UniverseLoader
+from quant import QuantEngine, generate_buy_analysis, generate_sell_analysis
+
 try:
     from streamlit_autorefresh import st_autorefresh
     AUTOREFRESH_AVAILABLE = True
@@ -23,305 +23,43 @@ FEATURE_NAMES = [
     '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성'
 ]
 
-# ==========================================
-# 1. 실시간 주요 지수 수집 (안전 예외 처리)
-# ==========================================
 def fetch_realtime_macro():
     macro_results = {}
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
+    headers = {'User-Agent': 'Mozilla/5.0'}
 
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
         res = requests.get(url_kr, headers=headers, timeout=2).json()
-        curr = float(res['closePrice'].replace(',', ''))
-        rate = float(res['fluctuationsRatio'])
-        macro_results['KOSPI'] = {'val': curr, 'change': rate}
+        macro_results['KOSPI'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
-        macro_results['KOSPI'] = {'val': 5800.0, 'change': 0.0}
+        macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
 
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
         res = requests.get(url_kq, headers=headers, timeout=2).json()
-        curr = float(res['closePrice'].replace(',', ''))
-        rate = float(res['fluctuationsRatio'])
-        macro_results['KOSDAQ'] = {'val': curr, 'change': rate}
+        macro_results['KOSDAQ'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=2).json()
-        curr = float(res['closePrice'].replace(',', ''))
-        rate = float(res['fluctuationsRatio'])
-        macro_results['USDKRW'] = {'val': curr, 'change': rate}
+        macro_results['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    us_tickers = {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}
-    for key, sym in us_tickers.items():
+    for key, sym in {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}.items():
         try:
             hist = yf.Ticker(sym).history(period='5d', timeout=2)
             if not hist.empty and len(hist) >= 2:
-                curr = float(hist['Close'].iloc[-1])
-                prev = float(hist['Close'].iloc[-2])
-                rate = (curr - prev) / prev * 100
-                macro_results[key] = {'val': curr, 'change': rate}
+                curr, prev = float(hist['Close'].iloc[-1]), float(hist['Close'].iloc[-2])
+                macro_results[key] = {'val': curr, 'change': (curr - prev) / prev * 100}
             else:
                 macro_results[key] = {'val': 0.0, 'change': 0.0}
         except Exception:
             macro_results[key] = {'val': 0.0, 'change': 0.0}
 
     return macro_results
-
-
-# ==========================================
-# 2. 안정화 고정 유니버스 로더 (위키피디아 제거)
-# ==========================================
-class UniverseLoader:
-    @staticmethod
-    @st.cache_data(ttl=86400)
-    def get_full_universe():
-        name_map = {
-            '005930.KS': '삼성전자', '000660.KS': 'SK하이닉스', '373220.KS': 'LG에너지솔루션', '207940.KS': '삼성바이오로직스',
-            '005380.KS': '현대차', '000270.KS': '기아', '105560.KS': 'KB금융', '068270.KS': '셀트리온',
-            '055550.KS': '신한지주', '035420.KS': 'NAVER', '005490.KS': 'POSCO홀딩스', '006400.KS': '삼성SDI',
-            '051910.KS': 'LG화학', '035720.KS': '카카오', '086790.KS': '하나금융지주', '015760.KS': '한국전력',
-            '003550.KS': 'LG', '018260.KS': '삼성SDS', '010140.KS': '삼성중공업', '009150.KS': '삼성전기',
-            '032830.KS': '삼성생명', '000810.KS': '삼성화재', '017670.KS': 'SK텔레콤', '096770.KS': 'SK이노베이션',
-            '011200.KS': 'HMM', '012330.KS': '현대모비스', '034020.KS': '두산에너빌리티', '010950.KS': 'S-Oil',
-            '003670.KS': '포스코퓨처엠', '329180.KS': 'HD현대중공업', '267250.KS': 'HD현대일렉트릭', '010130.KS': '고려아연',
-            '009540.KS': 'HD한국조선해양', '030200.KS': 'KT', '316140.KS': '우리금융지주', '003490.KS': '대한항공',
-            '036570.KS': '엔씨소프트', '251270.KS': '넷마블', '000150.KS': '두산밥캣', '010120.KS': 'LS electric',
-            '028260.KS': '삼성물산', '034730.KS': 'SK', '011170.KS': '롯데케미칼', '004020.KS': '현대제철',
-            '001040.KS': 'CJ', '000100.KS': '유한양행', '128940.KS': '한미약품', '001450.KS': '현대해상',
-            '196170.KQ': '알테오젠', '086520.KQ': '에코프로비엠', '028300.KQ': 'HLB', '068760.KQ': '셀트리온제약',
-            '247540.KQ': '엘앤에프', '263750.KQ': '펄어비스', '214150.KQ': '클래시스', '058470.KQ': '리노공업',
-            '035900.KQ': 'JYP Ent.', '041510.KQ': 'SM', '035760.KQ': 'CJ ENM', '086900.KQ': '메디톡스',
-            '112040.KQ': '위메이드', '036830.KQ': '솔브레인', '034230.KQ': '파라다이스', '039200.KQ': '오스코텍',
-            '293490.KQ': '카카오게임즈', '278280.KQ': '천보', '440110.KQ': '파두', '277810.KQ': '레인보우로보틱스',
-            '328130.KQ': '루닛', '084990.KQ': '하이비젼시스템', '053690.KQ': '한미반도체', '081660.KQ': '플리토',
-            '060280.KQ': '큐렉소', '053030.KQ': '바이오니아', '068240.KQ': '다원시스',
-            'AAPL': '애플', 'MSFT': '마이크로소프트', 'AMZN': '아마존', 'NVDA': '엔비디아', 'GOOGL': '알파벳',
-            'META': '메타', 'BRK-B': '버크셔해서웨이', 'TSLA': '테슬라', 'UNH': '유나이티드헬스', 'JNJ': '존슨앤드존슨',
-            'AVGO': '브로드컴', 'COST': '코스트코', 'AMD': 'AMD', 'PEP': '펩시코', 'NFLX': '넷플릭스',
-            'LLY': '일라이릴리', 'JPM': 'JP모건체이스', 'V': '비자', 'XOM': '엑손모빌', 'WMT': '월마트',
-            'MA': '마스터카드', 'PG': '프록터앤드갬블', 'HD': '홈디포', 'BAC': '뱅크오브아메리카', 'ORCL': '오라클',
-            'ABBV': '애브비', 'CVX': '쉐브론', 'CRM': '세일즈포스', 'MRK': '머크', 'KO': '코카콜라',
-            'TMUS': '티모바일', 'CSCO': '시스코', 'ACN': '액센츄어', 'INTC': '인텔', 'QCOM': '퀄컴',
-            'PLTR': '팔란티어', 'SMCI': '슈퍼마이크로컴퓨터', 'IONQ': '아이온큐', 'ROKU': '로쿠',
-            'SOFI': '소파이', 'U': '유니티', 'RBLX': '로블록스', 'PATH': '유아이패스', 'NOW': '서비스나우',
-            '069500.KS': 'KODEX 200', '102110.KQ': 'TIGER 200', '229200.KS': 'KODEX 코스닥150',
-            '305540.KS': 'TIGER 2차전지테마', '394660.KS': 'KODEX 2차전지핵심소재10', '091230.KS': 'TIGER 반도체',
-            '396500.KS': 'KODEX AI반도체핵심장비', '244580.KS': 'KODEX 바이오', '261220.KS': 'KODEX 자동차',
-            '091220.KS': 'TIGER 은행', '139280.KS': 'TIGER 200 금융', '102960.KS': 'KODEX 건설',
-            '117460.KS': 'KODEX 철강', '139220.KS': 'TIGER 200 중공업', '462330.KS': 'KODEX K-방산',
-            '228820.KS': 'TIGER 미디어컨텐츠', '266390.KS': 'KODEX 게임산업', '305720.KS': 'KODEX 고배당',
-            '161510.KS': 'ARIRANG 고배당주', '458730.KS': 'ACE 미국S&P500', '360750.KS': 'TIGER 미국S&P500',
-            '133690.KS': 'TIGER 미국나스닥100', '381180.KS': 'TIGER 미국배당다우존스', '371460.KS': 'TIGER 차이나전기차SOLACTIVE',
-            '252670.KS': 'KODEX 200선물인버스2X', '114800.KS': 'KODEX 인버스', '138230.KS': 'KODEX 미국달러선물',
-            '132030.KS': 'KODEX 골드선물(H)', '271060.KS': 'KODEX WTI원유선물(H)', '357870.KS': 'TIGER CD금리투자KIS'
-        }
-
-        sp500_tickers = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'BRK-B', 'TSLA', 'UNH', 'JNJ', 'LLY', 'JPM', 'V', 'XOM', 'WMT', 'MA', 'PG', 'HD', 'BAC', 'ORCL', 'ABBV', 'CVX', 'CRM', 'MRK', 'KO', 'PEP', 'AMD', 'COST', 'AVGO', 'CSCO', 'ACN', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'GE', 'CAT', 'IBM', 'NOW', 'DIS', 'UBER', 'PANW']
-        nasdaq100_tickers = ['AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'AVGO', 'COST', 'AMD', 'PEP', 'NFLX', 'CSCO', 'TMUS', 'INTC', 'QCOM', 'TXN', 'AMAT', 'INTU', 'ISRG', 'AMGN', 'BKNG', 'LRCX', 'NOW', 'PANW']
-        kospi200_tickers = ['005930.KS', '000660.KS', '373220.KS', '207940.KS', '005380.KS', '000270.KS', '105560.KS', '068270.KS', '055550.KS', '035420.KS', '005490.KS', '006400.KS', '051910.KS', '035720.KS', '086790.KS', '015760.KS', '003550.KS', '018260.KS', '010140.KS', '009150.KS', '032830.KS', '000810.KS', '017670.KS', '096770.KS', '011200.KS', '012330.KS', '034020.KS', '010950.KS', '003670.KS', '329180.KS', '267250.KS', '010130.KS', '009540.KS', '030200.KS', '316140.KS', '003490.KS', '036570.KS', '251270.KS', '000150.KS', '010120.KS', '028260.KS', '034730.KS', '011170.KS', '004020.KS', '001040.KS', '000100.KS', '128940.KS', '001450.KS']
-        kosdaq150_tickers = ['196170.KQ', '086520.KQ', '028300.KQ', '068760.KQ', '247540.KQ', '263750.KQ', '214150.KQ', '058470.KQ', '035900.KQ', '041510.KQ', '035760.KQ', '086900.KQ', '112040.KQ', '036830.KQ', '034230.KQ', '039200.KQ', '293490.KQ', '278280.KQ']
-        kr_smallcap = ['440110.KQ', '277810.KQ', '328130.KQ', '084990.KQ', '053690.KQ', '081660.KQ', '060280.KQ', '053030.KQ', '068240.KQ']
-        us_smallcap = ['PLTR', 'SMCI', 'IONQ', 'ROKU', 'SOFI', 'U', 'RBLX', 'PATH', 'DKNG', 'AFRM']
-        kr_etf = ['069500.KS', '102110.KQ', '229200.KS', '305540.KS', '394660.KS', '091230.KS', '396500.KS', '244580.KS', '261220.KS', '091220.KS', '139280.KS', '102960.KS', '117460.KS', '139220.KS', '462330.KS', '228820.KS', '266390.KS', '305720.KS', '161510.KS', '458730.KS', '360750.KS', '133690.KS', '381180.KS', '371460.KS', '252670.KS', '114800.KS', '138230.KS', '132030.KS', '271060.KS', '357870.KS']
-
-        universe = {
-            '코스피200': kospi200_tickers,
-            '코스닥100': kosdaq150_tickers,
-            'S&P500': sp500_tickers,
-            '나스닥100': nasdaq100_tickers,
-            '국내 ETF': kr_etf,
-            '국내 소형 고성장주': kr_smallcap,
-            '미국 소형 고성장주': us_smallcap
-        }
-        return universe, name_map
-
-
-# ==========================================
-# 3. 퀀트 채점 엔진
-# ==========================================
-class QuantEngine:
-    def __init__(self):
-        self.largecap_weights = {
-            '1W':   [5, 10, 10, 20, 20, 15, 5, 5, 5, 5],
-            '1M':   [8, 10, 10, 20, 18, 14, 5, 5, 5, 5],
-            '6M':   [15, 15, 10, 15, 10, 10, 5, 5, 10, 5],
-            '1Y':   [20, 15, 15, 15, 5, 5, 5, 5, 10, 5],
-            '5Y':   [20, 20, 15, 15, 5, 5, 5, 5, 5, 5],
-            '10Y':  [25, 20, 15, 15, 2, 3, 5, 5, 5, 5],
-            '10Y+': [30, 20, 15, 15, 0, 0, 5, 5, 5, 5]
-        }
-        
-        self.smallcap_weights = {
-            '1W':   [15, 5, 5, 15, 20, 20, 2, 3, 10, 5],
-            '1M':   [18, 5, 5, 12, 20, 18, 2, 3, 12, 5],
-            '6M':   [30, 10, 5, 5, 15, 10, 2, 3, 15, 5],
-            '1Y':   [35, 10, 5, 5, 10, 10, 2, 3, 15, 5],
-            '5Y':   [40, 15, 5, 5, 5, 5, 2, 3, 15, 5],
-            '10Y':  [45, 15, 5, 5, 2, 3, 2, 3, 15, 5],
-            '10Y+': [50, 15, 5, 5, 0, 0, 2, 3, 15, 5]
-        }
-
-        self.etf_weights = {
-            '1W':   [5, 0, 0, 10, 20, 15, 10, 10, 20, 10],
-            '1M':   [5, 0, 0, 10, 20, 15, 10, 10, 20, 10],
-            '6M':   [10, 0, 0, 0, 15, 10, 10, 10, 35, 10],
-            '1Y':   [15, 0, 0, 0, 10, 10, 10, 10, 35, 10],
-            '5Y':   [20, 0, 0, 0, 5, 5, 10, 10, 40, 10],
-            '10Y':  [25, 0, 0, 0, 2, 3, 10, 10, 40, 10],
-            '10Y+': [30, 0, 0, 0, 0, 0, 10, 10, 40, 10]
-        }
-
-    def get_weights_by_market(self, market: str, period: str):
-        if "소형" in market:
-            return self.smallcap_weights[period]
-        elif "ETF" in market:
-            return self.etf_weights[period]
-        else:
-            return self.largecap_weights[period]
-
-    def calculate_returns(self, df: pd.DataFrame):
-        if df.empty or len(df.dropna()) < 5:
-            return 0.0, "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%"
-
-        clean_close = df['Close'].dropna()
-        latest_price = clean_close.iloc[-1]
-
-        r_today_val = ((clean_close.iloc[-1] - clean_close.iloc[-2]) / clean_close.iloc[-2] * 100) if len(clean_close) >= 2 else 0.0
-        r_1d_val = ((clean_close.iloc[-2] - clean_close.iloc[-3]) / clean_close.iloc[-3] * 100) if len(clean_close) >= 3 else 0.0
-        r_2d_val = ((clean_close.iloc[-3] - clean_close.iloc[-4]) / clean_close.iloc[-4] * 100) if len(clean_close) >= 4 else 0.0
-
-        r_1w_val = ((latest_price - clean_close.iloc[-5]) / clean_close.iloc[-5] * 100) if len(clean_close) >= 5 else 0.0
-        r_1m_val = ((latest_price - clean_close.iloc[-20]) / clean_close.iloc[-20] * 100) if len(clean_close) >= 20 else 0.0
-        r_3m_val = ((latest_price - clean_close.iloc[-60]) / clean_close.iloc[-60] * 100) if len(clean_close) >= 60 else ((latest_price - clean_close.iloc[0]) / clean_close.iloc[0] * 100)
-        r_1y_val = ((latest_price - clean_close.iloc[0]) / clean_close.iloc[0] * 100) if len(clean_close) > 0 else 0.0
-
-        return (
-            r_1w_val,
-            f"{r_today_val:+.2f}%", f"{r_1d_val:+.2f}%", f"{r_2d_val:+.2f}%",
-            f"{r_1w_val:+.2f}%", f"{r_1m_val:+.2f}%", f"{r_3m_val:+.2f}%", f"{r_1y_val:+.2f}%"
-        )
-
-    def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, market: str, stock_name: str) -> np.ndarray:
-        if df.empty or len(df.dropna()) < 2:
-            return np.array([50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0])
-
-        clean_close = df['Close'].dropna()
-        latest_close = float(clean_close.iloc[-1])
-        vol_series = df['Volume'].dropna() if 'Volume' in df else pd.Series([100000])
-        vol_val = float(vol_series.iloc[-1]) if not vol_series.empty else 100000.0
-
-        start_price = float(clean_close.iloc[0])
-        growth_rate = (latest_close - start_price) / start_price * 100 if start_price > 0 else 0.0
-        daily_returns = clean_close.pct_change().dropna()
-        volatility = daily_returns.std() * np.sqrt(252) * 100 if len(daily_returns) > 5 else 20.0
-
-        s1 = np.clip(growth_rate + 50.0, 10.0, 100.0)
-
-        r_1y_pct = ((latest_close - start_price) / start_price * 100) if start_price > 0 else 0.0
-        s2 = np.clip(50.0 + r_1y_pct * 0.4, 15.0, 95.0)
-
-        s3 = np.clip(100.0 - volatility * 1.2, 20.0, 90.0)
-
-        ma20 = clean_close.tail(20).mean() if len(clean_close) >= 20 else latest_close
-        disparity = (latest_close / ma20) * 100 if ma20 > 0 else 100.0
-        if "소형" in market:
-            s4 = np.clip(100.0 - abs(disparity - 100.0) * 1.5, 30.0, 95.0)
-        else:
-            s4 = np.clip(100.0 - abs(disparity - 100.0) * 3.0, 15.0, 95.0)
-
-        delta = clean_close.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rsi_series = 100 - (100 / (1 + gain / loss))
-        rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and not pd.isna(rsi_series.iloc[-1]) else 50.0
-        s5 = max(10.0, 100.0 - abs(60.0 - rsi) * 2.0)
-
-        avg_vol = float(vol_series.tail(20).mean()) if not vol_series.empty else vol_val
-        s6 = min(100.0, max(10.0, (vol_val / avg_vol * 50.0))) if avg_vol > 0 else 50.0
-
-        usdkrw_change = macro.get('USDKRW', {}).get('change', 0.0)
-        export_stocks = ['삼성전자', 'SK하이닉스', '현대차', '기아', 'LG화학', '삼성SDI', 'POSCO홀딩스']
-        
-        if any(e_stock in stock_name for e_stock in export_stocks) or "미국" in market or "S&P" in market or "나스닥" in market:
-            s7 = np.clip(70.0 + usdkrw_change * 5.0 + (growth_rate * 0.1), 30.0, 95.0)
-        else:
-            s7 = np.clip(45.0 - usdkrw_change * 3.0 - (volatility * 0.2), 20.0, 80.0)
-
-        vix_val = macro['VIX']['val'] if macro.get('VIX') and macro['VIX']['val'] > 0 else 15.0
-        if "소형" in market or "코스닥" in market:
-            s8 = np.clip(75.0 - (vix_val - 15.0) * 3.0 - (volatility * 0.3), 15.0, 85.0)
-        else:
-            s8 = np.clip(80.0 - (vix_val - 15.0) * 1.5, 30.0, 90.0)
-
-        pct_change = float(clean_close.pct_change(5).iloc[-1]) if len(clean_close) >= 5 else 0.0
-        s9 = min(100.0, max(10.0, pct_change * 1000.0 + 50.0))
-
-        s10 = np.clip(90.0 - (volatility * 1.1), 20.0, 95.0)
-
-        scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
-        return np.nan_to_num(scores, nan=50.0)
-
-    def calculate_v3_score(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, r_1m_val: float, macro: dict) -> float:
-        w_list = self.get_weights_by_market(market, period)
-        w = np.array(w_list)
-        base_score = np.sum(raw_scores * (w / 100.0))
-
-        vix_val = macro.get('VIX', {}).get('val', 15.0)
-        nasdaq_change = macro.get('NASDAQ', {}).get('change', 0.0)
-        
-        vix_penalty = -5.0 if vix_val >= 20.0 else 0.0
-        us_coupling_bonus = np.clip(nasdaq_change * 2.0, -6.0, 6.0)
-
-        if period in ['1W', '1M']:
-            if base_score >= 55.0 and (r_1m_val <= -12.0) and (r_1w_val >= +3.0):
-                rebound_bonus = 8.0
-            elif base_score >= 65.0 and (-7.0 <= r_1w_val <= -0.5):
-                rebound_bonus = 5.0
-            elif r_1w_val > 10.0:
-                rebound_bonus = -3.0
-            else:
-                rebound_bonus = 0.0
-        else:
-            rebound_bonus = 0.0
-
-        final_score = np.clip(base_score + vix_penalty + us_coupling_bonus + rebound_bonus, 10, 100)
-        return np.round(float(final_score), 2)
-
-    def calculate_pure_future_return(self, raw_scores: np.ndarray, market: str, period: str, r_1w_val: float, r_1m_val: float, macro: dict) -> float:
-        cagr = raw_scores[0]
-        roe = raw_scores[1]
-        tech = raw_scores[4]
-        volume = raw_scores[5]
-        rel_strength = raw_scores[8]
-        nasdaq_change = macro.get('NASDAQ', {}).get('change', 0.0)
-
-        if period in ['1W', '1M', '6M']:
-            if "코스피" in market or "코스닥" in market or "국내" in market:
-                v_rebound = 12.0 if (r_1m_val <= -12.0 and r_1w_val >= +3.0) else 0.0
-                raw_est = (volume * 0.12) + (v_rebound * 0.8) + (nasdaq_change * 1.5) + (tech * 0.08) + (r_1w_val * 0.25)
-            else:
-                raw_est = (tech * 0.15) + (volume * 0.10) + (nasdaq_change * 1.2) + (r_1w_val * 0.2)
-            
-            if "소형" in market:
-                raw_est *= 1.2
-            
-            scaled_return = np.clip(raw_est * 0.35 + 2.5, 1.5, 25.0)
-        else:
-            raw_est = (cagr * 0.25) + (roe * 0.20) + (rel_strength * 0.15)
-            if "소형" in market:
-                raw_est *= 1.3
-            scaled_return = np.clip(raw_est * 0.8, 5.0, 150.0)
-
-        return np.round(float(scaled_return), 2)
-
 
 def get_chart_link(ticker: str, name: str) -> str:
     if ticker.endswith('.KS') or ticker.endswith('.KQ'):
@@ -332,86 +70,6 @@ def get_chart_link(ticker: str, name: str) -> str:
         url = f"https://finance.yahoo.com/quote/{clean_ticker}/"
     return f"[{name}]({url})"
 
-
-def generate_buy_analysis(row, macro):
-    total_score = row['총점']
-    r_1w_val = row['r_1w_val']
-    stock_name = row['종목명']
-    vix_val = macro.get('VIX', {}).get('val', 15.0)
-
-    tech_score = row.get('기술적모멘텀', 50.0)
-    prob = total_score + (tech_score - 50.0) * 0.2 + (r_1w_val * 0.5)
-    
-    if vix_val >= 20.0:
-        prob -= 5.0
-
-    prob = int(np.clip(prob, 10, 95))
-
-    if r_1w_val >= 8.0:
-        buy_signal = f"🟡 매수 보류 / 눌림목 대기 (Wait for Dip) [단기 오버슈팅: {r_1w_val:+.1f}% 달성]"
-        buy_opinion = f"[{stock_name}] 상승 모멘텀(기대 확률 {prob}%)은 우수하나, 주가가 최근 1주 동안 과도하게 급등({r_1w_val:+.2f}%)하여 과열 상태입니다. 신규 매수를 보류하고 눌림목 조정을 기다리세요."
-    elif prob >= 70:
-        buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
-        buy_opinion = f"[{stock_name}] 기대 상승 확률 약 {prob}%로 최상위 매수 시그널입니다. 적극 매수를 추천합니다."
-    elif prob >= 55:
-        buy_signal = "🟡 분할 매수 / 관망 (Hold) [55% ~ 69%]"
-        buy_opinion = f"[{stock_name}] 눌림목 및 상승 시그널 구간입니다 (기대 확률 {prob}%). 분할 진입을 권장합니다."
-    else:
-        buy_signal = "🔴 관망 / 매도 (Sell/Wait) [55% 미만]"
-        buy_opinion = f"[{stock_name}] 기대 상승 확률({prob}%)이 다소 낮습니다. 신규 매수를 보류하세요."
-
-    return prob, buy_signal, buy_opinion
-
-
-def generate_sell_analysis(row):
-    stock_name = row['종목명']
-    total_score = row['총점'] if not pd.isna(row['총점']) else 50.0
-    r_1w_val = row['r_1w_val'] if not pd.isna(row['r_1w_val']) else 0.0
-    market = row['시장']
-
-    base_target = total_score * 0.12
-    dynamic_target_low = round(max(base_target, r_1w_val + 1.5), 1)
-    dynamic_target_high = round(max(base_target + 3.0, r_1w_val + 4.0), 1)
-
-    target_profit = f"+{dynamic_target_low}% ~ +{dynamic_target_high}%"
-    stop_loss = "-3.5% ~ -5.5%" if "대형" in market or "코스피" in market else "-5.0% ~ -7.5%"
-
-    sell_rank_score = 10
-
-    if r_1w_val >= 8.0 or (r_1w_val >= dynamic_target_low and r_1w_val > 5.0):
-        sell_signal = f"🟠 익절 권장 (Take Profit) [실시간 오버슈팅: +{r_1w_val:.1f}% 달성]"
-        sell_reason = f"[{stock_name}] 실시간 등락률(+{r_1w_val:.2f}%)이 목표가를 돌파하여 과열 상투 구간에 진입했습니다."
-        action = "현재 구간에서 비중 50% 이상 분할 매도하여 수익을 확정하세요!"
-        sell_rank_score = 100
-
-    elif r_1w_val <= -5.0:
-        if total_score >= 55.0:
-            sell_signal = "🔵 반등 기대 / 보유 (Rebound Hold) [눌림목: 1주≤-5% & 총점≥55]"
-            sell_reason = f"[{stock_name}] 단기 하락({r_1w_val:+.2f}%)이 발생했으나 V자 반등 가능성이 높습니다."
-            action = f"매도하지 말고 리밸런싱 시점까지 보유 유지 (손절가 {stop_loss} 엄수)"
-            sell_rank_score = 60
-        else:
-            sell_signal = "🔴 즉시 매도 / 교체 (Sell) [추세붕괴: 1주≤-5% & 총점<55]"
-            sell_reason = f"[{stock_name}] 단기 주가 하락과 함께 퀀트 총점({total_score}점) 및 수급이 동반 악화되었습니다."
-            action = "전량 매도 후 우량주 교체"
-            sell_rank_score = 90
-
-    elif r_1w_val < 0 and total_score < 55.0:
-        sell_signal = "🟡 손절 고려 / 관망 (Caution) [약세: 1주<0% & 총점<55]"
-        sell_reason = f"[{stock_name}] 퀀트 총점({total_score}점)이 약세권입니다."
-        action = f"손절가({stop_loss}) 미도달 시 보유, 이탈 시 손절"
-        sell_rank_score = 40
-
-    else:
-        sell_signal = "🟢 보유 유지 (Hold) [안정 추세 유지]"
-        sell_reason = f"[{stock_name}] 주간 추세가 안정적입니다."
-        action = f"실시간 상향 목표가({target_profit}) 도달 시까지 보유 유지"
-        sell_rank_score = 20
-
-    return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
-
-
-# 🔥 [v3.32 안정화] 주간 시황 리포트 자동 생성기
 def render_weekly_market_briefing(df, macro_info):
     vix_val = macro_info.get('VIX', {}).get('val', 15.0)
     nasdaq_chg = macro_info.get('NASDAQ', {}).get('change', 0.0)
@@ -444,14 +102,11 @@ def render_weekly_market_briefing(df, macro_info):
     if not stop_losses.empty:
         for _, r in stop_losses.iterrows():
             st.markdown(f"    - 🔴 **[손절/교체] {r['종목명']}** (1주 등락률 `{r['r_1w_val']:.1f}%`, 퀀트 총점 `{r['총점_1W']}`점 약세 $\rightarrow$ 전량 매도 후 우량주 교체)")
-    else:
-        st.markdown("    - 🔵 현재 위험 구간에 진입한 강제 손절 대상 종목이 없습니다.")
-
 
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
-    
+
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=2)
     except Exception:
@@ -459,14 +114,14 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
     r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
-    
+
     try:
         r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
     except Exception:
         r_1m_val = 0.0
 
     chart_link = get_chart_link(ticker, stock_name)
-    
+
     row = {
         '시장': market,
         '종목명': stock_name,
@@ -478,9 +133,9 @@ def process_single_stock(ticker, market, name_map, engine, macro):
         '1주 수익률': r_1w,
         '1달 수익률': r_1m,
         '3개월 수익률': r_3m,
-        '1년 수익률': r_1y
+        '1년 수익률': r_1y,
     }
-    
+
     for i, fname in enumerate(FEATURE_NAMES):
         row[fname] = np.round(raw_scores[i], 1)
 
@@ -488,12 +143,11 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     for p in periods:
         row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro)
         row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro)
-        
+
     return row
 
-
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_32_stabilized"):
+def run_quant_analysis(cache_key="v3_38_modular"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -505,10 +159,7 @@ def run_quant_analysis(cache_key="v3_32_stabilized"):
 
     results = []
     with ThreadPoolExecutor(max_workers=30) as executor:
-        futures = [
-            executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
-            for ticker, market in tasks
-        ]
+        futures = [executor.submit(process_single_stock, ticker, market, name_map, engine, macro) for ticker, market in tasks]
         for future in futures:
             try:
                 res = future.result()
@@ -519,12 +170,11 @@ def run_quant_analysis(cache_key="v3_32_stabilized"):
 
     return pd.DataFrame(results), engine, macro
 
-
 def render_korean_market_card(title, data, link):
     val = data.get('val', 0.0)
     change = data.get('change', 0.0)
     val_str = f"{val:,.2f}" if val > 0 else "N/A"
-    
+
     if change > 0:
         color = "#FF3B30"
         sign = "▲ "
@@ -563,28 +213,26 @@ def render_korean_market_card(title, data, link):
     """
     st.markdown(card_html, unsafe_allow_html=True)
 
-
-# ==========================================
-# 4. 대시보드 UI (v3.32 안정화 완전판)
-# ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v3.32)", layout="wide")
+# UI 실행
+st.set_page_config(page_title="AI 추천 주식 매매 (v3.38)", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 추천 주식 매매 (v3.32)")
-st.caption(f"부제 3.32 - 초고속 안정화 & AI 주간 종합 브리핑 연동판 | {now_str}")
+st.title("📈 AI 추천 주식 매매 (v3.38)")
+st.caption(f"부제 3.38 - 분할 모듈 적용 전 기능 정상 가동판 | {now_str}")
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
+    * **분할 모듈 시스템:** 코드가 잘리는 현상을 완벽히 방지하여 전 기능이 다운 없이 안정적으로 구동됩니다.
     * **주간 종합 브리핑:** 글로벌/국내 시장 환경과 매수/매도 대응 방향을 매주 자동 정리합니다.
     * **AI 종합 필터 Top 10:** 전체 유니버스에서 퀀트점수, 미래수익률, 승률, 안전장치를 종합 평가하여 **기간별(1W ~ 3Y+) 가장 사야 할 최적의 10개 종목**과 **매수/매도 타이밍 리포트**를 제시합니다.
     * **관심 종목 개별 진단:** 궁금한 국내/미국 종목명을 직접 입력하면 퀀트 알고리즘이 분석표와 종합 진단 리포트를 작성해 드립니다.
     """)
 
-with st.spinner("v3.32 초고속 실시간 스크리닝 중..."):
+with st.spinner("v3.38 실시간 스크리닝 중..."):
     df, engine, macro_info = run_quant_analysis()
 
 st.subheader("🌐 실시간 주요 시장 지수 현황")
@@ -627,16 +275,18 @@ if not df.empty:
     for tab, p_code in zip(tabs, period_codes):
         with tab:
             st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
-            
+
             w_large = engine.largecap_weights[p_code]
             w_small = engine.smallcap_weights[p_code]
             w_etf = engine.etf_weights[p_code]
-            
-            w_summary_df = pd.DataFrame([w_large, w_small, w_etf], 
-                                        columns=FEATURE_NAMES, 
-                                        index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹'])
+
+            w_summary_df = pd.DataFrame(
+                [w_large, w_small, w_etf],
+                columns=FEATURE_NAMES,
+                index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹']
+            )
             st.dataframe(w_summary_df, use_container_width=True)
-            
+
             st.markdown("---")
             st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
@@ -658,27 +308,6 @@ if not df.empty:
                 elif "AI 종합 필터" in cat:
                     st.markdown(f"### 🏆 [AI 종합 필터] [{p_code}] 기간별 최우선 매수 추천 Top 10 & 매매 전략")
                     cat_df = df.drop_duplicates(subset=['종목명']).copy()
-                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
-                    
-                    probs = []
-                    b_signals = []
-                    s_signals = []
-                    s_ranks = []
-                    
-                    for _, r in cat_df.iterrows():
-                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
-                        s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
-                        probs.append(p_val)
-                        b_signals.append(b_sig)
-                        s_signals.append(s_sig)
-                        s_ranks.append(s_rank)
-                    
-                    cat_df['기대상승확률(%)'] = probs
-                    
-                    filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
-                    filtered_df['AI종합점수'] = filtered_df['총점'] * 0.5 + filtered_df['기대상승확률(%)'] * 0.3 + filtered_df['예측수익률(%)'] * 0.2
-                    cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
 
                 elif "통합 전체 유니버스" in cat:
                     st.markdown(f"### 🏆 {cat} Top 10")
@@ -686,28 +315,32 @@ if not df.empty:
                 else:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df[df['시장'] == cat].copy()
-                
+
                 if not cat_df.empty:
-                    if "AI 종합 필터" not in cat and "관심 종목" not in cat:
-                        cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                        cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
-                        
-                        probs = []
-                        b_signals = []
-                        s_signals = []
-                        s_ranks = []
-                        
-                        for _, r in cat_df.iterrows():
-                            p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
-                            s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
-                            probs.append(p_val)
-                            b_signals.append(b_sig)
-                            s_signals.append(s_sig)
-                            s_ranks.append(s_rank)
-                        
-                        cat_df['기대상승확률(%)'] = probs
-                        cat_df['매도우선순위'] = s_ranks
-                        
+                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+
+                    probs = []
+                    b_signals = []
+                    s_signals = []
+                    s_ranks = []
+
+                    for _, r in cat_df.iterrows():
+                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
+                        s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
+                        probs.append(p_val)
+                        b_signals.append(b_sig)
+                        s_signals.append(s_sig)
+                        s_ranks.append(s_rank)
+
+                    cat_df['기대상승확률(%)'] = probs
+                    cat_df['매도우선순위'] = s_ranks
+
+                    if "AI 종합 필터" in cat:
+                        filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
+                        filtered_df['AI종합점수'] = filtered_df['총점'] * 0.5 + filtered_df['기대상승확률(%)'] * 0.3 + filtered_df['예측수익률(%)'] * 0.2
+                        cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
+                    elif "관심 종목" not in cat:
                         col_head1, col_head2 = st.columns([3, 1])
                         with col_head2:
                             cat_sort_opt = st.selectbox(
@@ -716,7 +349,7 @@ if not df.empty:
                                 index=0,
                                 key=f"sort_{cat}_{p_code}"
                             )
-                        
+
                         if "미래 기대 수익률" in cat_sort_opt:
                             cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
                         elif "매수시그널" in cat_sort_opt:
@@ -725,26 +358,26 @@ if not df.empty:
                             cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
-                    
+
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
-                    
+
                     desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
                     available_cols = [c for c in desired_cols if c in cat_df.columns]
 
                     display_df = cat_df[available_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
-                    
+
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
-                    
+
                     expander_title = f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)" if "AI 종합 필터" in cat else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
-                    
+
                     with st.expander(expander_title, expanded=True if "AI 종합 필터" in cat or "관심 종목" in cat else False):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
-                            
+
                             st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
-                            
+
                             col_a, col_b = st.columns(2)
                             with col_a:
                                 st.markdown(f"#### 📈 **[매수 전략 및 시그널]** `{buy_signal}`")
