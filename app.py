@@ -242,3 +242,158 @@ m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
+    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
+]
+
+for col, name, data, link in index_configs:
+    with col:
+        render_korean_market_card(name, data, link)
+
+# 주간 시황 리포트 노출
+if not df.empty:
+    with st.expander("📋 **[클릭하여 열기] AI 퀀트 주간 종합 브리핑 리포트 (이번 주 시장 전망 & 대응 전략)**", expanded=True):
+        render_weekly_market_briefing(df, macro_info)
+
+st.markdown("---")
+
+# 국내 ETF 테마 추가된 카테고리 목록
+FIXED_CATEGORIES = [
+    '🎯 [MY] 관심 종목 개별 진단',
+    '🏆 [AI 종합 필터] 기간별 최우선 매수 추천 Top 10 (강력 추천)',
+    '🏆 통합 전체 유니버스 (국내+미국 종합)',
+    '🏆 국내 ETF',
+    '코스피200',
+    '코스닥100',
+    'S&P500',
+    '나스닥100'
+]
+
+if not df.empty:
+    tabs = st.tabs(["미래 1주일 (1W)", "미래 1개월 (1M)", "미래 6개월 (6M)", "미래 1년 (1Y)", "미래 5년 (5Y)", "미래 10년 (10Y)", "미래 10년 이상 (10Y+)"])
+    period_codes = ["1W", "1M", "6M", "1Y", "5Y", "10Y", "10Y+"]
+
+    for tab, p_code in zip(tabs, period_codes):
+        with tab:
+            st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
+
+            w_large = engine.largecap_weights[p_code]
+            w_small = engine.smallcap_weights[p_code]
+            w_etf = engine.etf_weights[p_code]
+
+            w_summary_df = pd.DataFrame(
+                [w_large, w_small, w_etf],
+                columns=FEATURE_NAMES,
+                index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹']
+            )
+            st.dataframe(w_summary_df, use_container_width=True)
+
+            st.markdown("---")
+            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
+
+            for cat in FIXED_CATEGORIES:
+                if "관심 종목" in cat:
+                    st.markdown("### 🎯 [MY] 관심 종목 직접 입력 개별 진단")
+                    user_input = st.text_input(
+                        "진단하고 싶은 관심 종목명을 입력하세요 (쉼표로 구분):",
+                        value="KODEX 200, TIGER 200, KODEX 2차전지, 소파이, 루닛",
+                        key=f"custom_input_{p_code}"
+                    )
+                    search_keywords = [k.strip() for k in user_input.split(',') if k.strip()]
+                    if search_keywords:
+                        pattern = '|'.join(search_keywords)
+                        cat_df = df[df['종목명'].str.contains(pattern, case=False, na=False)].drop_duplicates(subset=['종목명']).copy()
+                    else:
+                        cat_df = pd.DataFrame()
+
+                elif "AI 종합 필터" in cat:
+                    st.markdown(f"### 🏆 [AI 종합 필터] [{p_code}] 기간별 최우선 매수 추천 Top 10 & 매매 전략")
+                    cat_df = df.drop_duplicates(subset=['종목명']).copy()
+
+                elif "통합 전체 유니버스" in cat:
+                    st.markdown(f"### 🏆 {cat} Top 10")
+                    cat_df = df.drop_duplicates(subset=['종목명']).copy()
+
+                elif "국내 ETF" in cat:
+                    st.markdown(f"### 🏆 국내 ETF Top 10")
+                    cat_df = df[df['시장'] == '국내 ETF'].copy()
+
+                else:
+                    st.markdown(f"### 🏆 {cat} Top 10")
+                    cat_df = df[df['시장'] == cat].copy()
+
+                if not cat_df.empty:
+                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+
+                    probs = []
+                    b_signals = []
+                    s_signals = []
+                    s_ranks = []
+
+                    for _, r in cat_df.iterrows():
+                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
+                        s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
+                        probs.append(p_val)
+                        b_signals.append(b_sig)
+                        s_signals.append(s_sig)
+                        s_ranks.append(s_rank)
+
+                    cat_df['기대상승확률(%)'] = probs
+                    cat_df['매도우선순위'] = s_ranks
+
+                    if "AI 종합 필터" in cat:
+                        filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
+                        filtered_df['AI종합점수'] = filtered_df['총점'] * 0.5 + filtered_df['기대상승확률(%)'] * 0.3 + filtered_df['예측수익률(%)'] * 0.2
+                        cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
+                    elif "관심 종목" not in cat:
+                        col_head1, col_head2 = st.columns([3, 1])
+                        with col_head2:
+                            cat_sort_opt = st.selectbox(
+                                "정렬 옵션 선택:",
+                                options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
+                                index=0,
+                                key=f"sort_{cat}_{p_code}"
+                            )
+
+                        if "미래 기대 수익률" in cat_sort_opt:
+                            cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
+                        elif "매수시그널" in cat_sort_opt:
+                            cat_df = cat_df.sort_values(by=['기대상승확률(%)', 'r_1w_val', '총점'], ascending=[False, False, False]).head(10)
+                        elif "매도시그널" in cat_sort_opt:
+                            cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
+                        else:
+                            cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
+
+                    cat_df['종목(차트보기)'] = cat_df['차트링크']
+
+                    desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    available_cols = [c for c in desired_cols if c in cat_df.columns]
+
+                    display_df = cat_df[available_cols].reset_index(drop=True)
+                    display_df.index = display_df.index + 1
+
+                    st.write(display_df.to_markdown(), unsafe_allow_html=True)
+
+                    expander_title = f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)" if "AI 종합 필터" in cat else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
+
+                    with st.expander(expander_title, expanded=True if "AI 종합 필터" in cat or "관심 종목" in cat else False):
+                        for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
+                            prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
+                            s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
+
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
+
+                            col_a, col_b = st.columns(2)
+                            with col_a:
+                                st.markdown(f"#### 📈 **[매수 전략 및 시그널]** `{buy_signal}`")
+                                st.info(f"💡 **어떻게 사야 하는가?**\n- **진단 의견:** {buy_opinion}\n- **분할 진입 권장:** 현재가 부근에서 비중 30% primary 진입 후, 눌림목 구간마다 추가 2차 분할 매수 진행.")
+                            with col_b:
+                                st.markdown(f"#### 📉 **[매도 및 리스크 관리]** `{s_signal}`")
+                                st.warning(f"🎯 **언제/어떻게 팔아야 하는가?**\n- **권장 익절 목표가:** `{target_p}` 달성 시 비중 50% 분할 익절\n- **자동 손절 기준:** 주가 하락 시 `{stop_l}` 이탈 시 손절 및 우량주 교체\n- **진단 배경:** {s_reason}")
+                            st.markdown("---")
+                else:
+                    st.info("조건에 부합하는 종목 데이터가 없습니다.")
+                st.write("")
