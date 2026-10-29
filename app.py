@@ -1,3 +1,4 @@
+# app.py - UI 및 통합 대시보드 메인
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -222,7 +223,7 @@ if AUTOREFRESH_AVAILABLE:
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 st.title("📈 AI 추천 주식 매매 (v3.38)")
-st.caption(f"부제 3.38 - 분할 모듈 적용 전 기능 정상 가동판 | {now_str}")
+st.caption(f"부제 3.38 - 분할 모듈 연동 완성판 | {now_str}")
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
