@@ -30,28 +30,28 @@ def fetch_realtime_macro():
 
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
-        res = requests.get(url_kr, headers=headers, timeout=2).json()
+        res = requests.get(url_kr, headers=headers, timeout=3).json()
         macro_results['KOSPI'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
 
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
-        res = requests.get(url_kq, headers=headers, timeout=2).json()
+        res = requests.get(url_kq, headers=headers, timeout=3).json()
         macro_results['KOSDAQ'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
-        res = requests.get(url_fx, headers=headers, timeout=2).json()
+        res = requests.get(url_fx, headers=headers, timeout=3).json()
         macro_results['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
     for key, sym in {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}.items():
         try:
-            hist = yf.Ticker(sym).history(period='5d', timeout=2)
+            hist = yf.Ticker(sym).history(period='5d', timeout=3)
             if not hist.empty and len(hist) >= 2:
                 curr, prev = float(hist['Close'].iloc[-1]), float(hist['Close'].iloc[-2])
                 macro_results[key] = {'val': curr, 'change': (curr - prev) / prev * 100}
@@ -109,7 +109,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
 
     try:
-        df = yf.Ticker(ticker).history(period='1y', timeout=2)
+        df = yf.Ticker(ticker).history(period='1y', timeout=3)
     except Exception:
         df = pd.DataFrame()
 
@@ -148,7 +148,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_38_complete_verified_final"):
+def run_quant_analysis(cache_key="v3_38_verified_final_v10"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -159,7 +159,7 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final"):
             tasks.append((ticker, market))
 
     results = []
-    with ThreadPoolExecutor(max_workers=30) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(process_single_stock, ticker, market, name_map, engine, macro) for ticker, market in tasks]
         for future in futures:
             try:
