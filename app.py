@@ -1,3 +1,4 @@
+# app.py - 메인 UI 대시보드 모듈
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
