@@ -148,7 +148,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_38_verified_final_v10"):
+def run_quant_analysis(cache_key="v3_38_complete_verified_final_v11"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -271,8 +271,9 @@ FIXED_CATEGORIES = [
 ]
 
 if not df.empty:
-    df_sorted_for_select = df.drop_duplicates(subset=['종목명']).sort_values(by=['시장', '종목명'])
-    stock_options = [f"{row['시장']} - {row['종목명']}" for _, row in df_sorted_for_select.iterrows()]
+    # 전체 모수 기반 [시장 - 종목명] 드롭다운 옵션 직접 생성 (수집 상태 독립 보장)
+    full_uni, full_names = UniverseLoader.get_full_universe()
+    stock_options = sorted([f"{m_name} - {full_names.get(t, t)}" for m_name, t_list in full_uni.items() for t in t_list])
 
     tabs = st.tabs(["미래 1주일 (1W)", "미래 1개월 (1M)", "미래 6개월 (6M)", "미래 1년 (1Y)", "미래 5년 (5Y)", "미래 10년 (10Y)", "미래 10년 이상 (10Y+)"])
     period_codes = ["1W", "1M", "6M", "1Y", "5Y", "10Y", "10Y+"]
