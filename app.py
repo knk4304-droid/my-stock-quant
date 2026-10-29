@@ -148,7 +148,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_38_force_refresh_fixed"):
+def run_quant_analysis(cache_key="v3_38_multiselect_v1"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -223,14 +223,14 @@ if AUTOREFRESH_AVAILABLE:
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 st.title("📈 AI 추천 주식 매매 (v3.38)")
-st.caption(f"부제 3.38 - 국내 ETF 테마 포함 완결판 | {now_str}")
+st.caption(f"부제 3.38 - 관심종목 멀티선택 옵션 개편판 | {now_str}")
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
     * **분할 모듈 시스템:** 코드가 잘리는 현상을 완벽히 방지하여 전 기능이 다운 없이 안정적으로 구동됩니다.
     * **주간 종합 브리핑:** 글로벌/국내 시장 환경과 매수/매도 대응 방향을 매주 자동 정리합니다.
     * **AI 종합 필터 Top 10:** 전체 유니버스에서 퀀트점수, 미래수익률, 승률, 안전장치를 종합 평가하여 **기간별(1W ~ 3Y+) 가장 사야 할 최적의 10개 종목**과 **매수/매도 타이밍 리포트**를 제시합니다.
-    * **관심 종목 개별 진단:** 궁금한 국내/미국 종목명을 직접 입력하면 퀀트 알고리즘이 분석표와 종합 진단 리포트를 작성해 드립니다.
+    * **관심 종목 개별 진단:** 전체 유니버스 모수 종목 중 원하시는 종목들을 드롭다운으로 다중 선택하여 정밀 진단 리포트를 확인하실 수 있습니다.
     """)
 
 with st.spinner("v3.38 실시간 스크리닝 중..."):
@@ -271,6 +271,10 @@ FIXED_CATEGORIES = [
 ]
 
 if not df.empty:
+    # 전체 모수 기반 [시장 - 종목명] 드롭다운 옵션 생성
+    df_sorted_for_select = df.drop_duplicates(subset=['종목명']).sort_values(by=['시장', '종목명'])
+    stock_options = [f"{row['시장']} - {row['종목명']}" for _, row in df_sorted_for_select.iterrows()]
+
     tabs = st.tabs(["미래 1주일 (1W)", "미래 1개월 (1M)", "미래 6개월 (6M)", "미래 1년 (1Y)", "미래 5년 (5Y)", "미래 10년 (10Y)", "미래 10년 이상 (10Y+)"])
     period_codes = ["1W", "1M", "6M", "1Y", "5Y", "10Y", "10Y+"]
 
@@ -290,20 +294,19 @@ if not df.empty:
             st.dataframe(w_summary_df, use_container_width=True)
 
             st.markdown("---")
-            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
             for cat in FIXED_CATEGORIES:
                 if "관심 종목" in cat:
-                    st.markdown("### 🎯 [MY] 관심 종목 직접 입력 개별 진단")
-                    user_input = st.text_input(
-                        "진단하고 싶은 관심 종목명을 입력하세요 (쉼표로 구분):",
-                        value="KODEX 200, TIGER 200, KODEX 2차전지, 소파이, 루닛",
-                        key=f"custom_input_{p_code}"
+                    st.markdown("### 🎯 [MY] 관심 종목 직접 선택 개별 진단")
+                    selected_stocks = st.multiselect(
+                        "진단하고 싶은 관심 종목을 선택하세요 (전체 모수에서 여러 개 선택 가능):",
+                        options=stock_options,
+                        default=[],
+                        key=f"custom_select_{p_code}"
                     )
-                    search_keywords = [k.strip() for k in user_input.split(',') if k.strip()]
-                    if search_keywords:
-                        pattern = '|'.join(search_keywords)
-                        cat_df = df[df['종목명'].str.contains(pattern, case=False, na=False)].drop_duplicates(subset=['종목명']).copy()
+                    if selected_stocks:
+                        target_names = [s.split(' - ')[1] for s in selected_stocks]
+                        cat_df = df[df['종목명'].isin(target_names)].drop_duplicates(subset=['종목명']).copy()
                     else:
                         cat_df = pd.DataFrame()
 
@@ -362,7 +365,7 @@ if not df.empty:
                         elif "매수시그널" in cat_sort_opt:
                             cat_df = cat_df.sort_values(by=['기대상승확률(%)', 'r_1w_val', '총점'], ascending=[False, False, False]).head(10)
                         elif "매도시그널" in cat_sort_opt:
-                            cat_sort_opt_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
+                            cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
@@ -394,5 +397,5 @@ if not df.empty:
                                 st.warning(f"🎯 **언제/어떻게 팔아야 하는가?**\n- **권장 익절 목표가:** `{target_p}` 달성 시 비중 50% 분할 익절\n- **자동 손절 기준:** 주가 하락 시 `{stop_l}` 이탈 시 손절 및 우량주 교체\n- **진단 배경:** {s_reason}")
                             st.markdown("---")
                 else:
-                    st.info("조건에 부합하는 종목 데이터가 없습니다.")
+                    st.info("조건에 부합하는 종목 데이터가 없습니다. 위 목록에서 관심 종목을 선택해 주세요.")
                 st.write("")
