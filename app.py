@@ -210,33 +210,31 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 
-# 캐시 강제 무효화 적용
-@st.cache_data(ttl=3600)
-def run_quant_analysis(cache_key="v3_38_complete_verified_final_v16"):
-    universe, name_map = UniverseLoader.get_full_universe()
-    engine = QuantEngine()
-    macro = fetch_realtime_macro()
-
-    tasks = []
-    for market, tickers in universe.items():
-        for ticker in tickers:
-            tasks.append((ticker, market))
-
-    results = []
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [
-            executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
-            for ticker, market in tasks
-        ]
-        for future in futures:
-            try:
-                res = future.result()
-                if res:
-                    results.append(res)
-            except Exception:
-                pass
-
-    return pd.DataFrame(results), engine, macro
+# ==========================================
+# 2. 캐시된 Parquet 데이터베이스 초고속 로드 (Step 3 수정)
+# ==========================================
+@st.cache_data(ttl=60)
+def load_quant_database():
+    try:
+        df_stocks = pd.read_parquet('quant_stocks.parquet')
+        df_macro = pd.read_parquet('quant_macro.parquet')
+        
+        m_row = df_macro.iloc[0]
+        macro_info = {
+            'KOSPI': {'val': m_row['kospi_val'], 'change': m_row['kospi_chg']},
+            'KOSDAQ': {'val': m_row['kosdaq_val'], 'change': m_row['kosdaq_chg']},
+            'S&P 500': {'val': m_row['sp500_val'], 'change': m_row['sp500_chg']},
+            'NASDAQ 100': {'val': m_row['nasdaq_val'], 'change': m_row['nasdaq_chg']},
+            'USDKRW': {'val': m_row['usdkrw_val'], 'change': m_row['usdkrw_chg']},
+            'VIX': {'val': m_row['vix_val'], 'change': m_row['vix_chg']}
+        }
+        updated_at = m_row['updated_at']
+        engine = QuantEngine()
+        
+        return df_stocks, engine, macro_info, updated_at
+    except Exception:
+        # 최초 실행 시 데이터 파일이 없을 경우 예외 방어
+        return pd.DataFrame(), QuantEngine(), {}, "데이터 없음"
 
 
 def render_korean_market_card(title, data, link):
@@ -304,8 +302,11 @@ with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & �
     * **관심 종목 개별 진단:** 전체 유니버스 모수 종목 중 원하시는 종목들을 드롭다운으로 다중 선택하여 정밀 진단 리포트를 확인하실 수 있습니다.
     """)
 
-with st.spinner("v3.38 실시간 스크리닝 중..."):
-    df, engine, macro_info = run_quant_analysis()
+with st.spinner("v3.38 최신 퀀트 데이터베이스 로딩 중..."):
+    df, engine, macro_info, updated_at = load_quant_database()
+
+# 상단 대시보드 타이틀 밑 캡션에 업데이트 시간 표시 (선택사항)
+st.caption(f"부제 3.38 - 관심종목 멀티선택 옵션 개편판 | 마지막 데이터 업데이트: {updated_at}")
 
 st.subheader("🌐 실시간 주요 시장 지수 현황")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
