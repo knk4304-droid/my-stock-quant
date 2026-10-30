@@ -5,3 +5,5 @@ numpy
 requests
 tabulate
 pyarrow
+beautifulsoup4
+lxml
