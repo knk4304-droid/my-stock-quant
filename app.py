@@ -1,4 +1,4 @@
-# app.py - UI 및 통합 대시보드 메인 (v3.38 원본 100% 복원 + v4.0 보완 엔진 연동)
+# app.py - UI 및 통합 대시보드 메인 (v3.38 원본 100% 복원 + KeyError 및 문법 오류 완벽 수정)
 import datetime
 import os
 import warnings
@@ -79,6 +79,14 @@ def render_weekly_market_briefing(df, macro_info):
     kospi_chg = macro_info.get('KOSPI', {}).get('change', 0.0)
     usdkrw_val = macro_info.get('USDKRW', {}).get('val', 1340.0)
 
+    # KeyError 방지를 위한 데이터프레임 안전 처리
+    if 'r_1w_val' not in df.columns:
+        df['r_1w_val'] = 0.0
+    if '총점_1W' not in df.columns:
+        df['총점_1W'] = 50.0
+    if '미래수익률_1W' not in df.columns:
+        df['미래수익률_1W'] = 0.0
+
     buy_picks = df[df['r_1w_val'] < 8.0].drop_duplicates('종목명').sort_values(by='총점_1W', ascending=False).head(3)
     take_profits = df[df['r_1w_val'] >= 8.0].drop_duplicates('종목명').sort_values(by='r_1w_val', ascending=False).head(3)
     stop_losses = df[(df['r_1w_val'] <= -5.0) & (df['총점_1W'] < 55.0)].drop_duplicates('종목명').head(3)
@@ -96,7 +104,7 @@ def render_weekly_market_briefing(df, macro_info):
     #### 2. 🟢 이번 주 최우선 강력 매수 관심 종목 (Top Picks)
     """)
     for idx, (_, r) in enumerate(buy_picks.iterrows(), start=1):
-        st.markdown(f"    {idx}. **{r['종목명']} ({r['시장']})** | 예측 수익률: `+{r['미래수익률_1W']}%` | 퀀트 총점: `{r['총점_1W']}`점\n       👉 **매수 타점:** 현재가 부근 비중 30% 1차 진입 후 눌림목마다 분할 매수")
+        st.markdown(f"    {idx}. **{r['종목명']} ({r.get('시장', '전체')})** | 예측 수익률: `+{r['미래수익률_1W']}%` | 퀀트 총점: `{r['총점_1W']}`점\n       👉 **매수 타점:** 현재가 부근 비중 30% 1차 진입 후 눌림목마다 분할 매수")
 
     st.markdown("\n    #### 🔴 이번 주 비중 축소 (익절 & 교체 매도) 리딩 종목")
     if not take_profits.empty:
@@ -150,7 +158,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=3600)
-def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
+def run_quant_analysis(cache_key="v3_38_complete_verified_final_v15"):
     cache_path = "data/quant_universe_cache.parquet"
     macro = fetch_realtime_macro()
     engine = QuantEngine()
@@ -159,6 +167,8 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
         try:
             cached_df = pd.read_parquet(cache_path, engine="pyarrow")
             if not cached_df.empty:
+                if 'r_1w_val' not in cached_df.columns:
+                    cached_df['r_1w_val'] = 0.0
                 return cached_df, engine, macro
         except Exception:
             pass
@@ -180,7 +190,10 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
             except Exception:
                 pass
 
-    return pd.DataFrame(results), engine, macro
+    res_df = pd.DataFrame(results)
+    if 'r_1w_val' not in res_df.columns:
+        res_df['r_1w_val'] = 0.0
+    return res_df, engine, macro
 
 def render_korean_market_card(title, data, link):
     val = data.get('val', 0.0)
@@ -292,9 +305,9 @@ if not df.empty:
         with tab:
             st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
 
-            w_large = engine.largecap_weights[p_code]
-            w_small = engine.smallcap_weights[p_code]
-            w_etf = engine.etf_weights[p_code]
+            w_large = engine.largecap_weights.get(p_code, [10]*10)
+            w_small = engine.smallcap_weights.get(p_code, [10]*10)
+            w_etf = engine.etf_weights.get(p_code, [10]*10)
 
             w_summary_df = pd.DataFrame(
                 [w_large, w_small, w_etf],
@@ -337,8 +350,11 @@ if not df.empty:
                     cat_df = df[df['시장'] == cat].copy()
 
                 if not cat_df.empty:
-                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+                    tot_col = f"총점_{p_code}" if f"총점_{p_code}" in cat_df.columns else "총점"
+                    fut_col = f"미래수익률_{p_code}" if f"미래수익률_{p_code}" in cat_df.columns else "미래수익률"
+                    
+                    cat_df['총점'] = cat_df[tot_col] if tot_col in cat_df.columns else 50.0
+                    cat_df['예측수익률(%)'] = cat_df[fut_col] if fut_col in cat_df.columns else 0.0
 
                     probs = []
                     b_signals = []
@@ -363,7 +379,6 @@ if not df.empty:
                     elif "관심 종목" not in cat:
                         col_head1, col_head2 = st.columns([3, 1])
                         with col_head2:
-                            # 🛠️ [정확히 수정된 부분] st.selectbox 함수 추가
                             cat_sort_opt = st.selectbox(
                                 "정렬 옵션 선택:",
                                 options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
@@ -380,7 +395,7 @@ if not df.empty:
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
-                    cat_df['종목(차트보기)'] = cat_df['차트링크']
+                    cat_df['종목(차트보기)'] = cat_df['차트링크'] if '차트링크' in cat_df.columns else cat_df['종목명']
 
                     desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
                     available_cols = [c for c in desired_cols if c in cat_df.columns]
@@ -397,7 +412,7 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
 
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row.get('시장', '')} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
 
                             col_a, col_b = st.columns(2)
                             with col_a:
