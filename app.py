@@ -291,8 +291,9 @@ if AUTOREFRESH_AVAILABLE:
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-st.title("📈 AI 추천 주식 매매 (v3.38)")
-st.caption(f"부제 3.38 - 관심종목 멀티선택 옵션 개편판 | {now_str}")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", page_icon="📈", layout="wide")
+st.title("📈 AI 추천 주식 매매 (v4.00)")
+st.caption("부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: " + updated_at)
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
