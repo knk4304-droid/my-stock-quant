@@ -1,4 +1,4 @@
-# app.py - UI 및 통합 대시보드 메인 (v3.38 원본 100% 복원 + KeyError 및 문법 오류 완벽 수정)
+# app.py - UI 및 통합 대시보드 메인 (v3.38 원본 100% 복원 + KeyError 및 함수 뒤엉침 완벽 해결)
 import datetime
 import os
 import warnings
@@ -73,13 +73,27 @@ def get_chart_link(ticker: str, name: str) -> str:
         url = f"https://finance.yahoo.com/quote/{clean_ticker}/"
     return f"[{name}]({url})"
 
+# 데이터프레임 내 종목명 컬럼 통일화 함수 (KeyError 완벽 방지)
+def ensure_stock_name_col(df):
+    if df.empty:
+        return df
+    if '종목명' not in df.columns:
+        for possible_col in ['종목', 'stock_name', 'ticker', 'Name']:
+            if possible_col in df.columns:
+                df['종목명'] = df[possible_col]
+                break
+        else:
+            df['종목명'] = '미지정종목'
+    return df
+
 def render_weekly_market_briefing(df, macro_info):
     vix_val = macro_info.get('VIX', {}).get('val', 15.0)
     nasdaq_chg = macro_info.get('NASDAQ', {}).get('change', 0.0)
     kospi_chg = macro_info.get('KOSPI', {}).get('change', 0.0)
     usdkrw_val = macro_info.get('USDKRW', {}).get('val', 1340.0)
 
-    # KeyError 방지를 위한 데이터프레임 안전 처리
+    # KeyError 방지 처리
+    df = ensure_stock_name_col(df)
     if 'r_1w_val' not in df.columns:
         df['r_1w_val'] = 0.0
     if '총점_1W' not in df.columns:
@@ -158,7 +172,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     return row
 
 @st.cache_data(ttl=3600)
-def run_quant_analysis(cache_key="v3_38_complete_verified_final_v15"):
+def run_quant_analysis(cache_key="v3_38_complete_verified_final_v16"):
     cache_path = "data/quant_universe_cache.parquet"
     macro = fetch_realtime_macro()
     engine = QuantEngine()
@@ -167,6 +181,7 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v15"):
         try:
             cached_df = pd.read_parquet(cache_path, engine="pyarrow")
             if not cached_df.empty:
+                cached_df = ensure_stock_name_col(cached_df)
                 if 'r_1w_val' not in cached_df.columns:
                     cached_df['r_1w_val'] = 0.0
                 return cached_df, engine, macro
@@ -191,6 +206,7 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v15"):
                 pass
 
     res_df = pd.DataFrame(results)
+    res_df = ensure_stock_name_col(res_df)
     if 'r_1w_val' not in res_df.columns:
         res_df['r_1w_val'] = 0.0
     return res_df, engine, macro
