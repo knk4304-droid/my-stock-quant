@@ -32,6 +32,7 @@ def fetch_realtime_macro():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
+    # KOSPI 수집 (네이버 실패 시 yfinance ^KS11 대체)
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
         res = requests.get(url_kr, headers=headers, timeout=3).json()
@@ -39,8 +40,19 @@ def fetch_realtime_macro():
         rate = float(res['fluctuationsRatio'])
         macro_results['KOSPI'] = {'val': curr, 'change': rate}
     except Exception:
-        macro_results['KOSPI'] = {'val': 0.0, 'change': 0.0}
+        try:
+            hist = yf.Ticker('^KS11').history(period='5d', timeout=3)
+            if not hist.empty and len(hist) >= 2:
+                curr = float(hist['Close'].iloc[-1])
+                prev = float(hist['Close'].iloc[-2])
+                rate = (curr - prev) / prev * 100
+                macro_results['KOSPI'] = {'val': curr, 'change': rate}
+            else:
+                macro_results['KOSPI'] = {'val': 0.0, 'change': 0.0}
+        except Exception:
+            macro_results['KOSPI'] = {'val': 0.0, 'change': 0.0}
 
+    # KOSDAQ 수집 (네이버 실패 시 yfinance ^KQ11 대체)
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
         res = requests.get(url_kq, headers=headers, timeout=3).json()
@@ -48,8 +60,19 @@ def fetch_realtime_macro():
         rate = float(res['fluctuationsRatio'])
         macro_results['KOSDAQ'] = {'val': curr, 'change': rate}
     except Exception:
-        macro_results['KOSDAQ'] = {'val': 0.0, 'change': 0.0}
+        try:
+            hist = yf.Ticker('^KQ11').history(period='5d', timeout=3)
+            if not hist.empty and len(hist) >= 2:
+                curr = float(hist['Close'].iloc[-1])
+                prev = float(hist['Close'].iloc[-2])
+                rate = (curr - prev) / prev * 100
+                macro_results['KOSDAQ'] = {'val': curr, 'change': rate}
+            else:
+                macro_results['KOSDAQ'] = {'val': 0.0, 'change': 0.0}
+        except Exception:
+            macro_results['KOSDAQ'] = {'val': 0.0, 'change': 0.0}
 
+    # 환율 (USDKRW) 수집
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
@@ -64,6 +87,7 @@ def fetch_realtime_macro():
         except Exception:
             macro_results['USDKRW'] = {'val': 1350.00, 'change': 0.0}
 
+    # 미국 지수 수집 (S&P500, NASDAQ, VIX)
     us_tickers = {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}
     for key, sym in us_tickers.items():
         try:
