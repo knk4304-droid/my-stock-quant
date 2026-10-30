@@ -11,7 +11,7 @@ import yfinance as yf
 
 from universe import UniverseLoader
 from quant import QuantEngine, generate_buy_analysis, generate_sell_analysis
-from backtest import run_20y_backtest  # [v4.0 신규] 과거 20년 백테스팅 엔진
+from backtest import run_20y_backtest
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -151,7 +151,6 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
 @st.cache_data(ttl=3600)
 def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
-    # [v4.0 보완 연동] 로컬 캐시 파일이 있으면 0.01초 만에 불러와 멈춤 방지
     cache_path = "data/quant_universe_cache.parquet"
     macro = fetch_realtime_macro()
     engine = QuantEngine()
@@ -364,6 +363,7 @@ if not df.empty:
                     elif "관심 종목" not in cat:
                         col_head1, col_head2 = st.columns([3, 1])
                         with col_head2:
+                            # 🛠️ [정확히 수정된 부분] st.selectbox 함수 추가
                             cat_sort_opt = st.selectbox(
                                 "정렬 옵션 선택:",
                                 options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
@@ -411,7 +411,7 @@ if not df.empty:
                     st.info("조건에 부합하는 종목 데이터가 없습니다. 위 목록에서 관심 종목을 선택해 주세요.")
                 st.write("")
 
-# [v4.0 신규 추가] 과거 20년 백테스팅 검증 섹션 (최하단 배치)
+# 과거 20년 백테스팅 검증 섹션
 st.markdown("---")
 st.header("📊 [v4.0 신규] 과거 20년 알고리즘 백테스팅 실증 검증")
 st.write("알고리즘 시그널을 과거 20년 주가 데이터에 소급 적용하여 실증 연평균 수익률(CAGR), 최대 낙폭(MDD), 승률을 검증합니다.")
