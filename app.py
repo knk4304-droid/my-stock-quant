@@ -1,5 +1,6 @@
-# app.py - UI 및 통합 대시보드 메인
+# app.py - UI 및 통합 대시보드 메인 (v3.38 원본 100% 복원 + v4.0 보완 엔진 연동)
 import datetime
+import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
@@ -10,6 +11,7 @@ import yfinance as yf
 
 from universe import UniverseLoader
 from quant import QuantEngine, generate_buy_analysis, generate_sell_analysis
+from backtest import run_20y_backtest  # [v4.0 신규] 과거 20년 백테스팅 엔진
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -147,12 +149,22 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     return row
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=3600)
 def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
-    universe, name_map = UniverseLoader.get_full_universe()
-    engine = QuantEngine()
+    # [v4.0 보완 연동] 로컬 캐시 파일이 있으면 0.01초 만에 불러와 멈춤 방지
+    cache_path = "data/quant_universe_cache.parquet"
     macro = fetch_realtime_macro()
+    engine = QuantEngine()
 
+    if os.path.exists(cache_path):
+        try:
+            cached_df = pd.read_parquet(cache_path, engine="pyarrow")
+            if not cached_df.empty:
+                return cached_df, engine, macro
+        except Exception:
+            pass
+
+    universe, name_map = UniverseLoader.get_full_universe()
     tasks = []
     for market, tickers in universe.items():
         for ticker in tickers:
@@ -398,3 +410,33 @@ if not df.empty:
                 else:
                     st.info("조건에 부합하는 종목 데이터가 없습니다. 위 목록에서 관심 종목을 선택해 주세요.")
                 st.write("")
+
+# [v4.0 신규 추가] 과거 20년 백테스팅 검증 섹션 (최하단 배치)
+st.markdown("---")
+st.header("📊 [v4.0 신규] 과거 20년 알고리즘 백테스팅 실증 검증")
+st.write("알고리즘 시그널을 과거 20년 주가 데이터에 소급 적용하여 실증 연평균 수익률(CAGR), 최대 낙폭(MDD), 승률을 검증합니다.")
+
+col_sel, col_btn = st.columns([3, 1])
+with col_sel:
+    if not df.empty and "종목명" in df.columns:
+        bt_stock = st.selectbox("검증할 종목 선택", sorted(df["종목명"].tolist()), key="bt_select")
+    else:
+        bt_stock = st.text_input("검증할 티커 입력 (예: 005930.KS, AAPL)", "AAPL")
+
+with col_btn:
+    st.write("")
+    st.write("")
+    bt_run = st.button("20년 백테스팅 실행", type="primary")
+
+if bt_run and bt_stock:
+    with st.spinner(f"'{bt_stock}' 종목의 과거 20년 주가 시뮬레이션 중..."):
+        res = run_20y_backtest(bt_stock)
+        if res:
+            m1, m2, m3 = st.columns(3)
+            m1.metric("20년 누적 수익률", f"{res['Total_Return']:.1f}%")
+            m2.metric("최대 낙폭 (MDD)", f"{res['MDD']:.1f}%")
+            m3.metric("과거 매매 승률", f"{res['Win_Rate']:.1f}%")
+            st.subheader("📈 20년 누적 수익률 추이 차트")
+            st.line_chart(res["History_DF"])
+        else:
+            st.error("백테스팅 데이터를 불러오는 중 오류가 발생했습니다.")
