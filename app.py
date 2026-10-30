@@ -491,7 +491,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
 # 🔥 캐시 함수에 키 버전을 추가하여 구 버전 캐시를 완전 무효화시킴
 @st.cache_data(ttl=3600)
-def run_quant_analysis(cache_key="v3_23_fixed"):
+def run_quant_analysis(cache_key="v3_23_fixed_v2"):  # 키 이름 변경으로 캐시 강제 갱신
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
