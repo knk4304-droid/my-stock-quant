@@ -7,7 +7,6 @@ import pandas as pd
 import requests
 import streamlit as st
 import yfinance as yf
-
 from universe import UniverseLoader
 from quant import QuantEngine, generate_buy_analysis, generate_sell_analysis
 
@@ -24,43 +23,101 @@ FEATURE_NAMES = [
     '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성'
 ]
 
+# ==========================================
+# 1. 실시간 주요 지수 수집 (키 이름 통일 및 2차 백업)
+# ==========================================
 def fetch_realtime_macro():
     macro_results = {}
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
 
+    # 1) KOSPI 수집
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
         res = requests.get(url_kr, headers=headers, timeout=3).json()
-        macro_results['KOSPI'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+        macro_results['KOSPI'] = {
+            'val': float(res['closePrice'].replace(',', '')),
+            'change': float(res['fluctuationsRatio'])
+        }
     except Exception:
-        macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
+        try:
+            hist = yf.Ticker('^KS11').history(period='5d', timeout=3)
+            if not hist.empty and len(hist) >= 2:
+                curr, prev = float(hist['Close'].iloc[-1]), float(hist['Close'].iloc[-2])
+                macro_results['KOSPI'] = {'val': curr, 'change': (curr - prev) / prev * 100}
+            else:
+                macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
+        except Exception:
+            macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
 
+    # 2) KOSDAQ 수집
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
         res = requests.get(url_kq, headers=headers, timeout=3).json()
-        macro_results['KOSDAQ'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+        macro_results['KOSDAQ'] = {
+            'val': float(res['closePrice'].replace(',', '')),
+            'change': float(res['fluctuationsRatio'])
+        }
     except Exception:
-        macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
+        try:
+            hist = yf.Ticker('^KQ11').history(period='5d', timeout=3)
+            if not hist.empty and len(hist) >= 2:
+                curr, prev = float(hist['Close'].iloc[-1]), float(hist['Close'].iloc[-2])
+                macro_results['KOSDAQ'] = {'val': curr, 'change': (curr - prev) / prev * 100}
+            else:
+                macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
+        except Exception:
+            macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
+    # 3) 원/달러 환율 수집
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
-        macro_results['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+        macro_results['USDKRW'] = {
+            'val': float(res['closePrice'].replace(',', '')),
+            'change': float(res['fluctuationsRatio'])
+        }
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    for key, sym in {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}.items():
+    # 4) 미국 지수 수집 (네이버 해외증권 API 1차 + yfinance 2차 백업)
+    us_targets = {
+        'S&P 500': {'naver': 'SPI@SPX', 'yf': '^GSPC'},
+        'NASDAQ 100': {'naver': 'NAS@NDX', 'yf': '^NDX'},
+        'NASDAQ': {'naver': 'NAS@IXIC', 'yf': '^IXIC'},
+        'VIX': {'naver': 'SPI@VIX', 'yf': '^VIX'}
+    }
+
+    for key, cfg in us_targets.items():
+        success = False
         try:
-            hist = yf.Ticker(sym).history(period='5d', timeout=3)
-            if not hist.empty and len(hist) >= 2:
-                curr, prev = float(hist['Close'].iloc[-1]), float(hist['Close'].iloc[-2])
-                macro_results[key] = {'val': curr, 'change': (curr - prev) / prev * 100}
-            else:
-                macro_results[key] = {'val': 0.0, 'change': 0.0}
+            url_us = f"https://m.stock.naver.com/api/index/{cfg['naver']}/basic"
+            res = requests.get(url_us, headers=headers, timeout=3).json()
+            curr = float(res['closePrice'].replace(',', ''))
+            rate = float(res['fluctuationsRatio'])
+            macro_results[key] = {'val': curr, 'change': rate}
+            success = True
         except Exception:
-            macro_results[key] = {'val': 0.0, 'change': 0.0}
+            pass
+
+        if not success:
+            try:
+                hist = yf.Ticker(cfg['yf']).history(period='5d', timeout=5)
+                if hist.empty or len(hist) < 2:
+                    hist = yf.Ticker(cfg['yf']).history(period='1mo', timeout=5)
+                if not hist.empty and len(hist) >= 1:
+                    curr = float(hist['Close'].iloc[-1])
+                    prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else curr
+                    rate = ((curr - prev) / prev * 100) if prev > 0 else 0.0
+                    macro_results[key] = {'val': curr, 'change': rate}
+                else:
+                    macro_results[key] = {'val': 0.0, 'change': 0.0}
+            except Exception:
+                macro_results[key] = {'val': 0.0, 'change': 0.0}
 
     return macro_results
+
 
 def get_chart_link(ticker: str, name: str) -> str:
     if ticker.endswith('.KS') or ticker.endswith('.KQ'):
@@ -71,9 +128,10 @@ def get_chart_link(ticker: str, name: str) -> str:
         url = f"https://finance.yahoo.com/quote/{clean_ticker}/"
     return f"[{name}]({url})"
 
+
 def render_weekly_market_briefing(df, macro_info):
     vix_val = macro_info.get('VIX', {}).get('val', 15.0)
-    nasdaq_chg = macro_info.get('NASDAQ', {}).get('change', 0.0)
+    nasdaq_chg = macro_info.get('NASDAQ 100', {}).get('change', macro_info.get('NASDAQ', {}).get('change', 0.0))
     kospi_chg = macro_info.get('KOSPI', {}).get('change', 0.0)
     usdkrw_val = macro_info.get('USDKRW', {}).get('val', 1340.0)
 
@@ -85,7 +143,6 @@ def render_weekly_market_briefing(df, macro_info):
 
     st.markdown(f"""
     ### 📋 [AI 퀀트 주간 종합 브리핑] 이번 주 시장 전망 & 대응 전략
-    
     #### 1. 🌐 글로벌 & 국내 증시 마크로 환경 진단
     * **시장 변동성 (VIX):** 현재 `{vix_val}`pt $\rightarrow$ **{vix_status}**
     * **미국/국내 연동성:** 나스닥(`{nasdaq_chg:+.2f}%`), KOSPI(`{kospi_chg:+.2f}%`), 원/달러 환율(`{usdkrw_val:,.2f}원`)
@@ -104,12 +161,17 @@ def render_weekly_market_briefing(df, macro_info):
         for _, r in stop_losses.iterrows():
             st.markdown(f"    - 🔴 **[손절/교체] {r['종목명']}** (1주 등락률 `{r['r_1w_val']:.1f}%`, 퀀트 총점 `{r['총점_1W']}`점 약세 $\rightarrow$ 전량 매도 후 우량주 교체)")
 
+
+# 개별 종목 데이터 수집 시 다중 백업 시도 추가
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
-
+    
+    df = pd.DataFrame()
     try:
-        df = yf.Ticker(ticker).history(period='1y', timeout=3)
+        df = yf.Ticker(ticker).history(period='1y', timeout=5)
+        if df.empty or len(df.dropna()) < 2:
+            df = yf.Ticker(ticker).history(period='1mo', timeout=5)
     except Exception:
         df = pd.DataFrame()
 
@@ -147,8 +209,10 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     return row
 
-@st.cache_data(ttl=86400)
-def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
+
+# 캐시 강제 무효화 적용
+@st.cache_data(ttl=3600)
+def run_quant_analysis(cache_key="v3_38_complete_verified_final_v16"):
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
     macro = fetch_realtime_macro()
@@ -160,7 +224,10 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
 
     results = []
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(process_single_stock, ticker, market, name_map, engine, macro) for ticker, market in tasks]
+        futures = [
+            executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
+            for ticker, market in tasks
+        ]
         for future in futures:
             try:
                 res = future.result()
@@ -170,6 +237,7 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v13"):
                 pass
 
     return pd.DataFrame(results), engine, macro
+
 
 def render_korean_market_card(title, data, link):
     val = data.get('val', 0.0)
@@ -214,7 +282,10 @@ def render_korean_market_card(title, data, link):
     """
     st.markdown(card_html, unsafe_allow_html=True)
 
-# UI 실행
+
+# ==========================================
+# 2. UI 및 메인 실행 부분
+# ==========================================
 st.set_page_config(page_title="AI 추천 주식 매매 (v3.38)", layout="wide")
 
 if AUTOREFRESH_AVAILABLE:
@@ -240,19 +311,18 @@ st.subheader("🌐 실시간 주요 시장 지수 현황")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
 index_configs = [
-    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
-    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val':0,'change':0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
-    (m_col3, "S&P 500", macro_info.get('S&P500', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^GSPC/"),
-    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val':0,'change':0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
-    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val':0,'change':0}), "https://finance.yahoo.com/quote/^VIX/")
+    (m_col1, "KOSPI", macro_info.get('KOSPI', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
+    (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
+    (m_col3, "S&P 500", macro_info.get('S&P 500', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^GSPC/"),
+    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ 100', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^NDX/"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val': 0, 'change': 0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
 for col, name, data, link in index_configs:
     with col:
         render_korean_market_card(name, data, link)
 
-# 주간 시황 리포트 노출
 if not df.empty:
     with st.expander("📋 **[클릭하여 열기] AI 퀀트 주간 종합 브리핑 리포트 (이번 주 시장 전망 & 대응 전략)**", expanded=True):
         render_weekly_market_briefing(df, macro_info)
@@ -280,7 +350,6 @@ if not df.empty:
     for tab, p_code in zip(tabs, period_codes):
         with tab:
             st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
-
             w_large = engine.largecap_weights[p_code]
             w_small = engine.smallcap_weights[p_code]
             w_etf = engine.etf_weights[p_code]
@@ -291,7 +360,6 @@ if not df.empty:
                 index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹']
             )
             st.dataframe(w_summary_df, use_container_width=True)
-
             st.markdown("---")
 
             for cat in FIXED_CATEGORIES:
@@ -308,19 +376,15 @@ if not df.empty:
                         cat_df = df[df['종목명'].isin(target_names)].drop_duplicates(subset=['종목명']).copy()
                     else:
                         cat_df = pd.DataFrame()
-
                 elif "AI 종합 필터" in cat:
                     st.markdown(f"### 🏆 [AI 종합 필터] [{p_code}] 기간별 최우선 매수 추천 Top 10 & 매매 전략")
                     cat_df = df.drop_duplicates(subset=['종목명']).copy()
-
                 elif "통합 전체 유니버스" in cat:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df.drop_duplicates(subset=['종목명']).copy()
-
                 elif "국내 ETF" in cat:
-                    st.markdown(f"### 🏆 국내 ETF Top 10")
+                    st.markdown("### 🏆 국내 ETF Top 10")
                     cat_df = df[df['시장'] == '국내 ETF'].copy()
-
                 else:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df[df['시장'] == cat].copy()
@@ -329,11 +393,7 @@ if not df.empty:
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
                     cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
 
-                    probs = []
-                    b_signals = []
-                    s_signals = []
-                    s_ranks = []
-
+                    probs, b_signals, s_signals, s_ranks = [], [], [], []
                     for _, r in cat_df.iterrows():
                         p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
                         s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
@@ -347,7 +407,11 @@ if not df.empty:
 
                     if "AI 종합 필터" in cat:
                         filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
-                        filtered_df['AI종합점수'] = filtered_df['총점'] * 0.5 + filtered_df['기대상승확률(%)'] * 0.3 + filtered_df['예측수익률(%)'] * 0.2
+                        filtered_df['AI종합점수'] = (
+                            filtered_df['총점'] * 0.5 +
+                            filtered_df['기대상승확률(%)'] * 0.3 +
+                            filtered_df['예측수익률(%)'] * 0.2
+                        )
                         cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
                     elif "관심 종목" not in cat:
                         col_head1, col_head2 = st.columns([3, 1])
@@ -358,7 +422,6 @@ if not df.empty:
                                 index=0,
                                 key=f"sort_{cat}_{p_code}"
                             )
-
                         if "미래 기대 수익률" in cat_sort_opt:
                             cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
                         elif "매수시그널" in cat_sort_opt:
@@ -369,16 +432,18 @@ if not df.empty:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
                     cat_df['종목(차트보기)'] = cat_df['차트링크']
-
                     desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
                     available_cols = [c for c in desired_cols if c in cat_df.columns]
 
                     display_df = cat_df[available_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
-
                     st.write(display_df.to_markdown(), unsafe_allow_html=True)
 
-                    expander_title = f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)" if "AI 종합 필터" in cat else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
+                    expander_title = (
+                        f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)"
+                        if "AI 종합 필터" in cat
+                        else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
+                    )
 
                     with st.expander(expander_title, expanded=True if "AI 종합 필터" in cat or "관심 종목" in cat else False):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
@@ -386,7 +451,6 @@ if not df.empty:
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
 
                             st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
-
                             col_a, col_b = st.columns(2)
                             with col_a:
                                 st.markdown(f"#### 📈 **[매수 전략 및 시그널]** `{buy_signal}`")
