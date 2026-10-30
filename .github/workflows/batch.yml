@@ -1,0 +1,34 @@
+name: Auto Quant Batch Update
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # 30분마다 자동으로 백그라운드 수집 실행
+  workflow_dispatch:        # 필요시 GitHub 웹에서 수동 실행 버튼 제공
+
+jobs:
+  build-and-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Batch Update Script
+        run: |
+          python batch_update.py
+
+      - name: Commit and Push Parquet Files
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add quant_stocks.parquet quant_macro.parquet
+          git commit -m "Auto update quant data [$(date)]" || exit 0
+          git push
