@@ -19,28 +19,28 @@ def fetch_realtime_macro():
     macro_results = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-    # KOSPI
+    # 1) KOSPI
     try:
         res = requests.get("https://m.stock.naver.com/api/index/KOSPI/basic", headers=headers, timeout=5).json()
         macro_results['KOSPI'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
 
-    # KOSDAQ
+    # 2) KOSDAQ
     try:
         res = requests.get("https://m.stock.naver.com/api/index/KOSDAQ/basic", headers=headers, timeout=5).json()
         macro_results['KOSDAQ'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
-    # USDKRW
+    # 3) USDKRW
     try:
         res = requests.get("https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic", headers=headers, timeout=5).json()
         macro_results['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    # US Markets
+    # 4) US Markets
     us_targets = {
         'S&P 500': {'naver': 'SPI@SPX', 'yf': '^GSPC'},
         'NASDAQ 100': {'naver': 'NAS@NDX', 'yf': '^NDX'},
@@ -68,6 +68,7 @@ def fetch_realtime_macro():
                 macro_results[key] = {'val': 0.0, 'change': 0.0}
 
     return macro_results
+
 
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
@@ -103,9 +104,10 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     return row
 
+
 def execute_batch_update():
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now_str}] 🔄 퀀트 데이터 사전 수집 시작...")
+    print(f"[{now_str}] 🔄 백그라운드 퀀트 데이터 수집 시작...")
 
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
@@ -119,7 +121,8 @@ def execute_batch_update():
         for future in futures:
             try:
                 res = future.result()
-                if res: results.append(res)
+                if res:
+                    results.append(res)
             except Exception:
                 pass
 
@@ -134,10 +137,11 @@ def execute_batch_update():
         'vix_val': macro.get('VIX', {}).get('val', 15.0), 'vix_chg': macro.get('VIX', {}).get('change', 0.0)
     }])
 
-    # Parquet DB 파일 저장 (pyarrow 엔진 적용)
+    # Parquet 저장
     df_results.to_parquet('quant_stocks.parquet', index=False, engine='pyarrow')
     macro_df.to_parquet('quant_macro.parquet', index=False, engine='pyarrow')
     print(f"[{now_str}] ✅ {len(df_results)}개 종목 Parquet DB 캐시 저장 완료!")
+
 
 if __name__ == "__main__":
     execute_batch_update()
