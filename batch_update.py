@@ -1,4 +1,4 @@
-# batch_update.py - 백그라운드 데이터 사전 수집 및 캐싱 스크립트
+# batch_update.py - GitHub Actions 자동 수집 스크립트
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +24,7 @@ def fetch_realtime_macro():
     # 1) KOSPI
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
-        res = requests.get(url_kr, headers=headers, timeout=3).json()
+        res = requests.get(url_kr, headers=headers, timeout=5).json()
         macro_results['KOSPI'] = {
             'val': float(res['closePrice'].replace(',', '')),
             'change': float(res['fluctuationsRatio'])
@@ -35,7 +35,7 @@ def fetch_realtime_macro():
     # 2) KOSDAQ
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
-        res = requests.get(url_kq, headers=headers, timeout=3).json()
+        res = requests.get(url_kq, headers=headers, timeout=5).json()
         macro_results['KOSDAQ'] = {
             'val': float(res['closePrice'].replace(',', '')),
             'change': float(res['fluctuationsRatio'])
@@ -43,10 +43,10 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
-    # 3) 환율
+    # 3) USDKRW
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
-        res = requests.get(url_fx, headers=headers, timeout=3).json()
+        res = requests.get(url_fx, headers=headers, timeout=5).json()
         macro_results['USDKRW'] = {
             'val': float(res['closePrice'].replace(',', '')),
             'change': float(res['fluctuationsRatio'])
@@ -54,7 +54,7 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    # 4) 미국 지수 및 VIX
+    # 4) US Markets
     us_targets = {
         'S&P 500': {'naver': 'SPI@SPX', 'yf': '^GSPC'},
         'NASDAQ 100': {'naver': 'NAS@NDX', 'yf': '^NDX'},
@@ -66,7 +66,7 @@ def fetch_realtime_macro():
         success = False
         try:
             url_us = f"https://m.stock.naver.com/api/index/{cfg['naver']}/basic"
-            res = requests.get(url_us, headers=headers, timeout=3).json()
+            res = requests.get(url_us, headers=headers, timeout=5).json()
             macro_results[key] = {
                 'val': float(res['closePrice'].replace(',', '')),
                 'change': float(res['fluctuationsRatio'])
@@ -147,7 +147,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
 def execute_batch_update():
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now_str}] 🔄 백그라운드 퀀트 데이터 사전 수집 시작...")
+    print(f"[{now_str}] 🔄 백그라운드 퀀트 데이터 수집 시작...")
 
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
@@ -159,7 +159,7 @@ def execute_batch_update():
             tasks.append((ticker, market))
 
     results = []
-    with ThreadPoolExecutor(max_workers=25) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [
             executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
             for ticker, market in tasks
@@ -174,7 +174,6 @@ def execute_batch_update():
 
     df_results = pd.DataFrame(results)
 
-    # 마크로 메타 데이터 포함 저장
     macro_df = pd.DataFrame([{
         'updated_at': now_str,
         'kospi_val': macro.get('KOSPI', {}).get('val', 0.0),
@@ -191,11 +190,11 @@ def execute_batch_update():
         'vix_chg': macro.get('VIX', {}).get('change', 0.0)
     }])
 
-    # 초고속 읽기를 위한 Parquet 확장자 파일 생성
-    df_results.to_parquet('quant_stocks.parquet', index=False)
-    macro_df.to_parquet('quant_macro.parquet', index=False)
+    # Parquet 저장 (engine='pyarrow' 명시)
+    df_results.to_parquet('quant_stocks.parquet', index=False, engine='pyarrow')
+    macro_df.to_parquet('quant_macro.parquet', index=False, engine='pyarrow')
 
-    print(f"[{now_str}] ✅ 전체 모수({len(df_results)}개) Parquet DB 캐시 저장 완료!")
+    print(f"[{now_str}] ✅ 성공적으로 {len(df_results)}개 종목 수집 및 Parquet 저장 완료!")
 
 
 if __name__ == "__main__":
