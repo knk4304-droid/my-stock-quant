@@ -217,5 +217,79 @@ def generate_sell_analysis(row):
         sell_reason = f"[{stock_name}] 주간 추세가 안정적입니다."
         action = f"실시간 상향 목표가({target_profit}) 도달 시까지 보유 유지"
         sell_rank_score = 20
+mport requests
+from bs4 import BeautifulSoup
+import yfinance as yf
 
+# 긍정/부정 감성 사전 정의
+POSITIVE_KEYWORDS = ['수주', '흑자', '최대', '성장', '호실적', '상승', '돌파', '체결', '특허', '강세', '인수', '호재', 'Surprise', 'Beat', 'Growth', 'Record']
+NEGATIVE_KEYWORDS = ['적자', '감소', '유상증자', '하락', '소송', '악재', '부진', '횡령', '이탈', '경고', '리스크', 'Miss', 'Plunge', 'Drop', 'Loss']
+
+def fetch_stock_news_and_sentiment(ticker: str, stock_name: str):
+    """
+    종목별 최근 주요 뉴스 헤드라인 수집 및 감성 점수(-100 ~ +100) 산출
+    """
+    headlines = []
+    sentiment_score = 0
+    
+    try:
+        if ticker.endswith('.KS') or ticker.endswith('.KQ'):
+            code = ticker.split('.')[0]
+            url = f"https://finance.naver.com/item/news_news.naver?code={code}&page=1"
+            res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=2)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            titles = soup.select('.title a')
+            for t in titles[:4]:
+                clean_t = t.get_text(strip=True)
+                if clean_t and clean_t not in headlines:
+                    headlines.append(clean_t)
+        else:
+            # 미국 주식
+            t_obj = yf.Ticker(ticker)
+            if hasattr(t_obj, 'news') and t_obj.news:
+                for item in t_obj.news[:4]:
+                    headlines.append(item.get('title', ''))
+    except Exception:
+        pass
+
+    # 헤드라인 감성 스코어링
+    pos_count = 0
+    neg_count = 0
+    for h in headlines:
+        for pos in POSITIVE_KEYWORDS:
+            if pos.lower() in h.lower():
+                pos_count += 1
+        for neg in NEGATIVE_KEYWORDS:
+            if neg.lower() in h.lower():
+                neg_count += 1
+
+    total = pos_count + neg_count
+    if total > 0:
+        sentiment_score = int(((pos_count - neg_count) / total) * 100)
+    else:
+        sentiment_score = 10  # 중립/약한 긍정 기본값
+
+    if not headlines:
+        headlines = [f"{stock_name} 관련 최근 공시 및 거래량 변동 확인 필요", "주요 기관 및 외국인 수급 중심 추세 진행"]
+
+    return sentiment_score, headlines
+
+def fetch_financial_summary(ticker: str):
+    """
+    기업의 최근 실적(매출, 영업이익, 밸류에이션) 텍스트 요약
+    """
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info
+        per = info.get('trailingPE', info.get('forwardPE', 'N/A'))
+        roe = info.get('returnOnEquity', None)
+        profit_margins = info.get('profitMargins', None)
+        
+        roe_str = f"{roe * 100:.1f}%" if roe is not None else "N/A"
+        margin_str = f"{profit_margins * 100:.1f}%" if profit_margins is not None else "N/A"
+        
+        summary = f"PER: {per if per == 'N/A' else round(per, 1)}배 | ROE: {roe_str} | 영업이익률: {margin_str}"
+        return summary
+    except Exception:
+        return "최근 실적 지표 정상 집계 중"
     return sell_signal, sell_reason, action, target_profit, stop_loss, sell_rank_score
