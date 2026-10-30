@@ -167,3 +167,31 @@ def execute_batch_update():
 
 if __name__ == "__main__":
     execute_batch_update()
+
+# 긍정 / 부정 키워드 사전
+POS_KW = ['수주', '흑자', '최대실적', '상승', '호실적', '신기술', '특허', '강세', '인수', '호재']
+NEG_KW = ['적자', '감소', '유상증자', '하락', '소송', '악재', '부진', '횡령', '이탈', '경고', '리스크']
+
+def fetch_stock_news_sentiment(clean_code):
+    """종목별 최근 5개 뉴스 헤드라인 감성 분석 (-100pt ~ +100pt)"""
+    try:
+        url = f"https://finance.naver.com/item/news_news.naver?code={clean_code}"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=3)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        titles = [a.text.strip() for a in soup.select('.title a')[:5]]
+
+        if not titles:
+            return 0.0, 0, 0
+
+        pos_cnt = sum(1 for t in titles for k in POS_KW if k in t)
+        neg_cnt = sum(1 for t in titles for k in NEG_KW if k in t)
+
+        total = pos_cnt + neg_cnt
+        if total == 0:
+            return 0.0, pos_cnt, neg_cnt
+
+        score = round(((pos_cnt - neg_cnt) / total) * 100, 1)
+        return score, pos_cnt, neg_cnt
+    except Exception:
+        return 0.0, 0, 0
