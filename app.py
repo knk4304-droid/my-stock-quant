@@ -1,6 +1,5 @@
-# app.py - UI 및 통합 대시보드 메인 (v3.38 원본 100% 복원 + KeyError 및 함수 뒤엉침 완벽 해결)
+# app.py - UI 및 통합 대시보드 메인
 import datetime
-import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
@@ -11,7 +10,6 @@ import yfinance as yf
 
 from universe import UniverseLoader
 from quant import QuantEngine, generate_buy_analysis, generate_sell_analysis
-from backtest import run_20y_backtest
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -32,28 +30,28 @@ def fetch_realtime_macro():
 
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
-        res = requests.get(url_kr, headers=headers, timeout=3).json()
+        res = requests.get(url_kr, headers=headers, timeout=2).json()
         macro_results['KOSPI'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
 
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
-        res = requests.get(url_kq, headers=headers, timeout=3).json()
+        res = requests.get(url_kq, headers=headers, timeout=2).json()
         macro_results['KOSDAQ'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
-        res = requests.get(url_fx, headers=headers, timeout=3).json()
+        res = requests.get(url_fx, headers=headers, timeout=2).json()
         macro_results['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
     for key, sym in {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}.items():
         try:
-            hist = yf.Ticker(sym).history(period='5d', timeout=3)
+            hist = yf.Ticker(sym).history(period='5d', timeout=2)
             if not hist.empty and len(hist) >= 2:
                 curr, prev = float(hist['Close'].iloc[-1]), float(hist['Close'].iloc[-2])
                 macro_results[key] = {'val': curr, 'change': (curr - prev) / prev * 100}
@@ -73,33 +71,11 @@ def get_chart_link(ticker: str, name: str) -> str:
         url = f"https://finance.yahoo.com/quote/{clean_ticker}/"
     return f"[{name}]({url})"
 
-# 데이터프레임 내 종목명 컬럼 통일화 함수 (KeyError 완벽 방지)
-def ensure_stock_name_col(df):
-    if df.empty:
-        return df
-    if '종목명' not in df.columns:
-        for possible_col in ['종목', 'stock_name', 'ticker', 'Name']:
-            if possible_col in df.columns:
-                df['종목명'] = df[possible_col]
-                break
-        else:
-            df['종목명'] = '미지정종목'
-    return df
-
 def render_weekly_market_briefing(df, macro_info):
     vix_val = macro_info.get('VIX', {}).get('val', 15.0)
     nasdaq_chg = macro_info.get('NASDAQ', {}).get('change', 0.0)
     kospi_chg = macro_info.get('KOSPI', {}).get('change', 0.0)
     usdkrw_val = macro_info.get('USDKRW', {}).get('val', 1340.0)
-
-    # KeyError 방지 처리
-    df = ensure_stock_name_col(df)
-    if 'r_1w_val' not in df.columns:
-        df['r_1w_val'] = 0.0
-    if '총점_1W' not in df.columns:
-        df['총점_1W'] = 50.0
-    if '미래수익률_1W' not in df.columns:
-        df['미래수익률_1W'] = 0.0
 
     buy_picks = df[df['r_1w_val'] < 8.0].drop_duplicates('종목명').sort_values(by='총점_1W', ascending=False).head(3)
     take_profits = df[df['r_1w_val'] >= 8.0].drop_duplicates('종목명').sort_values(by='r_1w_val', ascending=False).head(3)
@@ -118,7 +94,7 @@ def render_weekly_market_briefing(df, macro_info):
     #### 2. 🟢 이번 주 최우선 강력 매수 관심 종목 (Top Picks)
     """)
     for idx, (_, r) in enumerate(buy_picks.iterrows(), start=1):
-        st.markdown(f"    {idx}. **{r['종목명']} ({r.get('시장', '전체')})** | 예측 수익률: `+{r['미래수익률_1W']}%` | 퀀트 총점: `{r['총점_1W']}`점\n       👉 **매수 타점:** 현재가 부근 비중 30% 1차 진입 후 눌림목마다 분할 매수")
+        st.markdown(f"    {idx}. **{r['종목명']} ({r['시장']})** | 예측 수익률: `+{r['미래수익률_1W']}%` | 퀀트 총점: `{r['총점_1W']}`점\n       👉 **매수 타점:** 현재가 부근 비중 30% 1차 진입 후 눌림목마다 분할 매수")
 
     st.markdown("\n    #### 🔴 이번 주 비중 축소 (익절 & 교체 매도) 리딩 종목")
     if not take_profits.empty:
@@ -133,7 +109,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
 
     try:
-        df = yf.Ticker(ticker).history(period='1y', timeout=3)
+        df = yf.Ticker(ticker).history(period='1y', timeout=2)
     except Exception:
         df = pd.DataFrame()
 
@@ -171,31 +147,19 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     return row
 
-@st.cache_data(ttl=3600)
-def run_quant_analysis(cache_key="v3_38_complete_verified_final_v16"):
-    cache_path = "data/quant_universe_cache.parquet"
-    macro = fetch_realtime_macro()
-    engine = QuantEngine()
-
-    if os.path.exists(cache_path):
-        try:
-            cached_df = pd.read_parquet(cache_path, engine="pyarrow")
-            if not cached_df.empty:
-                cached_df = ensure_stock_name_col(cached_df)
-                if 'r_1w_val' not in cached_df.columns:
-                    cached_df['r_1w_val'] = 0.0
-                return cached_df, engine, macro
-        except Exception:
-            pass
-
+@st.cache_data(ttl=86400)
+def run_quant_analysis(cache_key="v3_38_modular"):
     universe, name_map = UniverseLoader.get_full_universe()
+    engine = QuantEngine()
+    macro = fetch_realtime_macro()
+
     tasks = []
     for market, tickers in universe.items():
         for ticker in tickers:
             tasks.append((ticker, market))
 
     results = []
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [executor.submit(process_single_stock, ticker, market, name_map, engine, macro) for ticker, market in tasks]
         for future in futures:
             try:
@@ -205,11 +169,7 @@ def run_quant_analysis(cache_key="v3_38_complete_verified_final_v16"):
             except Exception:
                 pass
 
-    res_df = pd.DataFrame(results)
-    res_df = ensure_stock_name_col(res_df)
-    if 'r_1w_val' not in res_df.columns:
-        res_df['r_1w_val'] = 0.0
-    return res_df, engine, macro
+    return pd.DataFrame(results), engine, macro
 
 def render_korean_market_card(title, data, link):
     val = data.get('val', 0.0)
@@ -263,14 +223,14 @@ if AUTOREFRESH_AVAILABLE:
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 st.title("📈 AI 추천 주식 매매 (v3.38)")
-st.caption(f"부제 3.38 - 관심종목 멀티선택 옵션 개편판 | {now_str}")
+st.caption(f"부제 3.38 - 분할 모듈 연동 완성판 | {now_str}")
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
     * **분할 모듈 시스템:** 코드가 잘리는 현상을 완벽히 방지하여 전 기능이 다운 없이 안정적으로 구동됩니다.
     * **주간 종합 브리핑:** 글로벌/국내 시장 환경과 매수/매도 대응 방향을 매주 자동 정리합니다.
     * **AI 종합 필터 Top 10:** 전체 유니버스에서 퀀트점수, 미래수익률, 승률, 안전장치를 종합 평가하여 **기간별(1W ~ 3Y+) 가장 사야 할 최적의 10개 종목**과 **매수/매도 타이밍 리포트**를 제시합니다.
-    * **관심 종목 개별 진단:** 전체 유니버스 모수 종목 중 원하시는 종목들을 드롭다운으로 다중 선택하여 정밀 진단 리포트를 확인하실 수 있습니다.
+    * **관심 종목 개별 진단:** 궁금한 국내/미국 종목명을 직접 입력하면 퀀트 알고리즘이 분석표와 종합 진단 리포트를 작성해 드립니다.
     """)
 
 with st.spinner("v3.38 실시간 스크리닝 중..."):
@@ -303,7 +263,6 @@ FIXED_CATEGORIES = [
     '🎯 [MY] 관심 종목 개별 진단',
     '🏆 [AI 종합 필터] 기간별 최우선 매수 추천 Top 10 (강력 추천)',
     '🏆 통합 전체 유니버스 (국내+미국 종합)',
-    '🏆 국내 ETF',
     '코스피200',
     '코스닥100',
     'S&P500',
@@ -311,9 +270,6 @@ FIXED_CATEGORIES = [
 ]
 
 if not df.empty:
-    full_uni, full_names = UniverseLoader.get_full_universe()
-    stock_options = sorted([f"{m_name} - {full_names.get(t, t)}" for m_name, t_list in full_uni.items() for t in t_list])
-
     tabs = st.tabs(["미래 1주일 (1W)", "미래 1개월 (1M)", "미래 6개월 (6M)", "미래 1년 (1Y)", "미래 5년 (5Y)", "미래 10년 (10Y)", "미래 10년 이상 (10Y+)"])
     period_codes = ["1W", "1M", "6M", "1Y", "5Y", "10Y", "10Y+"]
 
@@ -321,9 +277,9 @@ if not df.empty:
         with tab:
             st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
 
-            w_large = engine.largecap_weights.get(p_code, [10]*10)
-            w_small = engine.smallcap_weights.get(p_code, [10]*10)
-            w_etf = engine.etf_weights.get(p_code, [10]*10)
+            w_large = engine.largecap_weights[p_code]
+            w_small = engine.smallcap_weights[p_code]
+            w_etf = engine.etf_weights[p_code]
 
             w_summary_df = pd.DataFrame(
                 [w_large, w_small, w_etf],
@@ -333,19 +289,20 @@ if not df.empty:
             st.dataframe(w_summary_df, use_container_width=True)
 
             st.markdown("---")
+            st.subheader(f"📌 [{p_code}] 분야별 미래 기대 상승 Top 10 및 매수/매도 종합 진단")
 
             for cat in FIXED_CATEGORIES:
                 if "관심 종목" in cat:
-                    st.markdown("### 🎯 [MY] 관심 종목 직접 선택 개별 진단")
-                    selected_stocks = st.multiselect(
-                        "진단하고 싶은 관심 종목을 선택하세요 (전체 모수에서 여러 개 선택 가능):",
-                        options=stock_options,
-                        default=[],
-                        key=f"custom_select_{p_code}"
+                    st.markdown("### 🎯 [MY] 관심 종목 직접 입력 개별 진단")
+                    user_input = st.text_input(
+                        "진단하고 싶은 관심 종목명을 입력하세요 (쉼표로 구분):",
+                        value="소파이, 루닛, 로쿠, 오라클, 삼성전자",
+                        key=f"custom_input_{p_code}"
                     )
-                    if selected_stocks:
-                        target_names = [s.split(' - ')[1] for s in selected_stocks]
-                        cat_df = df[df['종목명'].isin(target_names)].drop_duplicates(subset=['종목명']).copy()
+                    search_keywords = [k.strip() for k in user_input.split(',') if k.strip()]
+                    if search_keywords:
+                        pattern = '|'.join(search_keywords)
+                        cat_df = df[df['종목명'].str.contains(pattern, case=False, na=False)].drop_duplicates(subset=['종목명']).copy()
                     else:
                         cat_df = pd.DataFrame()
 
@@ -356,21 +313,13 @@ if not df.empty:
                 elif "통합 전체 유니버스" in cat:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df.drop_duplicates(subset=['종목명']).copy()
-
-                elif "국내 ETF" in cat:
-                    st.markdown(f"### 🏆 국내 ETF Top 10")
-                    cat_df = df[df['시장'] == '국내 ETF'].copy()
-
                 else:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df[df['시장'] == cat].copy()
 
                 if not cat_df.empty:
-                    tot_col = f"총점_{p_code}" if f"총점_{p_code}" in cat_df.columns else "총점"
-                    fut_col = f"미래수익률_{p_code}" if f"미래수익률_{p_code}" in cat_df.columns else "미래수익률"
-                    
-                    cat_df['총점'] = cat_df[tot_col] if tot_col in cat_df.columns else 50.0
-                    cat_df['예측수익률(%)'] = cat_df[fut_col] if fut_col in cat_df.columns else 0.0
+                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
 
                     probs = []
                     b_signals = []
@@ -411,7 +360,7 @@ if not df.empty:
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
-                    cat_df['종목(차트보기)'] = cat_df['차트링크'] if '차트링크' in cat_df.columns else cat_df['종목명']
+                    cat_df['종목(차트보기)'] = cat_df['차트링크']
 
                     desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
                     available_cols = [c for c in desired_cols if c in cat_df.columns]
@@ -428,7 +377,7 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
 
-                            st.markdown(f"### {idx}. {row['종목명']} ({row.get('시장', '')} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
 
                             col_a, col_b = st.columns(2)
                             with col_a:
@@ -439,35 +388,5 @@ if not df.empty:
                                 st.warning(f"🎯 **언제/어떻게 팔아야 하는가?**\n- **권장 익절 목표가:** `{target_p}` 달성 시 비중 50% 분할 익절\n- **자동 손절 기준:** 주가 하락 시 `{stop_l}` 이탈 시 손절 및 우량주 교체\n- **진단 배경:** {s_reason}")
                             st.markdown("---")
                 else:
-                    st.info("조건에 부합하는 종목 데이터가 없습니다. 위 목록에서 관심 종목을 선택해 주세요.")
+                    st.info("조건에 부합하는 종목 데이터가 없습니다.")
                 st.write("")
-
-# 과거 20년 백테스팅 검증 섹션
-st.markdown("---")
-st.header("📊 [v4.0 신규] 과거 20년 알고리즘 백테스팅 실증 검증")
-st.write("알고리즘 시그널을 과거 20년 주가 데이터에 소급 적용하여 실증 연평균 수익률(CAGR), 최대 낙폭(MDD), 승률을 검증합니다.")
-
-col_sel, col_btn = st.columns([3, 1])
-with col_sel:
-    if not df.empty and "종목명" in df.columns:
-        bt_stock = st.selectbox("검증할 종목 선택", sorted(df["종목명"].tolist()), key="bt_select")
-    else:
-        bt_stock = st.text_input("검증할 티커 입력 (예: 005930.KS, AAPL)", "AAPL")
-
-with col_btn:
-    st.write("")
-    st.write("")
-    bt_run = st.button("20년 백테스팅 실행", type="primary")
-
-if bt_run and bt_stock:
-    with st.spinner(f"'{bt_stock}' 종목의 과거 20년 주가 시뮬레이션 중..."):
-        res = run_20y_backtest(bt_stock)
-        if res:
-            m1, m2, m3 = st.columns(3)
-            m1.metric("20년 누적 수익률", f"{res['Total_Return']:.1f}%")
-            m2.metric("최대 낙폭 (MDD)", f"{res['MDD']:.1f}%")
-            m3.metric("과거 매매 승률", f"{res['Win_Rate']:.1f}%")
-            st.subheader("📈 20년 누적 수익률 추이 차트")
-            st.line_chart(res["History_DF"])
-        else:
-            st.error("백테스팅 데이터를 불러오는 중 오류가 발생했습니다.")
