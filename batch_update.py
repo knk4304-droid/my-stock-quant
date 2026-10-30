@@ -73,6 +73,7 @@ def fetch_realtime_macro():
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
+    
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=5)
         if df.empty or len(df.dropna()) < 2:
@@ -82,6 +83,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
     r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
+
     try:
         r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
     except Exception:
@@ -91,10 +93,19 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     chart_link = f"[{stock_name}]({url})"
 
     row = {
-        '시장': market, '종목명': stock_name, '차트링크': chart_link, 'r_1w_val': r_1w_val,
-        '당일 수익률': r_today, '1일 전': r_1d, '2일 전': r_2d, '1주 수익률': r_1w,
-        '1달 수익률': r_1m, '3개월 수익률': r_3m, '1년 수익률': r_1y
+        '시장': market,
+        '종목명': stock_name,
+        '차트링크': chart_link,
+        'r_1w_val': r_1w_val,
+        '당일 수익률': r_today,
+        '1일 전': r_1d,
+        '2일 전': r_2d,
+        '1주 수익률': r_1w,
+        '1달 수익률': r_1m,
+        '3개월 수익률': r_3m,
+        '1년 수익률': r_1y
     }
+
     for i, fname in enumerate(FEATURE_NAMES):
         row[fname] = round(float(raw_scores[i]), 1)
 
@@ -107,7 +118,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
 def execute_batch_update():
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now_str}] 🔄 백그라운드 퀀트 데이터 수집 시작...")
+    print(f"[{now_str}] 🔄 백그라운드 퀀트 데이터 사전 수집 시작...")
 
     universe, name_map = UniverseLoader.get_full_universe()
     engine = QuantEngine()
@@ -117,7 +128,10 @@ def execute_batch_update():
     results = []
 
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(process_single_stock, ticker, market, name_map, engine, macro) for ticker, market in tasks]
+        futures = [
+            executor.submit(process_single_stock, ticker, market, name_map, engine, macro)
+            for ticker, market in tasks
+        ]
         for future in futures:
             try:
                 res = future.result()
@@ -127,20 +141,28 @@ def execute_batch_update():
                 pass
 
     df_results = pd.DataFrame(results)
+
     macro_df = pd.DataFrame([{
         'updated_at': now_str,
-        'kospi_val': macro.get('KOSPI', {}).get('val', 0.0), 'kospi_chg': macro.get('KOSPI', {}).get('change', 0.0),
-        'kosdaq_val': macro.get('KOSDAQ', {}).get('val', 0.0), 'kosdaq_chg': macro.get('KOSDAQ', {}).get('change', 0.0),
-        'sp500_val': macro.get('S&P 500', {}).get('val', 0.0), 'sp500_chg': macro.get('S&P 500', {}).get('change', 0.0),
-        'nasdaq_val': macro.get('NASDAQ 100', {}).get('val', 0.0), 'nasdaq_chg': macro.get('NASDAQ 100', {}).get('change', 0.0),
-        'usdkrw_val': macro.get('USDKRW', {}).get('val', 1340.0), 'usdkrw_chg': macro.get('USDKRW', {}).get('change', 0.0),
-        'vix_val': macro.get('VIX', {}).get('val', 15.0), 'vix_chg': macro.get('VIX', {}).get('change', 0.0)
+        'kospi_val': macro.get('KOSPI', {}).get('val', 0.0),
+        'kospi_chg': macro.get('KOSPI', {}).get('change', 0.0),
+        'kosdaq_val': macro.get('KOSDAQ', {}).get('val', 0.0),
+        'kosdaq_chg': macro.get('KOSDAQ', {}).get('change', 0.0),
+        'sp500_val': macro.get('S&P 500', {}).get('val', 0.0),
+        'sp500_chg': macro.get('S&P 500', {}).get('change', 0.0),
+        'nasdaq_val': macro.get('NASDAQ 100', {}).get('val', 0.0),
+        'nasdaq_chg': macro.get('NASDAQ 100', {}).get('change', 0.0),
+        'usdkrw_val': macro.get('USDKRW', {}).get('val', 1340.0),
+        'usdkrw_chg': macro.get('USDKRW', {}).get('change', 0.0),
+        'vix_val': macro.get('VIX', {}).get('val', 15.0),
+        'vix_chg': macro.get('VIX', {}).get('change', 0.0)
     }])
 
-    # Parquet 저장
+    # Parquet 저장 (pyarrow 명시)
     df_results.to_parquet('quant_stocks.parquet', index=False, engine='pyarrow')
     macro_df.to_parquet('quant_macro.parquet', index=False, engine='pyarrow')
-    print(f"[{now_str}] ✅ {len(df_results)}개 종목 Parquet DB 캐시 저장 완료!")
+
+    print(f"[{now_str}] ✅ 성공적으로 {len(df_results)}개 종목 수집 및 Parquet 저장 완료!")
 
 
 if __name__ == "__main__":
