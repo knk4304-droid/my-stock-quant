@@ -291,9 +291,14 @@ if AUTOREFRESH_AVAILABLE:
 
 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+import datetime
+
 st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", page_icon="📈", layout="wide")
 st.title("📈 AI 추천 주식 매매 (v4.00)")
-st.caption("부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: " + updated_at)
+
+# updated_at 변수 대신 현재 시각을 자동 출력하도록 변경
+now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+st.caption(f"부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: {now_str}")
 
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
