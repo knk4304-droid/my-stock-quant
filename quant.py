@@ -217,7 +217,7 @@ def generate_sell_analysis(row):
         sell_reason = f"[{stock_name}] 주간 추세가 안정적입니다."
         action = f"실시간 상향 목표가({target_profit}) 도달 시까지 보유 유지"
         sell_rank_score = 20
-mport requests
+import requests
 from bs4 import BeautifulSoup
 import yfinance as yf
 
