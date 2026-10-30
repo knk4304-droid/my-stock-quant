@@ -32,7 +32,7 @@ def fetch_realtime_macro():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
-    # KOSPI 수집 (네이버 실패 시 yfinance ^KS11 대체)
+    # 1) KOSPI 수집 (네이버 실패 시 yfinance 대체)
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
         res = requests.get(url_kr, headers=headers, timeout=3).json()
@@ -41,7 +41,7 @@ def fetch_realtime_macro():
         macro_results['KOSPI'] = {'val': curr, 'change': rate}
     except Exception:
         try:
-            hist = yf.Ticker('^KS11').history(period='5d', timeout=3)
+            hist = yf.Ticker('^KS11').history(period='5d', timeout=5)
             if not hist.empty and len(hist) >= 2:
                 curr = float(hist['Close'].iloc[-1])
                 prev = float(hist['Close'].iloc[-2])
@@ -52,7 +52,7 @@ def fetch_realtime_macro():
         except Exception:
             macro_results['KOSPI'] = {'val': 0.0, 'change': 0.0}
 
-    # KOSDAQ 수집 (네이버 실패 시 yfinance ^KQ11 대체)
+    # 2) KOSDAQ 수집 (네이버 실패 시 yfinance 대체)
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
         res = requests.get(url_kq, headers=headers, timeout=3).json()
@@ -61,7 +61,7 @@ def fetch_realtime_macro():
         macro_results['KOSDAQ'] = {'val': curr, 'change': rate}
     except Exception:
         try:
-            hist = yf.Ticker('^KQ11').history(period='5d', timeout=3)
+            hist = yf.Ticker('^KQ11').history(period='5d', timeout=5)
             if not hist.empty and len(hist) >= 2:
                 curr = float(hist['Close'].iloc[-1])
                 prev = float(hist['Close'].iloc[-2])
@@ -72,7 +72,7 @@ def fetch_realtime_macro():
         except Exception:
             macro_results['KOSDAQ'] = {'val': 0.0, 'change': 0.0}
 
-    # 환율 (USDKRW) 수집
+    # 3) 원/달러 환율 (USDKRW) 수집
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
@@ -87,11 +87,22 @@ def fetch_realtime_macro():
         except Exception:
             macro_results['USDKRW'] = {'val': 1350.00, 'change': 0.0}
 
-    # 미국 지수 수집 (S&P500, NASDAQ, VIX)
-    us_tickers = {'S&P500': '^GSPC', 'NASDAQ': '^IXIC', 'VIX': '^VIX'}
+    # 4) 미국 지수 수집 (키 명칭 정제 및 yfinance 1mo 백업 로직 추가)
+    us_tickers = {
+        'S&P500': '^GSPC', 
+        'NASDAQ': '^IXIC', 
+        'NASDAQ 100': '^NDX',  # UI 키 이름에 맞게 별도 수집
+        'VIX': '^VIX'
+    }
+    
     for key, sym in us_tickers.items():
         try:
-            hist = yf.Ticker(sym).history(period='5d', timeout=3)
+            # 1차 시도: 최근 5일 데이터
+            hist = yf.Ticker(sym).history(period='5d', timeout=5)
+            # 데이터가 부족할 경우 2차 시도: 최근 1개월 데이터
+            if hist.empty or len(hist) < 2:
+                hist = yf.Ticker(sym).history(period='1mo', timeout=5)
+
             if not hist.empty and len(hist) >= 2:
                 curr = float(hist['Close'].iloc[-1])
                 prev = float(hist['Close'].iloc[-2])
@@ -103,7 +114,6 @@ def fetch_realtime_macro():
             macro_results[key] = {'val': 0.0, 'change': 0.0}
 
     return macro_results
-
 
 # ==========================================
 # 2. 유니버스 로드
