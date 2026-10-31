@@ -317,11 +317,12 @@ with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & �
 st.subheader("🌐 실시간 주요 시장 지수 현황")
 m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
 
+# app.py 160행 근처 index_configs 수정
 index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P 500', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^GSPC/"),
-    (m_col4, "NASDAQ 100", macro_info.get('NASDAQ 100', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^NDX/"),
+    (m_col4, "나스닥", macro_info.get('NASDAQ 100', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^IXIC/"), # 나스닥 종합 지수 링크
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val': 0, 'change': 0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
