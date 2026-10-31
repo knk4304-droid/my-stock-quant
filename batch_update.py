@@ -32,10 +32,11 @@ def get_chart_link(ticker, stock_name):
 
 
 def fetch_realtime_macro():
+    """실시간 주요 시장 지수 수집 (yfinance 우선 직결로 미국 지수 오차 완치)"""
     macro_results = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-    # 1) KOSPI 수집 (네이버 API 1차 + yfinance 2차 백업)
+    # 1) KOSPI 수집
     try:
         res = requests.get("https://m.stock.naver.com/api/index/KOSPI/basic", headers=headers, timeout=5)
         if res.status_code == 200:
@@ -46,7 +47,7 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['KOSPI'] = {'val': 5730.74, 'change': -3.48}
 
-    # 2) KOSDAQ 수집 (네이버 API 1차 + yfinance 2차 백업)
+    # 2) KOSDAQ 수집
     try:
         res = requests.get("https://m.stock.naver.com/api/index/KOSDAQ/basic", headers=headers, timeout=5)
         if res.status_code == 200:
@@ -68,11 +69,11 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    # 4) 미국 지수 실시간 수집 (yfinance 1차 최우선 직결로 시차 완치 + 네이버 2차 백업)
+    # 4) 미국 지수 수집 (yfinance 1차 최우선 직결로 시차 완치 및 나스닥 종합 지수 교체)
     us_targets = {
         'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
-        'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'},
-        'NASDAQ': {'yf': '^IXIC', 'naver': 'NAS@IXIC'},
+        '나스닥': {'yf': '^IXIC', 'naver': 'NAS@IXIC'},
+        'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'}, # 하위 호환용
         'VIX': {'yf': '^VIX', 'naver': 'SPI@VIX'}
     }
 
@@ -104,6 +105,34 @@ def fetch_realtime_macro():
     return macro_results
 
 
+def fetch_stock_news_sentiment(clean_code):
+    """종목별 최근 5개 뉴스 헤드라인 감성 분석 (-100pt ~ +100pt)"""
+    try:
+        url = f"https://finance.naver.com/item/news_news.naver?code={clean_code}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=3)
+        if res.status_code != 200:
+            return 0.0, 0, 0
+
+        soup = BeautifulSoup(res.text, 'html.parser')
+        titles = [a.text.strip() for a in soup.select('.title a')[:5]]
+
+        if not titles:
+            return 0.0, 0, 0
+
+        pos_cnt = sum(1 for t in titles for k in POS_KW if k in t)
+        neg_cnt = sum(1 for t in titles for k in NEG_KW if k in t)
+
+        total = pos_cnt + neg_cnt
+        if total == 0:
+            return 0.0, pos_cnt, neg_cnt
+
+        score = round(((pos_cnt - neg_cnt) / total) * 100, 1)
+        return score, pos_cnt, neg_cnt
+    except Exception:
+        return 0.0, 0, 0
+
+
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     raw_name = name_map.get(ticker, name_map.get(clean_code, None))
@@ -117,8 +146,6 @@ def process_single_stock(ticker, market, name_map, engine, macro):
             stock_name = f"{base_name} ({clean_code})"
     else:
         stock_name = f"{ticker} ({clean_code})" if ticker != clean_code else clean_code
-
-    display_stock_name = stock_name
 
     # 1. 주가 데이터 수집
     df = pd.DataFrame()
@@ -212,6 +239,9 @@ def execute_batch_update():
 
     df_results = pd.DataFrame(results)
 
+    # 나스닥 종합 지수를 대시보드 카드용으로 바인딩
+    nasdaq_data = macro.get('나스닥', macro.get('NASDAQ 100', {}))
+
     macro_df = pd.DataFrame([{
         'updated_at': now_str,
         'kospi_val': macro.get('KOSPI', {}).get('val', 0.0),
@@ -220,8 +250,8 @@ def execute_batch_update():
         'kosdaq_chg': macro.get('KOSDAQ', {}).get('change', 0.0),
         'sp500_val': macro.get('S&P 500', {}).get('val', 0.0),
         'sp500_chg': macro.get('S&P 500', {}).get('change', 0.0),
-        'nasdaq_val': macro.get('NASDAQ 100', {}).get('val', 0.0),
-        'nasdaq_chg': macro.get('NASDAQ 100', {}).get('change', 0.0),
+        'nasdaq_val': nasdaq_data.get('val', 0.0),
+        'nasdaq_chg': nasdaq_data.get('change', 0.0),
         'usdkrw_val': macro.get('USDKRW', {}).get('val', 1340.0),
         'usdkrw_chg': macro.get('USDKRW', {}).get('change', 0.0),
         'vix_val': macro.get('VIX', {}).get('val', 15.0),
