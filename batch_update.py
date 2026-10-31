@@ -9,7 +9,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup    # 뉴스 크롤링용
 
 from universe import UniverseLoader
-from quant import QuantEngine, fetch_stock_news_sentiment
+from quant import QuantEngine
 
 warnings.filterwarnings('ignore')
 
