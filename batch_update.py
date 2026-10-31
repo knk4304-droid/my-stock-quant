@@ -69,11 +69,19 @@ def fetch_realtime_macro():
 
     return macro_results
 
-
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
-    stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
+    stock_name_only = name_map.get(ticker, name_map.get(clean_code, clean_code))
     
+    # [완치 방어 코드] 종목명과 티커 중복 방지 정제 및 기존 변수명(stock_name) 동시 보장
+    if stock_name_only != clean_code and not stock_name_only.endswith(f"({clean_code})"):
+        stock_name = f"{stock_name_only} ({clean_code})"
+    else:
+        stock_name = stock_name_only
+        
+    display_stock_name = stock_name  # 하위 호환성 보장
+
+    df = pd.DataFrame()
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=5)
         if df.empty or len(df.dropna()) < 2:
@@ -81,7 +89,10 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     except Exception:
         df = pd.DataFrame()
 
-    raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
+    # 뉴스 감성 분석 실행
+    news_score, pos_cnt, neg_cnt = fetch_stock_news_sentiment(clean_code)
+
+    raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name, news_score=news_score)
     r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
 
     try:
@@ -89,13 +100,15 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     except Exception:
         r_1m_val = 0.0
 
-    url = f"https://finance.naver.com/item/main.naver?code={clean_code}" if ticker.endswith(('.KS', '.KQ')) else f"https://finance.yahoo.com/quote/{ticker.replace('-', '.')}/"
-    chart_link = f"[{stock_name}]({url})"
+    chart_link = get_chart_link(ticker, stock_name)
 
     row = {
         '시장': market,
-        '종목명': stock_name,
+        '종목명': stock_name,  # DB에 이름 (티커) 형태로 안전하게 저장
         '차트링크': chart_link,
+        'news_score': news_score,
+        'news_pos': pos_cnt,
+        'news_neg': neg_cnt,
         'r_1w_val': r_1w_val,
         '당일 수익률': r_today,
         '1일 전': r_1d,
@@ -103,15 +116,16 @@ def process_single_stock(ticker, market, name_map, engine, macro):
         '1주 수익률': r_1w,
         '1달 수익률': r_1m,
         '3개월 수익률': r_3m,
-        '1년 수익률': r_1y
+        '1년 수익률': r_1y,
     }
 
     for i, fname in enumerate(FEATURE_NAMES):
-        row[fname] = round(float(raw_scores[i]), 1)
+        row[fname] = np.round(raw_scores[i], 1)
 
-    for p in ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']:
-        row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro)
-        row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro)
+    periods = ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']
+    for p in periods:
+        row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro, news_score=news_score)
+        row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro, news_score=news_score)
 
     return row
 
