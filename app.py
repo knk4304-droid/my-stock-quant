@@ -144,15 +144,12 @@ def load_quant_database():
         df_macro = pd.read_parquet('quant_macro.parquet')
         _, name_map = UniverseLoader.get_full_universe()
 
-        # [10회 시뮬레이션 완치 정제 로직] 모든 숫자로 된 종목코드를 한글 종목명으로 강제 100% 매핑
+        # [핵심 보완] 종목코드 숫자로 된 표기를 무조건 한글 종목명으로 역추적 매핑
         def fix_stock_name(row):
             raw_name = str(row['종목명']).strip()
-            # 순수 코드 단어 추출
             clean_code = raw_name.split()[0].split('(')[0].split('.')[0].strip()
             
-            # 숫자 6자리 종목코드나 숫자 단독 표기인 경우
             if clean_code.isdigit() or (len(clean_code) == 6 and clean_code.isalnum()):
-                # name_map에서 가능한 모든 형태의 키 탐색
                 k_name = (
                     name_map.get(f"{clean_code}.KS") or 
                     name_map.get(f"{clean_code}.KQ") or 
