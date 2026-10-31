@@ -142,7 +142,24 @@ def load_quant_database():
     try:
         df_stocks = pd.read_parquet('quant_stocks.parquet')
         df_macro = pd.read_parquet('quant_macro.parquet')
-        
+        _, name_map = UniverseLoader.get_full_universe()
+
+        # [5회 시뮬레이션 완치 로직] 숫자 코드로 표시되던 종목을 올바른 한글 종목명(티커)으로 강제 교체
+        def fix_stock_name(row):
+            raw_name = str(row['종목명'])
+            clean_code = raw_name.split()[0].split('(')[0].split('.')[0].strip()
+            
+            if clean_code.isdigit() or len(clean_code) == 6:
+                full_code_ks = f"{clean_code}.KS"
+                full_code_kq = f"{clean_code}.KQ"
+                k_name = name_map.get(full_code_ks, name_map.get(full_code_kq, name_map.get(clean_code, None)))
+                if k_name:
+                    return f"{k_name} ({clean_code})"
+            return raw_name
+
+        if not df_stocks.empty and '종목명' in df_stocks.columns:
+            df_stocks['종목명'] = df_stocks.apply(fix_stock_name, axis=1)
+
         m_row = df_macro.iloc[0]
         macro_info = {
             'KOSPI': {'val': m_row['kospi_val'], 'change': m_row['kospi_chg']},
@@ -244,9 +261,9 @@ index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P 500', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^GSPC/"),
-    (m_col4, "나스닥", macro_info.get('나스닥', macro_info.get('NASDAQ 100', {'val': 0, 'change': 0})), "https://finance.yahoo.com/quote/^IXIC/"),
+    (m_col4, "나스닥", macro_info.get('나스닥', macro_info.get('NASDAQ 100', {'val': 0, 'change': 0})), "url?id=207quote/^IXIC/"),
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val': 0, 'change': 0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
-    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^VIX/")
+    (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val': 0, 'change': 0}), "url?id=207quote/^VIX/")
 ]
 
 for col, name, data, link in index_configs:
