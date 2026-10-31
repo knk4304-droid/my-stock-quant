@@ -2,14 +2,14 @@
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-import numpy as np               # np.round 사용용
+import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
-from bs4 import BeautifulSoup    # 뉴스 크롤링용
+from bs4 import BeautifulSoup
 
 from universe import UniverseLoader
-from quant import QuantEngine
+from quant import QuantEngine, fetch_stock_news_sentiment
 
 warnings.filterwarnings('ignore')
 
@@ -18,13 +18,11 @@ FEATURE_NAMES = [
     '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성'
 ]
 
-# 긍정 / 부정 키워드 사전
 POS_KW = ['수주', '흑자', '최대실적', '상승', '호실적', '신기술', '특허', '강세', '인수', '호재']
 NEG_KW = ['적자', '감소', '유상증자', '하락', '소송', '악재', '부진', '횡령', '이탈', '경고', '리스크']
 
 
 def get_chart_link(ticker, stock_name):
-    """차트 링크 생성 함수 (네이버 및 야후 파이낸스 지원)"""
     clean_code = ticker.split('.')[0]
     if ticker.endswith('.KS') or ticker.endswith('.KQ'):
         return f"https://finance.naver.com/item/main.naver?code={clean_code}"
@@ -32,11 +30,9 @@ def get_chart_link(ticker, stock_name):
 
 
 def fetch_realtime_macro():
-    """실시간 주요 시장 지수 수집 (yfinance 우선 직결로 미국 지수 오차 완치)"""
     macro_results = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-    # 1) KOSPI 수집
     try:
         res = requests.get("https://m.stock.naver.com/api/index/KOSPI/basic", headers=headers, timeout=5)
         if res.status_code == 200:
@@ -47,7 +43,6 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['KOSPI'] = {'val': 5730.74, 'change': -3.48}
 
-    # 2) KOSDAQ 수집
     try:
         res = requests.get("https://m.stock.naver.com/api/index/KOSDAQ/basic", headers=headers, timeout=5)
         if res.status_code == 200:
@@ -58,7 +53,6 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['KOSDAQ'] = {'val': 724.38, 'change': -3.83}
 
-    # 3) USDKRW 수집
     try:
         res = requests.get("https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic", headers=headers, timeout=5)
         if res.status_code == 200:
@@ -69,11 +63,10 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    # 4) 미국 지수 수집 (yfinance 1차 최우선 직결로 시차 완치 및 나스닥 종합 지수 교체)
     us_targets = {
         'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
         '나스닥': {'yf': '^IXIC', 'naver': 'NAS@IXIC'},
-        'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'}, # 하위 호환용
+        'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'},
         'VIX': {'yf': '^VIX', 'naver': 'SPI@VIX'}
     }
 
@@ -105,39 +98,10 @@ def fetch_realtime_macro():
     return macro_results
 
 
-def fetch_stock_news_sentiment(clean_code):
-    """종목별 최근 5개 뉴스 헤드라인 감성 분석 (-100pt ~ +100pt)"""
-    try:
-        url = f"https://finance.naver.com/item/news_news.naver?code={clean_code}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        res = requests.get(url, headers=headers, timeout=3)
-        if res.status_code != 200:
-            return 0.0, 0, 0
-
-        soup = BeautifulSoup(res.text, 'html.parser')
-        titles = [a.text.strip() for a in soup.select('.title a')[:5]]
-
-        if not titles:
-            return 0.0, 0, 0
-
-        pos_cnt = sum(1 for t in titles for k in POS_KW if k in t)
-        neg_cnt = sum(1 for t in titles for k in NEG_KW if k in t)
-
-        total = pos_cnt + neg_cnt
-        if total == 0:
-            return 0.0, pos_cnt, neg_cnt
-
-        score = round(((pos_cnt - neg_cnt) / total) * 100, 1)
-        return score, pos_cnt, neg_cnt
-    except Exception:
-        return 0.0, 0, 0
-
-
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
     raw_name = name_map.get(ticker, name_map.get(clean_code, None))
     
-    # 종목명 정제 및 '이름 (티커)' 형태 보장
     if raw_name and raw_name != clean_code:
         if raw_name.endswith(f"({clean_code})"):
             stock_name = raw_name
@@ -147,7 +111,6 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     else:
         stock_name = f"{ticker} ({clean_code})" if ticker != clean_code else clean_code
 
-    # 1. 주가 데이터 수집
     df = pd.DataFrame()
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=5)
@@ -159,10 +122,8 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     if df.empty or len(df.dropna()) < 2:
         return None
 
-    # 2. 뉴스 감성 분석 실행
     news_score, pos_cnt, neg_cnt = fetch_stock_news_sentiment(clean_code)
 
-    # 3. 퀀트 점수 및 수익률 계산
     try:
         raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name, news_score=news_score)
         r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
@@ -178,7 +139,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     row = {
         '시장': market,
-        '종목명': stock_name,  # DB에 이름 (티커) 형태로 저장
+        '종목명': stock_name,
         '차트링크': chart_link,
         'news_score': news_score,
         'news_pos': pos_cnt,
@@ -238,8 +199,6 @@ def execute_batch_update():
         return
 
     df_results = pd.DataFrame(results)
-
-    # 나스닥 종합 지수를 대시보드 카드용으로 바인딩
     nasdaq_data = macro.get('나스닥', macro.get('NASDAQ 100', {}))
 
     macro_df = pd.DataFrame([{
