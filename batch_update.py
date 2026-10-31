@@ -2,9 +2,12 @@
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
+import numpy as np               # np.round 사용용
 import pandas as pd
 import requests
 import yfinance as yf
+from bs4 import BeautifulSoup    # 뉴스 크롤링용
+
 from universe import UniverseLoader
 from quant import QuantEngine
 
@@ -15,28 +18,53 @@ FEATURE_NAMES = [
     '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성'
 ]
 
+# 긍정 / 부정 키워드 사전
+POS_KW = ['수주', '흑자', '최대실적', '상승', '호실적', '신기술', '특허', '강세', '인수', '호재']
+NEG_KW = ['적자', '감소', '유상증자', '하락', '소송', '악재', '부진', '횡령', '이탈', '경고', '리스크']
+
+
+def get_chart_link(ticker, stock_name):
+    """차트 링크 생성 함수 (네이버 및 야후 파이낸스 지원)"""
+    clean_code = ticker.split('.')[0]
+    if ticker.endswith('.KS') or ticker.endswith('.KQ'):
+        return f"https://finance.naver.com/item/main.naver?code={clean_code}"
+    return f"https://finance.yahoo.com/quote/{ticker}"
+
+
 def fetch_realtime_macro():
     macro_results = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
     # 1) KOSPI
     try:
-        res = requests.get("https://m.stock.naver.com/api/index/KOSPI/basic", headers=headers, timeout=5).json()
-        macro_results['KOSPI'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+        res = requests.get("https://m.stock.naver.com/api/index/KOSPI/basic", headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            macro_results['KOSPI'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
+        else:
+            macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
     except Exception:
         macro_results['KOSPI'] = {'val': 2600.0, 'change': 0.0}
 
     # 2) KOSDAQ
     try:
-        res = requests.get("https://m.stock.naver.com/api/index/KOSDAQ/basic", headers=headers, timeout=5).json()
-        macro_results['KOSDAQ'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+        res = requests.get("https://m.stock.naver.com/api/index/KOSDAQ/basic", headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            macro_results['KOSDAQ'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
+        else:
+            macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
     except Exception:
         macro_results['KOSDAQ'] = {'val': 750.0, 'change': 0.0}
 
     # 3) USDKRW
     try:
-        res = requests.get("https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic", headers=headers, timeout=5).json()
-        macro_results['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+        res = requests.get("https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic", headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            macro_results['USDKRW'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
+        else:
+            macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
@@ -50,9 +78,11 @@ def fetch_realtime_macro():
     for key, cfg in us_targets.items():
         success = False
         try:
-            res = requests.get(f"https://m.stock.naver.com/api/index/{cfg['naver']}/basic", headers=headers, timeout=5).json()
-            macro_results[key] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
-            success = True
+            res = requests.get(f"https://m.stock.naver.com/api/index/{cfg['naver']}/basic", headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                macro_results[key] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
+                success = True
         except Exception:
             pass
 
@@ -69,18 +99,52 @@ def fetch_realtime_macro():
 
     return macro_results
 
+
+def fetch_stock_news_sentiment(clean_code):
+    """종목별 최근 5개 뉴스 헤드라인 감성 분석 (-100pt ~ +100pt)"""
+    try:
+        url = f"https://finance.naver.com/item/news_news.naver?code={clean_code}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=3)
+        if res.status_code != 200:
+            return 0.0, 0, 0
+
+        soup = BeautifulSoup(res.text, 'html.parser')
+        titles = [a.text.strip() for a in soup.select('.title a')[:5]]
+
+        if not titles:
+            return 0.0, 0, 0
+
+        pos_cnt = sum(1 for t in titles for k in POS_KW if k in t)
+        neg_cnt = sum(1 for t in titles for k in NEG_KW if k in t)
+
+        total = pos_cnt + neg_cnt
+        if total == 0:
+            return 0.0, pos_cnt, neg_cnt
+
+        score = round(((pos_cnt - neg_cnt) / total) * 100, 1)
+        return score, pos_cnt, neg_cnt
+    except Exception:
+        return 0.0, 0, 0
+
+
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
-    stock_name_only = name_map.get(ticker, name_map.get(clean_code, clean_code))
+    raw_name = name_map.get(ticker, name_map.get(clean_code, None))
     
-    # [완치 방어 코드] 종목명과 티커 중복 방지 정제 및 기존 변수명(stock_name) 동시 보장
-    if stock_name_only != clean_code and not stock_name_only.endswith(f"({clean_code})"):
-        stock_name = f"{stock_name_only} ({clean_code})"
+    # 종목명 정제 및 '이름 (티커)' 형태 보장
+    if raw_name and raw_name != clean_code:
+        if raw_name.endswith(f"({clean_code})"):
+            stock_name = raw_name
+        else:
+            base_name = raw_name.split('(')[0].strip()
+            stock_name = f"{base_name} ({clean_code})"
     else:
-        stock_name = stock_name_only
-        
-    display_stock_name = stock_name  # 하위 호환성 보장
+        stock_name = f"{ticker} ({clean_code})" if ticker != clean_code else clean_code
 
+    display_stock_name = stock_name
+
+    # 1. 주가 데이터 수집
     df = pd.DataFrame()
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=5)
@@ -89,14 +153,22 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     except Exception:
         df = pd.DataFrame()
 
-    # 뉴스 감성 분석 실행
+    # 데이터가 비어있는 경우 계산 건너뛰기 방어
+    if df.empty or len(df.dropna()) < 2:
+        return None
+
+    # 2. 뉴스 감성 분석 실행
     news_score, pos_cnt, neg_cnt = fetch_stock_news_sentiment(clean_code)
 
-    raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name, news_score=news_score)
-    r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
+    # 3. 퀀트 점수 및 수익률 계산
+    try:
+        raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name, news_score=news_score)
+        r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
+    except Exception:
+        return None
 
     try:
-        r_1m_val = float(str(r_1m).replace('%', '').replace('+', ''))
+        r_1m_val = float(str(r_1m).replace('%', '').replace('+', '').strip())
     except Exception:
         r_1m_val = 0.0
 
@@ -104,7 +176,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     row = {
         '시장': market,
-        '종목명': stock_name,  # DB에 이름 (티커) 형태로 안전하게 저장
+        '종목명': stock_name,  # DB에 이름 (티커) 형태로 저장
         '차트링크': chart_link,
         'news_score': news_score,
         'news_pos': pos_cnt,
@@ -120,12 +192,17 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     }
 
     for i, fname in enumerate(FEATURE_NAMES):
-        row[fname] = np.round(raw_scores[i], 1)
+        score_val = raw_scores[i] if i < len(raw_scores) else 0.0
+        row[fname] = np.round(score_val, 1)
 
     periods = ['1W', '1M', '6M', '1Y', '5Y', '10Y', '10Y+']
     for p in periods:
-        row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro, news_score=news_score)
-        row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro, news_score=news_score)
+        try:
+            row[f"총점_{p}"] = engine.calculate_v3_score(raw_scores, market, p, r_1w_val, r_1m_val, macro, news_score=news_score)
+            row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw_scores, market, p, r_1w_val, r_1m_val, macro, news_score=news_score)
+        except Exception:
+            row[f"총점_{p}"] = 50.0
+            row[f"미래수익률_{p}"] = 0.0
 
     return row
 
@@ -149,10 +226,14 @@ def execute_batch_update():
         for future in futures:
             try:
                 res = future.result()
-                if res:
+                if res is not None:
                     results.append(res)
             except Exception:
                 pass
+
+    if not results:
+        print(f"[{now_str}] ⚠️ 수집된 데이터가 없습니다.")
+        return
 
     df_results = pd.DataFrame(results)
 
@@ -181,31 +262,3 @@ def execute_batch_update():
 
 if __name__ == "__main__":
     execute_batch_update()
-
-# 긍정 / 부정 키워드 사전
-POS_KW = ['수주', '흑자', '최대실적', '상승', '호실적', '신기술', '특허', '강세', '인수', '호재']
-NEG_KW = ['적자', '감소', '유상증자', '하락', '소송', '악재', '부진', '횡령', '이탈', '경고', '리스크']
-
-def fetch_stock_news_sentiment(clean_code):
-    """종목별 최근 5개 뉴스 헤드라인 감성 분석 (-100pt ~ +100pt)"""
-    try:
-        url = f"https://finance.naver.com/item/news_news.naver?code={clean_code}"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=3)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        titles = [a.text.strip() for a in soup.select('.title a')[:5]]
-
-        if not titles:
-            return 0.0, 0, 0
-
-        pos_cnt = sum(1 for t in titles for k in POS_KW if k in t)
-        neg_cnt = sum(1 for t in titles for k in NEG_KW if k in t)
-
-        total = pos_cnt + neg_cnt
-        if total == 0:
-            return 0.0, pos_cnt, neg_cnt
-
-        score = round(((pos_cnt - neg_cnt) / total) * 100, 1)
-        return score, pos_cnt, neg_cnt
-    except Exception:
-        return 0.0, 0, 0
