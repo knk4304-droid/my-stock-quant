@@ -1,4 +1,4 @@
-# app.py - UI 및 통합 대시보드 메인
+# app.py - UI 및 통합 대시보드 메인 (v4.00 완비판)
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -32,7 +32,7 @@ def fetch_realtime_macro():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
-    # 1) KOSPI 수집 (네이버 API 1차 + yfinance 2차 백업)
+    # 1) KOSPI 수집
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
         res = requests.get(url_kr, headers=headers, timeout=3).json()
@@ -51,7 +51,7 @@ def fetch_realtime_macro():
         except Exception:
             macro_results['KOSPI'] = {'val': 5730.74, 'change': -3.48}
 
-    # 2) KOSDAQ 수집 (네이버 API 1차 + yfinance 2차 백업)
+    # 2) KOSDAQ 수집
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
         res = requests.get(url_kq, headers=headers, timeout=3).json()
@@ -81,7 +81,7 @@ def fetch_realtime_macro():
     except Exception:
         macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
 
-    # 4) 미국 지수 실시간 수집 (yfinance 1차 + 네이버 2차 백업)
+    # 4) 미국 지수 수집 (yfinance 1차 + 네이버 2차 백업)
     us_targets = {
         'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
         'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'},
@@ -164,8 +164,14 @@ def render_weekly_market_briefing(df, macro_info):
 
 def process_single_stock(ticker, market, name_map, engine, macro):
     clean_code = ticker.split('.')[0]
-    stock_name = name_map.get(ticker, name_map.get(clean_code, clean_code))
+    stock_name_only = name_map.get(ticker, name_map.get(clean_code, clean_code))
     
+    # [개선] 종목명과 티커 중복 방지 정제
+    if stock_name_only != clean_code and not stock_name_only.endswith(f"({clean_code})"):
+        display_stock_name = f"{stock_name_only} ({clean_code})"
+    else:
+        display_stock_name = stock_name_only
+
     df = pd.DataFrame()
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=5)
@@ -174,7 +180,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     except Exception:
         df = pd.DataFrame()
 
-    raw_scores = engine.calculate_raw_scores(df, macro, market, stock_name)
+    raw_scores = engine.calculate_raw_scores(df, macro, market, display_stock_name)
     r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
 
     try:
@@ -182,11 +188,11 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     except Exception:
         r_1m_val = 0.0
 
-    chart_link = get_chart_link(ticker, stock_name)
+    chart_link = get_chart_link(ticker, display_stock_name)
 
     row = {
         '시장': market,
-        '종목명': stock_name,
+        '종목명': display_stock_name,
         '차트링크': chart_link,
         'r_1w_val': r_1w_val,
         '당일 수익률': r_today,
@@ -277,7 +283,7 @@ def render_korean_market_card(title, data, link):
 
 
 # ==========================================
-# 2. UI 및 메인 실행 부분 (단일 실행 최적화)
+# 2. UI 및 메인 실행 부분
 # ==========================================
 st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", page_icon="📈", layout="wide")
 
@@ -297,7 +303,7 @@ with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & �
     | :--- | :--- | :--- |
     | **퀀트 총점** | $\sum (\text{10대 요인} \times \text{가중치}) + \text{뉴스 감성 점수}$ | 체력, 모멘텀, 뉴스 호재를 종합 평가한 **기업 체력 점수** (100점 만점) |
     | **예상 수익률** | $(\text{총점} - 50.0) \times \text{기간별 가수} + (\text{뉴스 점수} \times 0.02)$ | 백테스트 시뮬레이션 기반 **향후 기간별 목표 상승 여력(Up-side)** |
-    | **기대 승률** | $\text{Clip}(\text{총점}_{1W} \times 1.1 + \text{뉴스 가산}, 60\%, 95\%)$ | 단기 진입 시 **손실 없이 플러스 수익으로 마감할 통계적 확률** |
+    | **기대 승률** | $\text{Clip}(\text{총점}_{1W} \times 1.1 + \text{뉴스가산}, 60\%, 95\%)$ | 단기 진입 시 **손실 없이 플러스 수익으로 마감할 통계적 확률** |
     | **매수 시그널** | 승률 $70\%$ 이상 & $1W$ 등락률 $+8\%$ 미만일 때 `🟢 강력 매수` | 추격 매수를 방지하고 **안전하게 1차 분할 매수할 최적 타점** |
     | **매도 시그널** | 약세 하락주 + **악재 뉴스 발생** 시 `🔴 손절/교체` 최상단 표출 | 계좌 손실 방지를 위해 **가장 먼저 손절/익절해야 할 대응 긴급도** |
     
@@ -351,6 +357,7 @@ if not df.empty:
     for tab, p_code in zip(tabs, period_codes):
         with tab:
             st.markdown(f"### 🎯 [{p_code}] 테마 그룹별 맞춤형 가중치 배점 가이드")
+            # [수정 완치] quant.py 최신 함수 사용으로 AttributeError 완벽 방지
             w_large = engine.get_weights_by_market('코스피200', p_code)
             w_small = engine.get_weights_by_market('코스닥100', p_code)
             w_etf = engine.get_weights_by_market('국내 ETF', p_code)
@@ -374,7 +381,7 @@ if not df.empty:
                     )
                     if selected_stocks:
                         target_names = [s.split(' - ')[1] for s in selected_stocks]
-                        cat_df = df[df['종목명'].isin(target_names)].drop_duplicates(subset=['종목명']).copy()
+                        cat_df = df[df['종목명'].str.contains('|'.join(target_names), na=False)].drop_duplicates(subset=['종목명']).copy()
                     else:
                         cat_df = pd.DataFrame()
                 elif "AI 종합 필터" in cat:
