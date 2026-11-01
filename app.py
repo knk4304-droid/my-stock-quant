@@ -1,4 +1,4 @@
-# app.py - UI 및 통합 대시보드 메인 (v4.00 완비판)
+# app.py - UI 및 통합 대시보드 메인 (v4.00 최종 완치판)
 import datetime
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +22,21 @@ FEATURE_NAMES = [
     '성장성(CAGR)', '수익성(ROE)', '재무건전성', '밸류에이션', '기술적모멘텀',
     '수급/거래량', '환율민감도', '금리환경', '시장상대강도', '대외변동성'
 ]
+
+def fix_stock_name_str(raw_name: str, name_map: dict) -> str:
+    """숫자로만 표출되는 종목코드를 한글 종목명 (티커)으로 100% 강제 전환하는 정제 함수"""
+    clean_text = str(raw_name).strip()
+    clean_code = clean_text.split()[0].split('(')[0].split('.')[0].strip()
+    
+    if clean_code.isdigit() or (len(clean_code) == 6 and clean_code.isalnum()):
+        k_name = (
+            name_map.get(f"{clean_code}.KS") or 
+            name_map.get(f"{clean_code}.KQ") or 
+            name_map.get(clean_code)
+        )
+        if k_name:
+            return f"{k_name} ({clean_code})"
+    return clean_text
 
 def fetch_realtime_macro():
     macro_results = {}
@@ -104,22 +119,26 @@ def get_chart_link(ticker: str, name: str) -> str:
     return f"[{name}]({url})"
 
 
-def render_weekly_market_briefing(df, macro_info):
-    vix_val = macro_info.get('VIX', {}).get('val', 15.0)
-    nasdaq_chg = macro_info.get('나스닥', {}).get('change', macro_info.get('NASDAQ 100', {}).get('change', 0.0))
-    kospi_chg = macro_info.get('KOSPI', {}).get('change', 0.0)
-    usdkrw_val = macro_info.get('USDKRW', {}).get('val', 1340.0)
+def render_weekly_market_briefing(df, macro_info, name_map):
+    vix_val = float(macro_info.get('VIX', {}).get('val', 15.0))
+    nasdaq_chg = float(macro_info.get('나스닥', {}).get('change', 0.0))
+    kospi_chg = float(macro_info.get('KOSPI', {}).get('change', 0.0))
+    usdkrw_val = float(macro_info.get('USDKRW', {}).get('val', 1340.0))
 
-    buy_picks = df[df['r_1w_val'] < 8.0].drop_duplicates('종목명').sort_values(by='총점_1W', ascending=False).head(3)
-    take_profits = df[df['r_1w_val'] >= 8.0].drop_duplicates('종목명').sort_values(by='r_1w_val', ascending=False).head(3)
-    stop_losses = df[(df['r_1w_val'] <= -5.0) & (df['총점_1W'] < 55.0)].drop_duplicates('종목명').head(3)
+    # 브리핑 리포트 내 종목명 한글 매핑 강제 적용
+    df_copy = df.copy()
+    df_copy['종목명'] = df_copy['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
+
+    buy_picks = df_copy[df_copy['r_1w_val'] < 8.0].drop_duplicates('종목명').sort_values(by='총점_1W', ascending=False).head(3)
+    take_profits = df_copy[df_copy['r_1w_val'] >= 8.0].drop_duplicates('종목명').sort_values(by='r_1w_val', ascending=False).head(3)
+    stop_losses = df_copy[(df_copy['r_1w_val'] <= -5.0) & (df_copy['총점_1W'] < 55.0)].drop_duplicates('종목명').head(3)
 
     vix_status = "🟢 변동성 안정 구간 (안정적 상승 추세 유지 가능)" if vix_val < 20.0 else "🔴 변동성 경보 구간 (분할 매수 및 리스크 관리 필수)"
 
     st.markdown(f"""
     ### 📋 [AI 퀀트 주간 종합 브리핑] 이번 주 시장 전망 & 대응 전략
     #### 1. 🌐 글로벌 & 국내 증시 마크로 환경 진단
-    * **시장 변동성 (VIX):** 현재 `{vix_val}`pt $\rightarrow$ **{vix_status}**
+    * **시장 변동성 (VIX):** 현재 `{vix_val:.2f}`pt $\rightarrow$ **{vix_status}**
     * **미국/국내 연동성:** 나스닥(`{nasdaq_chg:+.2f}%`), KOSPI(`{kospi_chg:+.2f}%`), 원/달러 환율(`{usdkrw_val:,.2f}원`)
     * **주간 시장 종합 의견:** 단기적 차별화 장세가 강하게 나타나고 있습니다. 주가가 최근 1주일간 급등(+8% 이상)한 과열 종목은 추격 매수를 보류하고, 수급과 퀀트 총점이 우수한 눌림목 종목으로 집중하는 전략이 유리합니다.
 
@@ -144,40 +163,25 @@ def load_quant_database():
         df_macro = pd.read_parquet('quant_macro.parquet')
         _, name_map = UniverseLoader.get_full_universe()
 
-        # 종목코드 숫자로 된 표기를 무조건 한글 종목명으로 역추적 매핑
-        def fix_stock_name(row):
-            raw_name = str(row['종목명']).strip()
-            clean_code = raw_name.split()[0].split('(')[0].split('.')[0].strip()
-            
-            if clean_code.isdigit() or (len(clean_code) == 6 and clean_code.isalnum()):
-                k_name = (
-                    name_map.get(f"{clean_code}.KS") or 
-                    name_map.get(f"{clean_code}.KQ") or 
-                    name_map.get(clean_code)
-                )
-                if k_name:
-                    return f"{k_name} ({clean_code})"
-            return raw_name
-
         if not df_stocks.empty and '종목명' in df_stocks.columns:
-            df_stocks['종목명'] = df_stocks.apply(fix_stock_name, axis=1)
+            df_stocks['종목명'] = df_stocks['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
 
         m_row = df_macro.iloc[0]
         macro_info = {
-            'KOSPI': {'val': m_row['kospi_val'], 'change': m_row['kospi_chg']},
-            'KOSDAQ': {'val': m_row['kosdaq_val'], 'change': m_row['kosdaq_chg']},
-            'S&P 500': {'val': m_row['sp500_val'], 'change': m_row['sp500_chg']},
-            '나스닥': {'val': m_row['nasdaq_val'], 'change': m_row['nasdaq_chg']},
-            'NASDAQ 100': {'val': m_row['nasdaq_val'], 'change': m_row['nasdaq_chg']},
-            'USDKRW': {'val': m_row['usdkrw_val'], 'change': m_row['usdkrw_chg']},
-            'VIX': {'val': m_row['vix_val'], 'change': m_row['vix_chg']}
+            'KOSPI': {'val': m_row.get('kospi_val', 0.0), 'change': m_row.get('kospi_chg', 0.0)},
+            'KOSDAQ': {'val': m_row.get('kosdaq_val', 0.0), 'change': m_row.get('kosdaq_chg', 0.0)},
+            'S&P 500': {'val': m_row.get('sp500_val', 0.0), 'change': m_row.get('sp500_chg', 0.0)},
+            '나스닥': {'val': m_row.get('nasdaq_val', 0.0), 'change': m_row.get('nasdaq_chg', 0.0)},
+            'USDKRW': {'val': m_row.get('usdkrw_val', 0.0), 'change': m_row.get('usdkrw_chg', 0.0)},
+            'VIX': {'val': m_row.get('vix_val', 0.0), 'change': m_row.get('vix_chg', 0.0)}
         }
-        updated_at = m_row['updated_at']
+        updated_at = m_row.get('updated_at', "데이터 없음")
         engine = QuantEngine()
         
-        return df_stocks, engine, macro_info, updated_at
+        return df_stocks, engine, macro_info, updated_at, name_map
     except Exception:
-        return pd.DataFrame(), QuantEngine(), {}, "데이터 없음"
+        _, name_map = UniverseLoader.get_full_universe()
+        return pd.DataFrame(), QuantEngine(), {}, "데이터 없음", name_map
 
 
 def render_korean_market_card(title, data, link):
@@ -232,7 +236,7 @@ st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", page_icon="📈
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
 
-df, engine, macro_info, updated_at = load_quant_database()
+df, engine, macro_info, updated_at, name_map = load_quant_database()
 
 st.title("📈 AI 추천 주식 매매 (v4.00)")
 st.caption(f"부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: {updated_at}")
@@ -263,7 +267,7 @@ index_configs = [
     (m_col1, "KOSPI", macro_info.get('KOSPI', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"),
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P 500', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^GSPC/"),
-    (m_col4, "나스닥", macro_info.get('나스닥', macro_info.get('NASDAQ 100', {'val': 0, 'change': 0})), "https://finance.yahoo.com/quote/^IXIC/"),
+    (m_col4, "나스닥", macro_info.get('나스닥', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^IXIC/"),
     (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val': 0, 'change': 0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
@@ -274,7 +278,7 @@ for col, name, data, link in index_configs:
 
 if not df.empty:
     with st.expander("📋 **[클릭하여 열기] AI 퀀트 주간 종합 브리핑 리포트 (이번 주 시장 전망 & 대응 전략)**", expanded=True):
-        render_weekly_market_briefing(df, macro_info)
+        render_weekly_market_briefing(df, macro_info, name_map)
 
 st.markdown("---")
 
@@ -339,6 +343,8 @@ if not df.empty:
                     cat_df = df[df['시장'] == cat].copy()
 
                 if not cat_df.empty:
+                    # 종목명 2차 한글 매핑 강제 보완
+                    cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
                     cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
 
@@ -380,11 +386,12 @@ if not df.empty:
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
-                    # [완치 로직] 숫자가 아닌 정제된 한글 종목명으로 링크 텍스트 표시
+                    # [완치 로직] 한글 종목명으로 차트 링크 생성
                     def make_named_link(row):
                         raw_link = str(row['차트링크'])
                         url = raw_link.split('](')[-1].rstrip(')') if '](' in raw_link else raw_link
-                        return f"[{row['종목명']}]({url})"
+                        c_name = fix_stock_name_str(row['종목명'], name_map)
+                        return f"[{c_name}]({url})"
 
                     cat_df['종목(차트보기)'] = cat_df.apply(make_named_link, axis=1)
 
@@ -406,7 +413,8 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
 
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
+                            c_name = fix_stock_name_str(row['종목명'], name_map)
+                            st.markdown(f"### {idx}. {c_name} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
                             col_a, col_b = st.columns(2)
                             with col_a:
                                 st.markdown(f"#### 📈 **[매수 전략 및 시그널]** `{buy_signal}`")
