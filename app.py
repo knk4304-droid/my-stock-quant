@@ -144,7 +144,7 @@ def load_quant_database():
         df_macro = pd.read_parquet('quant_macro.parquet')
         _, name_map = UniverseLoader.get_full_universe()
 
-        # [핵심 보완] 종목코드 숫자로 된 표기를 무조건 한글 종목명으로 역추적 매핑
+        # 종목코드 숫자로 된 표기를 무조건 한글 종목명으로 역추적 매핑
         def fix_stock_name(row):
             raw_name = str(row['종목명']).strip()
             clean_code = raw_name.split()[0].split('(')[0].split('.')[0].strip()
@@ -380,7 +380,14 @@ if not df.empty:
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
-                    cat_df['종목(차트보기)'] = cat_df['차트링크']
+                    # [완치 로직] 숫자가 아닌 정제된 한글 종목명으로 링크 텍스트 표시
+                    def make_named_link(row):
+                        raw_link = str(row['차트링크'])
+                        url = raw_link.split('](')[-1].rstrip(')') if '](' in raw_link else raw_link
+                        return f"[{row['종목명']}]({url})"
+
+                    cat_df['종목(차트보기)'] = cat_df.apply(make_named_link, axis=1)
+
                     desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
                     available_cols = [c for c in desired_cols if c in cat_df.columns]
 
