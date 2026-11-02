@@ -164,10 +164,10 @@ def load_quant_database():
         df_stocks = pd.read_parquet('quant_stocks.parquet')
         df_macro = pd.read_parquet('quant_macro.parquet')
         _, name_map = UniverseLoader.get_full_universe()
-
+        
         if not df_stocks.empty and '종목명' in df_stocks.columns:
             df_stocks['종목명'] = df_stocks['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
-
+        
         m_row = df_macro.iloc[0]
         macro_info = {
             'KOSPI': {'val': m_row.get('kospi_val', 0.0), 'change': m_row.get('kospi_chg', 0.0)},
@@ -179,9 +179,9 @@ def load_quant_database():
         }
         updated_at = m_row.get('updated_at', "데이터 없음")
         engine = QuantEngine()
-        
         return df_stocks, engine, macro_info, updated_at, name_map
-    except Exception:
+
+    except Exception as e:
         _, name_map = UniverseLoader.get_full_universe()
         return pd.DataFrame(), QuantEngine(), {}, "데이터 없음", name_map
 
