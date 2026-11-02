@@ -55,7 +55,8 @@ def fetch_realtime_macro():
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
-        macro_results['KOSPI'] = {'val': 5730.74, 'change': -3.48}
+        # 💡 예외 발생 시 고정값 대신 데이터 없음(None)으로 설정
+        macro_results['KOSPI'] = {'val': None, 'change': None}
 
     try:
         url_kq = "https://m.stock.naver.com/api/index/KOSDAQ/basic"
@@ -65,7 +66,8 @@ def fetch_realtime_macro():
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
-        macro_results['KOSDAQ'] = {'val': 724.38, 'change': -3.83}
+        # 💡 데이터 없음(None)으로 설정
+        macro_results['KOSDAQ'] = {'val': None, 'change': None}
 
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
@@ -75,7 +77,10 @@ def fetch_realtime_macro():
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
-        macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
+        # 💡 데이터 없음(None)으로 설정
+        macro_results['USDKRW'] = {'val': None, 'change': None}
+        
+    return macro_results
 
     us_targets = {
         'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
@@ -185,23 +190,26 @@ def load_quant_database():
         _, name_map = UniverseLoader.get_full_universe()
         return pd.DataFrame(), QuantEngine(), {}, "데이터 없음", name_map
 
-
 def render_korean_market_card(title, data, link):
-    val = data.get('val', 0.0)
-    change = data.get('change', 0.0)
-    val_str = f"{val:,.2f}" if val > 0 else "N/A"
-
-    if change > 0:
-        color = "#FF3B30"
-        sign = "▲ "
-        change_str = f"{sign}+{change:.2f}%"
-    elif change < 0:
-        color = "#007AFF"
-        sign = "▼ "
-        change_str = f"{sign}{change:.2f}%"
+    val = data.get('val')
+    change = data.get('change')
+    
+    # 💡 데이터가 수집되지 않고 None으로 반환된 경우 UI 예외 처리
+    if val is None or change is None:
+        val_str = "점검중"
+        change_str = "-"
+        color = "#8E8E93" # 회색 처리
     else:
-        color = "#8E8E93"
-        change_str = "0.00%"
+        val_str = f"{val:,.2f}"
+        if change > 0:
+            color = "#FF3B30"
+            change_str = f"▲ +{change:.2f}%"
+        elif change < 0:
+            color = "#007AFF"
+            change_str = f"▼ {change:.2f}%"
+        else:
+            color = "#8E8E93"
+            change_str = "0.00%"
 
     card_html = f"""
     <div style="
