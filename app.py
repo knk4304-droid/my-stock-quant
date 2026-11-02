@@ -241,6 +241,46 @@ df, engine, macro_info, updated_at, name_map = load_quant_database()
 st.title("📈 AI 추천 주식 매매 (v4.00)")
 st.caption(f"부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: {updated_at}")
 
+import requests
+import time
+
+def trigger_github_workflow():
+    """웹 화면에서 GitHub Actions 배치 업데이트를 즉시 호출하는 함수"""
+    token = st.secrets.get("GITHUB_TOKEN")
+    repo = st.secrets.get("GITHUB_REPO", "knk4304-droid/my-stock-quant")
+    
+    if not token:
+        st.error("❌ GitHub Token이 설정되지 않았습니다. Secrets 설정을 확인하세요.")
+        return False
+        
+    url = f"https://api.github.com/repos/{repo}/dispatches"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    payload = {"event_type": "trigger_batch_update"}
+    
+    res = requests.post(url, json=payload, headers=headers)
+    return res.status_code == 204
+
+# UI 상단 데이터 업데이트 버튼 영역
+col_title, col_btn = st.columns([4, 1])
+
+with col_title:
+    st.title("📈 AI 추천 주식 매매 (v4.00)")
+    st.caption(f"부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: {updated_at}")
+
+with col_btn:
+    st.write("") # 여백
+    if st.button("🔄 실시간 갱신 실행", help="클릭 시 백그라운드 데이터 수집 엔진을 즉시 실행합니다."):
+        with st.spinner("GitHub 수집 엔진에 최신화 요청 중..."):
+            if trigger_github_workflow():
+                st.success("✅ 수집 요청 완료! (약 1분 후 새로고침하세요)")
+                time.sleep(2)
+                st.rerun()
+            else:
+                st.error("❌ 갱신 요청 실패")
+
 with st.expander("ℹ️ **[클릭] AI 퀀트 시스템 핵심 매커니즘 & 매매 가이드 보기**", expanded=False):
     st.markdown("""
     ### 📊 v4.00 핵심 진단 지표 산출 가이드
