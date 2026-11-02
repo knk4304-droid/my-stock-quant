@@ -1,9 +1,11 @@
 name: Auto Quant Batch Update
 
 on:
+  repository_dispatch:
+    types: [trigger_batch_update]  # 👈 이 부분이 추가되어야 앱 버튼 클릭 시 연동됩니다!
   schedule:
-    - cron: '*/30 * * * *'  # 30분마다 자동으로 백그라운드 수집 실행
-  workflow_dispatch:        # 필요시 GitHub 웹에서 수동 실행 버튼 제공
+    - cron: '*/30 * * * *'         # 30분마다 자동 실행
+  workflow_dispatch:               # GitHub 웹에서 수동 실행
 
 jobs:
   build-and-cache:
