@@ -4,7 +4,7 @@ import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 
-numpy import np
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
