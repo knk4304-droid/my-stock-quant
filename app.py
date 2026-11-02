@@ -192,6 +192,7 @@ def load_quant_database():
         if not df_stocks.empty and '종목명' in df_stocks.columns:
             df_stocks['종목명'] = df_stocks['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
         
+        # 1. 파켓 파일의 기본 데이터 로드
         if not df_macro.empty:
             m_row = df_macro.iloc[0]
             macro_info = {
@@ -207,9 +208,17 @@ def load_quant_database():
             macro_info = {}
             updated_at = "데이터 없음"
 
+        # 💡 [핵심 보완] 실시간 네이버 API를 호출하여 환율/지수 최신값으로 즉시 갱신
+        try:
+            realtime_macro = fetch_realtime_macro()
+            for k, v in realtime_macro.items():
+                if v.get('val') is not None:
+                    macro_info[k] = v
+        except Exception:
+            pass # 실패 시 기존 파켓 데이터 유지
+
         engine = QuantEngine()
         return df_stocks, engine, macro_info, updated_at, name_map
-
     except Exception as e:
         _, name_map = UniverseLoader.get_full_universe()
         return pd.DataFrame(), QuantEngine(), {}, "데이터 없음", name_map
