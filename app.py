@@ -1,12 +1,15 @@
 # app.py - UI 및 통합 대시보드 메인 (v4.00 최종 완치판)
 import datetime
+import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-import numpy as np
+
+numpy import np
 import pandas as pd
 import requests
 import streamlit as st
 import yfinance as yf
+
 from universe import UniverseLoader
 from quant import QuantEngine, generate_buy_analysis, generate_sell_analysis
 
@@ -228,20 +231,6 @@ def render_korean_market_card(title, data, link):
     st.markdown(card_html, unsafe_allow_html=True)
 
 
-# ==========================================
-# 2. UI 및 메인 실행 부분
-# ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", page_icon="📈", layout="wide")
-
-if AUTOREFRESH_AVAILABLE:
-    st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
-
-df, engine, macro_info, updated_at, name_map = load_quant_database()
-
-
-import requests
-import time
-
 def trigger_github_workflow():
     """웹 화면에서 GitHub Actions 배치 업데이트를 즉시 호출하는 함수"""
     token = st.secrets.get("GITHUB_TOKEN")
@@ -260,6 +249,17 @@ def trigger_github_workflow():
     
     res = requests.post(url, json=payload, headers=headers)
     return res.status_code == 204
+
+
+# ==========================================
+# 2. UI 및 메인 실행 부분
+# ==========================================
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", page_icon="📈", layout="wide")
+
+if AUTOREFRESH_AVAILABLE:
+    st_autorefresh(interval=30 * 1000, key="quant_realtime_loop")
+
+df, engine, macro_info, updated_at, name_map = load_quant_database()
 
 # UI 상단 데이터 업데이트 버튼 영역
 col_title, col_btn = st.columns([4, 1])
@@ -353,14 +353,14 @@ if not df.empty:
             st.dataframe(w_summary_df, use_container_width=True)
             st.markdown("---")
 
-            for cat in FIXED_CATEGORIES:
+            for c_idx, cat in enumerate(FIXED_CATEGORIES):
                 if "관심 종목" in cat:
                     st.markdown("### 🎯 [MY] 관심 종목 직접 선택 개별 진단")
                     selected_stocks = st.multiselect(
                         "진단하고 싶은 관심 종목을 선택하세요 (전체 모수에서 여러 개 선택 가능):",
                         options=stock_options,
                         default=[],
-                        key=f"custom_select_{p_code}"
+                        key=f"custom_select_{p_code}_{c_idx}"
                     )
                     if selected_stocks:
                         target_names = [s.split(' - ')[1] for s in selected_stocks]
@@ -413,7 +413,7 @@ if not df.empty:
                                 "정렬 옵션 선택:",
                                 options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
                                 index=0,
-                                key=f"sort_{cat}_{p_code}"
+                                key=f"sort_{cat}_{p_code}_{c_idx}"
                             )
                         if "미래 기대 수익률" in cat_sort_opt:
                             cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
