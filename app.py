@@ -69,10 +69,12 @@ def fetch_realtime_macro():
         macro_results['KOSDAQ'] = {'val': None, 'change': None}
 
     try:
-        url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
-        res = requests.get(url_fx, headers=headers, timeout=3).json()
+        url_fx = "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
+        # 또는 네이버 통합 시장지표 API 사용
+        url_fx_api = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
+        res = requests.get(url_fx_api, headers=headers, timeout=3).json()
         macro_results['USDKRW'] = {
-            'val': float(res['closePrice'].replace(',', '')),
+            'val': float(res['closePrice'].replace(',', '')), 
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
