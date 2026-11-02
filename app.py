@@ -47,6 +47,7 @@ def fetch_realtime_macro():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
+    # 1. 국내 지수 수집 (네이버 API)
     try:
         url_kr = "https://m.stock.naver.com/api/index/KOSPI/basic"
         res = requests.get(url_kr, headers=headers, timeout=3).json()
@@ -55,7 +56,6 @@ def fetch_realtime_macro():
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
-        # 💡 예외 발생 시 고정값 대신 데이터 없음(None)으로 설정
         macro_results['KOSPI'] = {'val': None, 'change': None}
 
     try:
@@ -66,7 +66,6 @@ def fetch_realtime_macro():
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
-        # 💡 데이터 없음(None)으로 설정
         macro_results['KOSDAQ'] = {'val': None, 'change': None}
 
     try:
@@ -77,11 +76,9 @@ def fetch_realtime_macro():
             'change': float(res['fluctuationsRatio'])
         }
     except Exception:
-        # 💡 데이터 없음(None)으로 설정
         macro_results['USDKRW'] = {'val': None, 'change': None}
-        
-    return macro_results
 
+    # 2. 미국 지수 수집 (1순위: 야후 파이낸스 / 2순위: 네이버 API)
     us_targets = {
         'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
         '나스닥': {'yf': '^IXIC', 'naver': 'NAS@IXIC'},
@@ -103,6 +100,7 @@ def fetch_realtime_macro():
         except Exception:
             pass
 
+        # 야후 수집 실패 시 네이버 API 시도
         if not success:
             try:
                 url_us = f"https://m.stock.naver.com/api/index/{cfg['naver']}/basic"
@@ -112,58 +110,91 @@ def fetch_realtime_macro():
                     'change': float(res['fluctuationsRatio'])
                 }
             except Exception:
-                macro_results[key] = {'val': 0.0, 'change': 0.0}
+                # 💡 최종 실패 시에도 0.0 대신 None으로 통일
+                macro_results[key] = {'val': None, 'change': None}
 
+    # 3. 모든 데이터 수집 후 마지막에 반환
     return macro_results
 
 
 def get_chart_link(ticker: str, name: str) -> str:
-    if ticker.endswith('.KS') or ticker.endswith('.KQ'):
-        code = ticker.split('.')[0]
-        url = f"https://finance.naver.com/item/main.naver?code={code}"
+    # 1. 입력받은 티커의 공백을 제거하고 대문자로 변환해 깔끔하게 정제
+    clean_ticker = str(ticker).strip().upper()
+    
+    # 2. 한국 주식 판별 기준 (점'.'으로 분리 시 앞이 6자리 숫자거나, .KS/.KQ로 끝나는 경우)
+    code_part = clean_ticker.split('.')[0]
+    
+    if clean_ticker.endswith('.KS') or clean_ticker.endswith('.KQ') or (len(code_part) == 6 and code_part.isdigit()):
+        # 네이버 증시는 순수 6자리 숫자로만 접속
+        url = f"https://finance.naver.com/item/main.naver?code={code_part}"
     else:
-        clean_ticker = ticker.replace('-', '.')
-        url = f"https://finance.yahoo.com/quote/{clean_ticker}/"
+        # 미국 등 해외 주식은 하이픈('-')을 점('.')으로 변경하여 야후 파이낸스로 연결
+        yf_ticker = clean_ticker.replace('-', '.')
+        url = f"https://finance.yahoo.com/quote/{yf_ticker}/"
+        
     return f"[{name}]({url})"
 
 
 def render_weekly_market_briefing(df, macro_info, name_map):
-    vix_val = float(macro_info.get('VIX', {}).get('val', 15.0))
-    nasdaq_chg = float(macro_info.get('나스닥', {}).get('change', 0.0))
-    kospi_chg = float(macro_info.get('KOSPI', {}).get('change', 0.0))
-    usdkrw_val = float(macro_info.get('USDKRW', {}).get('val', 1340.0))
+    # 1. 지수 데이터 원본 가져오기 (수집 실패 시 None)
+    vix_raw = macro_info.get('VIX', {}).get('val')
+    nasdaq_raw = macro_info.get('나스닥', {}).get('change')
+    kospi_raw = macro_info.get('KOSPI', {}).get('change')
+    usdkrw_raw = macro_info.get('USDKRW', {}).get('val')
 
+    # 2. VIX 안전 처리 및 상태 문구 생성
+    if vix_raw is not None:
+        vix_val = float(vix_raw)
+        vix_str = f"{vix_val:.2f} pt"
+        vix_status = "🟢 변동성 안정 구간 (안정적 상승 추세 유지 가능)" if vix_val < 20.0 else "🔴 변동성 경보 구간 (분할 매수 및 리스크 관리 필수)"
+    else:
+        vix_str = "점검중"
+        vix_status = "⚪ 변동성 데이터 수집 불가 (리스크 관리에 유의하세요)"
+
+    # 3. 기타 마크로 지표 문자열 가공 (None 방어)
+    nasdaq_str = f"{float(nasdaq_raw):+.2f}%" if nasdaq_raw is not None else "-"
+    kospi_str = f"{float(kospi_raw):+.2f}%" if kospi_raw is not None else "-"
+    usdkrw_str = f"{float(usdkrw_raw):,.2f}원" if usdkrw_raw is not None else "점검중"
+
+    # 4. 종목 데이터 가공
     df_copy = df.copy()
     df_copy['종목명'] = df_copy['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
 
     buy_picks = df_copy[df_copy['r_1w_val'] < 8.0].drop_duplicates('종목명').sort_values(by='총점_1W', ascending=False).head(3)
     take_profits = df_copy[df_copy['r_1w_val'] >= 8.0].drop_duplicates('종목명').sort_values(by='r_1w_val', ascending=False).head(3)
     stop_losses = df_copy[(df_copy['r_1w_val'] <= -5.0) & (df_copy['총점_1W'] < 55.0)].drop_duplicates('종목명').head(3)
-
-    vix_status = "🟢 변동성 안정 구간 (안정적 상승 추세 유지 가능)" if vix_val < 20.0 else "🔴 변동성 경보 구간 (분할 매수 및 리스크 관리 필수)"
-
+    
     st.markdown(f"""
     ### 📋 [AI 퀀트 주간 종합 브리핑] 이번 주 시장 전망 & 대응 전략
+    
     #### 1. 🌐 글로벌 & 국내 증시 마크로 환경 진단
-    * **시장 변동성 (VIX):** 현재 `{vix_val:.2f}`pt $\rightarrow$ **{vix_status}**
-    * **미국/국내 연동성:** 나스닥(`{nasdaq_chg:+.2f}%`), KOSPI(`{kospi_chg:+.2f}%`), 원/달러 환율(`{usdkrw_val:,.2f}원`)
+    * **시장 변동성 (VIX):** 현재 `{vix_str}` $\rightarrow$ **{vix_status}**
+    * **미국/국내 연동성:** 나스닥(`{nasdaq_str}`), KOSPI(`{kospi_str}`), 원/달러 환율(`{usdkrw_str}`)
     * **주간 시장 종합 의견:** 단기적 차별화 장세가 강하게 나타나고 있습니다. 주가가 최근 1주일간 급등(+8% 이상)한 과열 종목은 추격 매수를 보류하고, 수급과 퀀트 총점이 우수한 눌림목 종목으로 집중하는 전략이 유리합니다.
-
     #### 2. 🟢 이번 주 최우선 강력 매수 관심 종목 (Top Picks)
     """)
-    for idx, (_, r) in enumerate(buy_picks.iterrows(), start=1):
-        st.markdown(f"    {idx}. **{r['종목명']} ({r['시장']})** | 예측 수익률: `+{r['미래수익률_1W']}%` | 퀀트 총점: `{r['총점_1W']}`점\n       👉 **매수 타점:** 현재가 부근 비중 30% 1차 진입 후 눌림목마다 분할 매수")
+    if not buy_picks.empty:
+        for idx, (_, r) in enumerate(buy_picks.iterrows(), start=1):
+            market = r.get('시장', 'KR')
+            pred_return = r.get('미래수익률_1W', 0.0)
+            score = r.get('총점_1W', 0)
+            st.markdown(f"    {idx}. **{r['종목명']} ({market})** | 예측 수익률: `+{pred_return}%` | 퀀트 총점: `{score}`점\n       👉 **매수 타점:** 현재가 부근 비중 30% 1차 진입 후 눌림목마다 분할 매수")
+    else:
+        st.markdown("    - ⚪ **[안내]** 현재 최우선 조건에 부합하는 매수 관심 종목이 없습니다.")
 
     st.markdown("\n    #### 🔴 이번 주 비중 축소 (익절 & 교체 매도) 리딩 종목")
     if not take_profits.empty:
         for _, r in take_profits.iterrows():
             st.markdown(f"    - 🟠 **[익절 권장] {r['종목명']}** (1주 등락률 `+{r['r_1w_val']:.1f}%` 목표가 돌파 $\rightarrow$ 보유 비중 50% 이상 분할 매도하여 수익 확정)")
+    else:
+        st.markdown("    - ⚪ **[안내]** 현재 익절 권장 대상 종목이 없습니다.")
+
     if not stop_losses.empty:
         for _, r in stop_losses.iterrows():
             st.markdown(f"    - 🔴 **[손절/교체] {r['종목명']}** (1주 등락률 `{r['r_1w_val']:.1f}%`, 퀀트 총점 `{r['총점_1W']}`점 약세 $\rightarrow$ 전량 매도 후 우량주 교체)")
 
-
 @st.cache_data(ttl=60)
+
 def load_quant_database():
     try:
         df_stocks = pd.read_parquet('quant_stocks.parquet')
