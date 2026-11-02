@@ -514,7 +514,7 @@ if not df.empty:
                         else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
                     )
 
-                    with st.expander(expander_title, expanded=True if "AI 종합 필터" in cat or "관심 종목" in cat else False):
+                    with st.expander(expander_title, expanded=False):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
