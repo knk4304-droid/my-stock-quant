@@ -110,25 +110,18 @@ def fetch_realtime_macro():
                     'change': float(res['fluctuationsRatio'])
                 }
             except Exception:
-                # 💡 최종 실패 시에도 0.0 대신 None으로 통일
                 macro_results[key] = {'val': None, 'change': None}
 
-    # 3. 모든 데이터 수집 후 마지막에 반환
     return macro_results
 
 
 def get_chart_link(ticker: str, name: str) -> str:
-    # 1. 입력받은 티커의 공백을 제거하고 대문자로 변환해 깔끔하게 정제
     clean_ticker = str(ticker).strip().upper()
-    
-    # 2. 한국 주식 판별 기준 (점'.'으로 분리 시 앞이 6자리 숫자거나, .KS/.KQ로 끝나는 경우)
     code_part = clean_ticker.split('.')[0]
     
     if clean_ticker.endswith('.KS') or clean_ticker.endswith('.KQ') or (len(code_part) == 6 and code_part.isdigit()):
-        # 네이버 증시는 순수 6자리 숫자로만 접속
         url = f"https://finance.naver.com/item/main.naver?code={code_part}"
     else:
-        # 미국 등 해외 주식은 하이픈('-')을 점('.')으로 변경하여 야후 파이낸스로 연결
         yf_ticker = clean_ticker.replace('-', '.')
         url = f"https://finance.yahoo.com/quote/{yf_ticker}/"
         
@@ -136,13 +129,11 @@ def get_chart_link(ticker: str, name: str) -> str:
 
 
 def render_weekly_market_briefing(df, macro_info, name_map):
-    # 1. 지수 데이터 원본 가져오기 (수집 실패 시 None)
     vix_raw = macro_info.get('VIX', {}).get('val')
     nasdaq_raw = macro_info.get('나스닥', {}).get('change')
     kospi_raw = macro_info.get('KOSPI', {}).get('change')
     usdkrw_raw = macro_info.get('USDKRW', {}).get('val')
 
-    # 2. VIX 안전 처리 및 상태 문구 생성
     if vix_raw is not None:
         vix_val = float(vix_raw)
         vix_str = f"{vix_val:.2f} pt"
@@ -151,12 +142,10 @@ def render_weekly_market_briefing(df, macro_info, name_map):
         vix_str = "점검중"
         vix_status = "⚪ 변동성 데이터 수집 불가 (리스크 관리에 유의하세요)"
 
-    # 3. 기타 마크로 지표 문자열 가공 (None 방어)
     nasdaq_str = f"{float(nasdaq_raw):+.2f}%" if nasdaq_raw is not None else "-"
     kospi_str = f"{float(kospi_raw):+.2f}%" if kospi_raw is not None else "-"
     usdkrw_str = f"{float(usdkrw_raw):,.2f}원" if usdkrw_raw is not None else "점검중"
 
-    # 4. 종목 데이터 가공
     df_copy = df.copy()
     df_copy['종목명'] = df_copy['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
 
@@ -203,7 +192,6 @@ def load_quant_database():
         if not df_stocks.empty and '종목명' in df_stocks.columns:
             df_stocks['종목명'] = df_stocks['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
         
-        # 💡 df_macro가 비어있지 않을 때만 iloc[0] 접근하도록 방어
         if not df_macro.empty:
             m_row = df_macro.iloc[0]
             macro_info = {
@@ -230,11 +218,10 @@ def render_korean_market_card(title, data, link):
     val = data.get('val')
     change = data.get('change')
     
-    # 💡 데이터가 수집되지 않고 None으로 반환된 경우 UI 예외 처리
     if val is None or change is None:
         val_str = "점검중"
         change_str = "-"
-        color = "#8E8E93" # 회색 처리
+        color = "#8E8E93"
     else:
         val_str = f"{val:,.2f}"
         if change > 0:
@@ -304,7 +291,6 @@ if AUTOREFRESH_AVAILABLE:
 
 df, engine, macro_info, updated_at, name_map = load_quant_database()
 
-# UI 상단 데이터 업데이트 버튼 영역
 col_title, col_btn = st.columns([4, 1])
 
 with col_title:
@@ -312,7 +298,7 @@ with col_title:
     st.caption(f"부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: {updated_at}")
 
 with col_btn:
-    st.write("") # 여백
+    st.write("")
     if st.button("🔄 실시간 갱신 실행", help="클릭 시 백그라운드 데이터 수집 엔진을 즉시 실행합니다."):
         with st.spinner("GitHub 수집 엔진에 최신화 요청 중..."):
             if trigger_github_workflow():
@@ -393,7 +379,6 @@ if not df.empty:
                 columns=FEATURE_NAMES,
                 index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹']
             )
-           # 💡 최신 Streamlit 권장 사양 적용: use_container_width=True -> width="stretch"
             st.dataframe(w_summary_df, width="stretch")
             st.markdown("---")
 
@@ -424,100 +409,94 @@ if not df.empty:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df[df['시장'] == cat].copy()
 
-if not cat_df.empty:
-    # 1. 종목명 표준 정제
-    cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
-    
-    # 2. 선택된 기간(p_code) 점수 매핑
-    if f"총점_{p_code}" in cat_df.columns:
-        cat_df['총점'] = cat_df[f"총점_{p_code}"]
-    if f"미래수익률_{p_code}" in cat_df.columns:
-        cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+                if not cat_df.empty:
+                    # 1. 종목명 표준 정제
+                    cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
+                    
+                    # 2. 선택된 기간(p_code) 점수 매핑
+                    if f"총점_{p_code}" in cat_df.columns:
+                        cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                    if f"미래수익률_{p_code}" in cat_df.columns:
+                        cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
 
-    # 3. 매수/매도 정밀 분석
-    def analyze_stock_row(r):
-        try:
-            p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
-            s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
-            return pd.Series([p_val, b_sig, s_sig, s_rank])
-        except Exception:
-            return pd.Series([60.0, "🟡 관망", "🟢 보유 유지", 1])
+                    # 3. 매수/매도 정밀 분석
+                    def analyze_stock_row(r):
+                        try:
+                            p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
+                            s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
+                            return pd.Series([p_val, b_sig, s_sig, s_rank])
+                        except Exception:
+                            return pd.Series([60.0, "🟡 관망", "🟢 보유 유지", 1])
 
-    cat_df[['기대상승확률(%)', '매도시그널', '매도_detail', '매도우선순위']] = cat_df.apply(analyze_stock_row, axis=1)
+                    cat_df[['기대상승확률(%)', '매도시그널', '매도_detail', '매도우선순위']] = cat_df.apply(analyze_stock_row, axis=1)
 
-    if "AI 종합 필터" in cat:
-        # 1. r_1w_val 컬럼 안전 체크
-        if 'r_1w_val' in cat_df.columns:
-            filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
-        else:
-            filtered_df = cat_df.copy()
-        
-        # 2. 필터링 후 데이터가 없을 경우를 대비한 안전 로직
-        if filtered_df.empty:
-            filtered_df = cat_df.copy()
+                    if "AI 종합 필터" in cat:
+                        if 'r_1w_val' in cat_df.columns:
+                            filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
+                        else:
+                            filtered_df = cat_df.copy()
+                        
+                        if filtered_df.empty:
+                            filtered_df = cat_df.copy()
 
-        filtered_df['AI종합점수'] = (
-            filtered_df['총점'] * 0.5 +
-            filtered_df['기대상승확률(%)'] * 0.3 +
-            filtered_df['예측수익률(%)'] * 0.2
-        )
-        cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
+                        filtered_df['AI종합점수'] = (
+                            filtered_df['총점'] * 0.5 +
+                            filtered_df['기대상승확률(%)'] * 0.3 +
+                            filtered_df['예측수익률(%)'] * 0.2
+                        )
+                        cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
 
-    elif "관심 종목" not in cat:
-        col_head1, col_head2 = st.columns([3, 1])
-        with col_head2:
-            cat_sort_opt = st.selectbox(
-                "정렬 옵션 선택:",
-                options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
-                index=0,
-                key=f"sort_{cat}_{p_code}_{c_idx}"
-            )
-        
-        # 정렬 키 컬럼 존재 여부 확인 후 안전 정렬
-        sort_r1w = 'r_1w_val' if 'r_1w_val' in cat_df.columns else '총점'
-        
-        if "미래 기대 수익률" in cat_sort_opt:
-            cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
-        elif "매수시그널" in cat_sort_opt:
-            cat_df = cat_df.sort_values(by=['기대상승확률(%)', sort_r1w, '총점'], ascending=[False, False, False]).head(10)
-        elif "매도시그널" in cat_sort_opt:
-            cat_df = cat_df.sort_values(by=['매도우선순위', sort_r1w], ascending=[False, False]).head(10)
-        else:
-            cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
+                    elif "관심 종목" not in cat:
+                        col_head1, col_head2 = st.columns([3, 1])
+                        with col_head2:
+                            cat_sort_opt = st.selectbox(
+                                "정렬 옵션 선택:",
+                                options=["퀀트점수 순", "미래 기대 수익률 순 (%)", "매수시그널 순 (확률 %)", "매도시그널 순 (대응)"],
+                                index=0,
+                                key=f"sort_{cat}_{p_code}_{c_idx}"
+                            )
+                        
+                        sort_r1w = 'r_1w_val' if 'r_1w_val' in cat_df.columns else '총점'
+                        
+                        if "미래 기대 수익률" in cat_sort_opt:
+                            cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
+                        elif "매수시그널" in cat_sort_opt:
+                            cat_df = cat_df.sort_values(by=['기대상승확률(%)', sort_r1w, '총점'], ascending=[False, False, False]).head(10)
+                        elif "매도시그널" in cat_sort_opt:
+                            cat_df = cat_df.sort_values(by=['매도우선순위', sort_r1w], ascending=[False, False]).head(10)
+                        else:
+                            cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
-    def make_named_link(row):
-        raw_link = str(row.get('차트링크', ''))
-        url = raw_link.split('](')[-1].rstrip(')') if '](' in raw_link else raw_link
-        c_name = fix_stock_name_str(row['종목명'], name_map)
-        return f"[{c_name}]({url})" if url else c_name
+                    def make_named_link(row):
+                        raw_link = str(row.get('차트링크', ''))
+                        url = raw_link.split('](')[-1].rstrip(')') if '](' in raw_link else raw_link
+                        c_name = fix_stock_name_str(row['종목명'], name_map)
+                        return f"[{c_name}]({url})" if url else c_name
 
-    cat_df['종목(차트보기)'] = cat_df.apply(make_named_link, axis=1)
+                    cat_df['종목(차트보기)'] = cat_df.apply(make_named_link, axis=1)
 
-    # FEATURE_NAMES 안전 조회 및 표출 컬럼 구성
-    f_names = FEATURE_NAMES if 'FEATURE_NAMES' in globals() else []
-    desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + f_names
-    available_cols = [c for c in desired_cols if c in cat_df.columns]
+                    f_names = FEATURE_NAMES if 'FEATURE_NAMES' in globals() else []
+                    desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + f_names
+                    available_cols = [c for c in desired_cols if c in cat_df.columns]
 
-    display_df = cat_df[available_cols].reset_index(drop=True)
-    display_df.index = display_df.index + 1
-    
-    # st.markdown을 사용하여 하이퍼링크 표출 안정성 확보
-    st.markdown(display_df.to_markdown())
-    
-    expander_title = (
-        f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)"
-        if "AI 종합 필터" in cat
-        else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
-    )
+                    display_df = cat_df[available_cols].reset_index(drop=True)
+                    display_df.index = display_df.index + 1
+                    
+                    st.markdown(display_df.to_markdown())
+                    
+                    expander_title = (
+                        f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)"
+                        if "AI 종합 필터" in cat
+                        else f"🔍 [{cat}] 입력 종목별 매수 추천 시그널 및 매도/손익절 종합 진단 리포트"
+                    )
 
-    with st.expander(expander_title, expanded=False):
-        for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
+                    with st.expander(expander_title, expanded=False):
+                        for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
 
                             c_name = fix_stock_name_str(row.get('종목명', '미상'), name_map)
                             
-                            # 예측 수익률 부호 처리 보완 (+ - 중복 방지)
                             ret_val = row.get('예측수익률(%)', 0.0)
                             ret_str = f"+{ret_val}%" if float(ret_val) > 0 else f"{ret_val}%"
                             
