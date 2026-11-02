@@ -238,8 +238,6 @@ if AUTOREFRESH_AVAILABLE:
 
 df, engine, macro_info, updated_at, name_map = load_quant_database()
 
-st.title("📈 AI 추천 주식 매매 (v4.00)")
-st.caption(f"부제 4.00 - 뉴스 NLP 감성 분석 및 백테스팅 엔진 검증판 | 마지막 데이터 업데이트: {updated_at}")
 
 import requests
 import time
