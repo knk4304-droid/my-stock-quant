@@ -424,7 +424,7 @@ if not df.empty:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df[df['시장'] == cat].copy()
 
-                if not cat_df.empty:
+    if not cat_df.empty:
     # 1. 종목명 표준 정제
     cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
     
