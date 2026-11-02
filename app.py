@@ -128,7 +128,6 @@ def render_weekly_market_briefing(df, macro_info, name_map):
     kospi_chg = float(macro_info.get('KOSPI', {}).get('change', 0.0))
     usdkrw_val = float(macro_info.get('USDKRW', {}).get('val', 1340.0))
 
-    # 브리핑 리포트 내 종목명 한글 매핑 강제 적용
     df_copy = df.copy()
     df_copy['종목명'] = df_copy['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
 
@@ -381,7 +380,6 @@ if not df.empty:
                     cat_df = df[df['시장'] == cat].copy()
 
                 if not cat_df.empty:
-                    # 종목명 2차 한글 매핑 강제 보완
                     cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
                     cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
@@ -424,7 +422,6 @@ if not df.empty:
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
-                    # [완치 로직] 한글 종목명으로 차트 링크 생성
                     def make_named_link(row):
                         raw_link = str(row['차트링크'])
                         url = raw_link.split('](')[-1].rstrip(')') if '](' in raw_link else raw_link
