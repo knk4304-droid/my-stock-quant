@@ -194,7 +194,6 @@ def render_weekly_market_briefing(df, macro_info, name_map):
             st.markdown(f"    - 🔴 **[손절/교체] {r['종목명']}** (1주 등락률 `{r['r_1w_val']:.1f}%`, 퀀트 총점 `{r['총점_1W']}`점 약세 $\rightarrow$ 전량 매도 후 우량주 교체)")
 
 @st.cache_data(ttl=60)
-
 def load_quant_database():
     try:
         df_stocks = pd.read_parquet('quant_stocks.parquet')
@@ -204,16 +203,22 @@ def load_quant_database():
         if not df_stocks.empty and '종목명' in df_stocks.columns:
             df_stocks['종목명'] = df_stocks['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
         
-        m_row = df_macro.iloc[0]
-        macro_info = {
-            'KOSPI': {'val': m_row.get('kospi_val', 0.0), 'change': m_row.get('kospi_chg', 0.0)},
-            'KOSDAQ': {'val': m_row.get('kosdaq_val', 0.0), 'change': m_row.get('kosdaq_chg', 0.0)},
-            'S&P 500': {'val': m_row.get('sp500_val', 0.0), 'change': m_row.get('sp500_chg', 0.0)},
-            '나스닥': {'val': m_row.get('nasdaq_val', 0.0), 'change': m_row.get('nasdaq_chg', 0.0)},
-            'USDKRW': {'val': m_row.get('usdkrw_val', 0.0), 'change': m_row.get('usdkrw_chg', 0.0)},
-            'VIX': {'val': m_row.get('vix_val', 0.0), 'change': m_row.get('vix_chg', 0.0)}
-        }
-        updated_at = m_row.get('updated_at', "데이터 없음")
+        # 💡 df_macro가 비어있지 않을 때만 iloc[0] 접근하도록 방어
+        if not df_macro.empty:
+            m_row = df_macro.iloc[0]
+            macro_info = {
+                'KOSPI': {'val': m_row.get('kospi_val', 0.0), 'change': m_row.get('kospi_chg', 0.0)},
+                'KOSDAQ': {'val': m_row.get('kosdaq_val', 0.0), 'change': m_row.get('kosdaq_chg', 0.0)},
+                'S&P 500': {'val': m_row.get('sp500_val', 0.0), 'change': m_row.get('sp500_chg', 0.0)},
+                '나스닥': {'val': m_row.get('nasdaq_val', 0.0), 'change': m_row.get('nasdaq_chg', 0.0)},
+                'USDKRW': {'val': m_row.get('usdkrw_val', 0.0), 'change': m_row.get('usdkrw_chg', 0.0)},
+                'VIX': {'val': m_row.get('vix_val', 0.0), 'change': m_row.get('vix_chg', 0.0)}
+            }
+            updated_at = m_row.get('updated_at', "데이터 없음")
+        else:
+            macro_info = {}
+            updated_at = "데이터 없음"
+
         engine = QuantEngine()
         return df_stocks, engine, macro_info, updated_at, name_map
 
