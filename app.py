@@ -445,7 +445,7 @@ if not cat_df.empty:
 
                 cat_df[['기대상승확률(%)', '매도시그널', '매도_detail', '매도우선순위']] = cat_df.apply(analyze_stock_row, axis=1)
 
-                   if "AI 종합 필터" in cat:
+                if "AI 종합 필터" in cat:
                         # 1. r_1w_val 컬럼 안전 체크
                         if 'r_1w_val' in cat_df.columns:
                             filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
