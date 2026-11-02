@@ -335,7 +335,7 @@ index_configs = [
     (m_col2, "KOSDAQ", macro_info.get('KOSDAQ', {'val': 0, 'change': 0}), "https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ"),
     (m_col3, "S&P 500", macro_info.get('S&P 500', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^GSPC/"),
     (m_col4, "나스닥", macro_info.get('나스닥', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^IXIC/"),
-    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val': 0, 'change': 0}), "https://m.stock.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
+    (m_col5, "원/달러 환율", macro_info.get('USDKRW', {'val': 0, 'change': 0}), "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"),
     (m_col6, "VIX (변동성)", macro_info.get('VIX', {'val': 0, 'change': 0}), "https://finance.yahoo.com/quote/^VIX/")
 ]
 
