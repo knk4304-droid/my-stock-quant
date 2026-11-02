@@ -393,7 +393,8 @@ if not df.empty:
                 columns=FEATURE_NAMES,
                 index=['대형주 그룹 (코스피/S&P)', '소형 고성장주 그룹', 'ETF 그룹']
             )
-            st.dataframe(w_summary_df, use_container_width=True)
+           # 💡 최신 Streamlit 권장 사양 적용: use_container_width=True -> width="stretch"
+            st.dataframe(w_summary_df, width="stretch")
             st.markdown("---")
 
             for c_idx, cat in enumerate(FIXED_CATEGORIES):
