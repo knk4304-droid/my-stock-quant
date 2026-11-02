@@ -33,55 +33,20 @@ def fetch_realtime_macro():
     macro_results = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-    try:
-        res = requests.get("https://m.stock.naver.com/api/index/KOSPI/basic", headers=headers, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            macro_results['KOSPI'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
-        else:
-            macro_results['KOSPI'] = {'val': 5730.74, 'change': -3.48}
-    except Exception:
-        macro_results['KOSPI'] = {'val': 5730.74, 'change': -3.48}
-
-    try:
-        res = requests.get("https://m.stock.naver.com/api/index/KOSDAQ/basic", headers=headers, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            macro_results['KOSDAQ'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
-        else:
-            macro_results['KOSDAQ'] = {'val': 724.38, 'change': -3.83}
-    except Exception:
-        macro_results['KOSDAQ'] = {'val': 724.38, 'change': -3.83}
-
-    try:
-        res = requests.get("https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic", headers=headers, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            macro_results['USDKRW'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
-        else:
-            macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
-    except Exception:
-        macro_results['USDKRW'] = {'val': 1340.00, 'change': 0.0}
-
-    us_targets = {
-        'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
-        '나스닥': {'yf': '^IXIC', 'naver': 'NAS@IXIC'},
-        'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'},
-        'VIX': {'yf': '^VIX', 'naver': 'SPI@VIX'}
+    # 1. KOSPI & KOSDAQ (yfinance 1차 -> 네이버 API 2차)
+    kr_targets = {
+        'KOSPI': {'yf': '^KS11', 'naver': 'KOSPI'},
+        'KOSDAQ': {'yf': '^KQ11', 'naver': 'KOSDAQ'}
     }
-
-    for key, cfg in us_targets.items():
+    for key, cfg in kr_targets.items():
         success = False
         try:
             hist = yf.Ticker(cfg['yf']).history(period='5d', timeout=4)
-            if hist.empty or len(hist) < 2:
-                hist = yf.Ticker(cfg['yf']).history(period='1mo', timeout=4)
-                
             if not hist.empty and len(hist) >= 1:
                 curr = float(hist['Close'].iloc[-1])
                 prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else curr
                 rate = round(((curr - prev) / prev) * 100, 2) if prev > 0 else 0.0
-                macro_results[key] = {'val': curr, 'change': rate}
+                macro_results[key] = {'val': round(curr, 2), 'change': rate}
                 success = True
         except Exception:
             pass
@@ -93,7 +58,59 @@ def fetch_realtime_macro():
                     data = res.json()
                     macro_results[key] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
             except Exception:
-                macro_results[key] = {'val': 0.0, 'change': 0.0}
+                pass
+
+    # 2. 원/달러 환율 (yfinance 1차 -> 네이버 API 2차)
+    fx_success = False
+    try:
+        fx_hist = yf.Ticker("USDKRW=X").history(period="5d", timeout=4)
+        if not fx_hist.empty and len(fx_hist) >= 1:
+            curr_fx = float(fx_hist['Close'].iloc[-1])
+            prev_fx = float(fx_hist['Close'].iloc[-2]) if len(fx_hist) >= 2 else curr_fx
+            rate_fx = round(((curr_fx - prev_fx) / prev_fx) * 100, 2) if prev_fx > 0 else 0.0
+            macro_results['USDKRW'] = {'val': round(curr_fx, 2), 'change': rate_fx}
+            fx_success = True
+    except Exception:
+        pass
+
+    if not fx_success:
+        try:
+            res = requests.get("https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic", headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                macro_results['USDKRW'] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
+        except Exception:
+            pass
+
+    # 3. 해외 주요 지수 (S&P500, 나스닥, VIX)
+    us_targets = {
+        'S&P 500': {'yf': '^GSPC', 'naver': 'SPI@SPX'},
+        '나스닥': {'yf': '^IXIC', 'naver': 'NAS@IXIC'},
+        'NASDAQ 100': {'yf': '^NDX', 'naver': 'NAS@NDX'},
+        'VIX': {'yf': '^VIX', 'naver': 'SPI@VIX'}
+    }
+
+    for key, cfg in us_targets.items():
+        success = False
+        try:
+            hist = yf.Ticker(cfg['yf']).history(period='5d', timeout=4)
+            if not hist.empty and len(hist) >= 1:
+                curr = float(hist['Close'].iloc[-1])
+                prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else curr
+                rate = round(((curr - prev) / prev) * 100, 2) if prev > 0 else 0.0
+                macro_results[key] = {'val': round(curr, 2), 'change': rate}
+                success = True
+        except Exception:
+            pass
+
+        if not success:
+            try:
+                res = requests.get(f"https://m.stock.naver.com/api/index/{cfg['naver']}/basic", headers=headers, timeout=5)
+                if res.status_code == 200:
+                    data = res.json()
+                    macro_results[key] = {'val': float(data['closePrice'].replace(',', '')), 'change': float(data['fluctuationsRatio'])}
+            except Exception:
+                pass
 
     return macro_results
 
