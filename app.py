@@ -425,30 +425,48 @@ if not df.empty:
                     cat_df = df[df['시장'] == cat].copy()
 
                 if not cat_df.empty:
-                    cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
-                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+    # 1. 종목명 표준 정제
+    cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
+    
+    # 2. 선택된 기간(p_code) 점수 매핑 (컬럼 존재 여부 안전 체크)
+    if f"총점_{p_code}" in cat_df.columns:
+        cat_df['총점'] = cat_df[f"총점_{p_code}"]
+    if f"미래수익률_{p_code}" in cat_df.columns:
+        cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
 
-                    probs, b_signals, s_signals, s_ranks = [], [], [], []
-                    for _, r in cat_df.iterrows():
-                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
-                        s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
-                        probs.append(p_val)
-                        b_signals.append(b_sig)
-                        s_signals.append(s_sig)
-                        s_ranks.append(s_rank)
+    # 3. 매수/매도 정밀 분석 데이터 일괄 추출 (apply 활용으로 연산 최적화 및 안전 처리)
+    def analyze_stock_row(r):
+        try:
+            # 매수 분석 (승률, 시그널)
+            p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
+            # 매도 분석 (매도시그널, 대응우선순위)
+            s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
+            return pd.Series([p_val, b_sig, s_sig, s_rank])
+        except Exception:
+            # 수집 데이터 이상 시 시스템다운 방지용 기본값
+            return pd.Series([60.0, "🟡 관망", "🟢 보유 유지", 1])
 
-                    cat_df['기대상승확률(%)'] = probs
-                    cat_df['매도우선순위'] = s_ranks
+    # 4. 분석 결과 컬럼 생성
+    cat_df[['기대상승확률(%)', '매도시그널', '매도_detail', '매도우선순위']] = cat_df.apply(analyze_stock_row, axis=1)
 
-                    if "AI 종합 필터" in cat:
-                        filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
+                   if "AI 종합 필터" in cat:
+                        # 1. r_1w_val 컬럼 안전 체크
+                        if 'r_1w_val' in cat_df.columns:
+                            filtered_df = cat_df[cat_df['r_1w_val'] < 8.0].copy()
+                        else:
+                            filtered_df = cat_df.copy()
+                        
+                        # 2. 필터링 후 데이터가 없을 경우를 대비한 안전 로직
+                        if filtered_df.empty:
+                            filtered_df = cat_df.copy()
+
                         filtered_df['AI종합점수'] = (
                             filtered_df['총점'] * 0.5 +
                             filtered_df['기대상승확률(%)'] * 0.3 +
                             filtered_df['예측수익률(%)'] * 0.2
                         )
                         cat_df = filtered_df.sort_values(by='AI종합점수', ascending=False).head(10)
+
                     elif "관심 종목" not in cat:
                         col_head1, col_head2 = st.columns([3, 1])
                         with col_head2:
@@ -458,30 +476,38 @@ if not df.empty:
                                 index=0,
                                 key=f"sort_{cat}_{p_code}_{c_idx}"
                             )
+                        
+                        # 정렬 키 컬럼 존재 여부 확인 후 안전 정렬
+                        sort_r1w = 'r_1w_val' if 'r_1w_val' in cat_df.columns else '총점'
+                        
                         if "미래 기대 수익률" in cat_sort_opt:
                             cat_df = cat_df.sort_values(by=['예측수익률(%)', '기대상승확률(%)'], ascending=[False, False]).head(10)
                         elif "매수시그널" in cat_sort_opt:
-                            cat_df = cat_df.sort_values(by=['기대상승확률(%)', 'r_1w_val', '총점'], ascending=[False, False, False]).head(10)
+                            cat_df = cat_df.sort_values(by=['기대상승확률(%)', sort_r1w, '총점'], ascending=[False, False, False]).head(10)
                         elif "매도시그널" in cat_sort_opt:
-                            cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
+                            cat_df = cat_df.sort_values(by=['매도우선순위', sort_r1w], ascending=[False, False]).head(10)
                         else:
                             cat_df = cat_df.sort_values(by=['총점', '기대상승확률(%)'], ascending=[False, False]).head(10)
 
                     def make_named_link(row):
-                        raw_link = str(row['차트링크'])
+                        raw_link = str(row.get('차트링크', ''))
                         url = raw_link.split('](')[-1].rstrip(')') if '](' in raw_link else raw_link
                         c_name = fix_stock_name_str(row['종목명'], name_map)
-                        return f"[{c_name}]({url})"
+                        return f"[{c_name}]({url})" if url else c_name
 
                     cat_df['종목(차트보기)'] = cat_df.apply(make_named_link, axis=1)
 
-                    desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + FEATURE_NAMES
+                    # FEATURE_NAMES 안전 조회 및 표출 컬럼 구성
+                    f_names = FEATURE_NAMES if 'FEATURE_NAMES' in globals() else []
+                    desired_cols = ['종목(차트보기)', '시장', '당일 수익률', '1일 전', '2일 전', '1주 수익률', '1달 수익률', '3개월 수익률', '총점'] + f_names
                     available_cols = [c for c in desired_cols if c in cat_df.columns]
 
                     display_df = cat_df[available_cols].reset_index(drop=True)
                     display_df.index = display_df.index + 1
-                    st.write(display_df.to_markdown(), unsafe_allow_html=True)
-
+                    
+                    # st.markdown을 사용하여 하이퍼링크 표출 안정성 확보
+                    st.markdown(display_df.to_markdown())
+                    
                     expander_title = (
                         f"💡 [{cat}] [{p_code}] AI 선정 탑픽 10선 정밀 매매 가이드 (사야 하는 법 & 파는 타이밍)"
                         if "AI 종합 필터" in cat
@@ -493,8 +519,14 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
 
-                            c_name = fix_stock_name_str(row['종목명'], name_map)
-                            st.markdown(f"### {idx}. {c_name} ({row['시장']} | [{p_code}] AI 예상 수익률: `+{row['예측수익률(%)']}%` | 승률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
+                            c_name = fix_stock_name_str(row.get('종목명', '미상'), name_map)
+                            
+                            # 예측 수익률 부호 처리 보완 (+ - 중복 방지)
+                            ret_val = row.get('예측수익률(%)', 0.0)
+                            ret_str = f"+{ret_val}%" if float(ret_val) > 0 else f"{ret_val}%"
+                            
+                            st.markdown(f"### {idx}. {c_name} ({row.get('시장', '')} | [{p_code}] AI 예상 수익률: `{ret_str}` | 승률: `{prob}%` | 퀀트 총점: `{row.get('총점', 0)}`점)")
+                            
                             col_a, col_b = st.columns(2)
                             with col_a:
                                 st.markdown(f"#### 📈 **[매수 전략 및 시그널]** `{buy_signal}`")
@@ -503,9 +535,9 @@ if not df.empty:
                                 st.markdown(f"#### 📉 **[매도 및 리스크 관리]** `{s_signal}`")
                                 st.warning(f"🎯 **언제/어떻게 팔아야 하는가?**\n- **권장 익절 목표가:** `{target_p}` 달성 시 비중 50% 분할 익절\n- **자동 손절 기준:** 주가 하락 시 `{stop_l}` 이탈 시 손절 및 우량주 교체\n- **진단 배경:** {s_reason}")
 
-                            news_sc = row.get('news_score', 0.0) if 'news_score' in row else 0.0
-                            pos_c = int(row.get('news_pos', 0)) if 'news_pos' in row else 0
-                            neg_c = int(row.get('news_neg', 0)) if 'news_neg' in row else 0
+                            news_sc = row.get('news_score', 0.0)
+                            pos_c = int(row.get('news_pos', 0))
+                            neg_c = int(row.get('news_neg', 0))
 
                             nc1, nc2 = st.columns(2)
                             with nc1:
