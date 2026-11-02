@@ -424,30 +424,26 @@ if not df.empty:
                     st.markdown(f"### 🏆 {cat} Top 10")
                     cat_df = df[df['시장'] == cat].copy()
 
-    if not cat_df.empty:
-    # 1. 종목명 표준 정제
-    cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
-    
-    # 2. 선택된 기간(p_code) 점수 매핑 (컬럼 존재 여부 안전 체크)
-    if f"총점_{p_code}" in cat_df.columns:
-        cat_df['총점'] = cat_df[f"총점_{p_code}"]
-    if f"미래수익률_{p_code}" in cat_df.columns:
-        cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+if not cat_df.empty:
+                # 1. 종목명 표준 정제
+                cat_df['종목명'] = cat_df['종목명'].apply(lambda x: fix_stock_name_str(x, name_map))
+                
+                # 2. 선택된 기간(p_code) 점수 매핑
+                if f"총점_{p_code}" in cat_df.columns:
+                    cat_df['총점'] = cat_df[f"총점_{p_code}"]
+                if f"미래수익률_{p_code}" in cat_df.columns:
+                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
 
-    # 3. 매수/매도 정밀 분석 데이터 일괄 추출 (apply 활용으로 연산 최적화 및 안전 처리)
-    def analyze_stock_row(r):
-        try:
-            # 매수 분석 (승률, 시그널)
-            p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
-            # 매도 분석 (매도시그널, 대응우선순위)
-            s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
-            return pd.Series([p_val, b_sig, s_sig, s_rank])
-        except Exception:
-            # 수집 데이터 이상 시 시스템다운 방지용 기본값
-            return pd.Series([60.0, "🟡 관망", "🟢 보유 유지", 1])
+                # 3. 매수/매도 정밀 분석
+                def analyze_stock_row(r):
+                    try:
+                        p_val, b_sig, _ = generate_buy_analysis(r, macro_info)
+                        s_sig, _, _, _, _, s_rank = generate_sell_analysis(r)
+                        return pd.Series([p_val, b_sig, s_sig, s_rank])
+                    except Exception:
+                        return pd.Series([60.0, "🟡 관망", "🟢 보유 유지", 1])
 
-    # 4. 분석 결과 컬럼 생성
-    cat_df[['기대상승확률(%)', '매도시그널', '매도_detail', '매도우선순위']] = cat_df.apply(analyze_stock_row, axis=1)
+                cat_df[['기대상승확률(%)', '매도시그널', '매도_detail', '매도우선순위']] = cat_df.apply(analyze_stock_row, axis=1)
 
                    if "AI 종합 필터" in cat:
                         # 1. r_1w_val 컬럼 안전 체크
