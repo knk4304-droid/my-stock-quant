@@ -161,7 +161,7 @@ class QuantEngine:
         return round(float(np.clip(est * 0.8, 5.0, 150.0)), 2)
 
 # ==========================================
-# 4. 매수/매도 진단 함수
+# 4. 매수/매도 진단 및 처리 함수
 # ==========================================
 def generate_buy_analysis(row, macro):
     total_score = row['총점']
@@ -271,7 +271,7 @@ def run_quant_analysis():
     return pd.DataFrame(results), engine, macro
 
 # ==========================================
-# 5. 대시보드 UI (2단계 개편 적용)
+# 5. 대시보드 UI (정상 연동)
 # ==========================================
 st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
@@ -343,7 +343,7 @@ if not df.empty:
                     cat_df['상승확률(%)'] = probs
                     cat_df['매도우선순위'] = s_ranks
 
-                    # 2단계 다변화 정렬 필터 적용
+                    # 정렬 옵션 처리
                     if "미래 기대 수익률" in cat_sort_opt:
                         cat_df = cat_df.sort_values(by=['예측수익률(%)', '상승확률(%)'], ascending=[False, False]).head(10)
                     elif "안전 눌림목" in cat_sort_opt:
@@ -361,7 +361,7 @@ if not df.empty:
                     disp_cols = ['차트링크', '시장', '당일 수익률', '1주 수익률', '총점', '예측수익률(%)'] + FEATURE_NAMES
                     st.write(cat_df[[c for c in disp_cols if c in cat_df.columns]].reset_index(drop=True).to_markdown(), unsafe_allow_html=True)
                     
-                    # 2단계 상세 매매 전략 리포트
+                    # 상세 매매 전략 리포트
                     with st.expander(f"🔍 [{cat}] 종목별 실시간 매수/매도 전략 상세 리포트"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
