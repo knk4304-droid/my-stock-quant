@@ -17,20 +17,41 @@ FEATURE_NAMES = [
 ]
 
 # ==========================================
-# 1. 실시간 주요 지수 수집
+# 1. 실시간 주요 지수 수집 (코스피/코스닥 보완)
 # ==========================================
 def fetch_realtime_macro():
     macro = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
-    for key, code in [('KOSPI', 'KOSPI'), ('KOSDAQ', 'KOSDAQ')]:
+    # KOSPI & KOSDAQ (네이버 API + yfinance 백업)
+    kr_indices = [('KOSPI', 'KOSPI', '^KS11'), ('KOSDAQ', 'KOSDAQ', '^KQ11')]
+    for key, code, sym in kr_indices:
+        success = False
         try:
             url = f"https://m.stock.naver.com/api/index/{code}/basic"
             res = requests.get(url, headers=headers, timeout=3).json()
-            macro[key] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
+            macro[key] = {
+                'val': float(res['closePrice'].replace(',', '')),
+                'change': float(res['fluctuationsRatio'])
+            }
+            if macro[key]['val'] > 0:
+                success = True
         except Exception:
-            macro[key] = {'val': 0.0, 'change': 0.0}
+            pass
 
+        if not success:
+            try:
+                h = yf.Ticker(sym).history(period='5d', timeout=3)
+                if not h.empty and len(h) >= 2:
+                    curr = float(h['Close'].iloc[-1])
+                    prev = float(h['Close'].iloc[-2])
+                    macro[key] = {'val': curr, 'change': (curr - prev) / prev * 100.0}
+                else:
+                    macro[key] = {'val': 0.0, 'change': 0.0}
+            except Exception:
+                macro[key] = {'val': 0.0, 'change': 0.0}
+
+    # 환율
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
@@ -38,6 +59,7 @@ def fetch_realtime_macro():
     except Exception:
         macro['USDKRW'] = {'val': 1350.0, 'change': 0.0}
 
+    # 미국 지수 & VIX
     for key, sym in [('S&P500', '^GSPC'), ('NASDAQ', '^IXIC'), ('VIX', '^VIX')]:
         try:
             h = yf.Ticker(sym).history(period='5d', timeout=3)
@@ -49,6 +71,7 @@ def fetch_realtime_macro():
                 macro[key] = {'val': 0.0, 'change': 0.0}
         except Exception:
             macro[key] = {'val': 0.0, 'change': 0.0}
+            
     return macro
 
 # ==========================================
@@ -271,7 +294,7 @@ def run_quant_analysis():
     return pd.DataFrame(results), engine, macro
 
 # ==========================================
-# 5. 대시보드 UI (정상 연동)
+# 5. 대시보드 UI
 # ==========================================
 st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
