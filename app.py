@@ -23,7 +23,6 @@ def fetch_realtime_macro():
     macro = {}
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
-    # KOSPI & KOSDAQ (네이버 API + yfinance 백업)
     kr_indices = [('KOSPI', 'KOSPI', '^KS11'), ('KOSDAQ', 'KOSDAQ', '^KQ11')]
     for key, code, sym in kr_indices:
         success = False
@@ -51,7 +50,6 @@ def fetch_realtime_macro():
             except Exception:
                 macro[key] = {'val': 0.0, 'change': 0.0}
 
-    # 환율
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
@@ -59,7 +57,6 @@ def fetch_realtime_macro():
     except Exception:
         macro['USDKRW'] = {'val': 1350.0, 'change': 0.0}
 
-    # 미국 지수 & VIX
     for key, sym in [('S&P500', '^GSPC'), ('NASDAQ', '^IXIC'), ('VIX', '^VIX')]:
         try:
             h = yf.Ticker(sym).history(period='5d', timeout=3)
