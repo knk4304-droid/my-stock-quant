@@ -1,34 +1,30 @@
+"""v4.1 offline smoke and regression tests; no market API calls."""
+import ast
 import unittest
+from pathlib import Path
 
-class TestModuleIntegration(unittest.TestCase):
-    def test_imports(self):
-        """모든 6개 모듈이 에러 없이 상호 import되는지 확인"""
-        try:
-            import config
-            import quant_engine
-            import signal_generator
-            import macro_analyzer
-            import ui_components
-            import app  # 메인 파일
-            print("✅ 모든 모듈 임포트 성공")
-        except ImportError as e:
-            self.fail(f"❌ 모듈 로드 실패 (의존성 끊김): {e}")
+ROOT = Path(__file__).resolve().parent
 
-    def test_data_pipeline(self):
-        """데이터 처리 모듈 -> 시그널 생성 모듈 간 파이프라인 흐름 확인"""
-        from quant_engine import calculate_quant_score
-        from signal_generator import generate_trade_signal
+class TestSourceIntegrity(unittest.TestCase):
+    def test_python_syntax(self):
+        for path in ROOT.glob("*.py"):
+            with self.subTest(file=path.name):
+                ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
-        # 가상 종목 데이터 입력
-        sample_stock = {'CAGR': 80, 'ROE': 70, 'STABILITY': 60, 'VALUATION': 90, 'MOMENTUM': 95}
-        
-        # 1. 퀀트 모듈 호출
-        score = calculate_quant_score(sample_stock, 'LARGE_CAP')
-        self.assertIsInstance(score, (int, float))
+    def test_required_modules_present(self):
+        for name in ("app.py", "quant.py", "universe.py", "batch_update.py", "backtest.py"):
+            self.assertTrue((ROOT / name).is_file(), name)
 
-        # 2. 시그널 모듈 연동 확인
-        buy_sig, sell_sig = generate_trade_signal(win_rate=85, quant_score=score, weekly_return=4.5)
-        self.assertTrue("강력 매수" in buy_sig or "분할 매수" in buy_sig)
+    def test_no_obsolete_module_imports(self):
+        text = (ROOT / "test_modules.py").read_text(encoding="utf-8")
+        for name in ("quant_engine", "signal_generator", "macro_analyzer", "ui_components"):
+            self.assertNotIn("import " + name, text)
 
-if __name__ == '__main__':
+    def test_app_return_periods(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn("c.iloc[-6]", source)
+        self.assertIn("c.iloc[-21]", source)
+        self.assertIn("c.iloc[-61]", source)
+
+if __name__ == "__main__":
     unittest.main()

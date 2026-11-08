@@ -55,7 +55,7 @@ def fetch_realtime_macro():
         res = requests.get(url_fx, headers=headers, timeout=3).json()
         macro['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
-        macro['USDKRW'] = {'val': 1350.0, 'change': 0.0}
+        macro['USDKRW'] = {'val': 0.0, 'change': 0.0}
 
     for key, sym in [('S&P500', '^GSPC'), ('NASDAQ', '^IXIC'), ('VIX', '^VIX')]:
         try:
@@ -110,17 +110,17 @@ class QuantEngine:
         return self.largecap_weights[period]
 
     def calculate_returns(self, df):
-        if df.empty or len(df.dropna()) < 5:
+        if df.empty or len(df['Close'].dropna()) < 5:
             return 0.0, "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%"
         c = df['Close'].dropna()
         lp = float(c.iloc[-1])
         r_today = ((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2] * 100.0) if len(c) >= 2 else 0.0
         r_1d = ((c.iloc[-2] - c.iloc[-3]) / c.iloc[-3] * 100.0) if len(c) >= 3 else 0.0
         r_2d = ((c.iloc[-3] - c.iloc[-4]) / c.iloc[-4] * 100.0) if len(c) >= 4 else 0.0
-        r_1w = ((lp - c.iloc[-5]) / c.iloc[-5] * 100.0) if len(c) >= 5 else 0.0
-        r_1m = ((lp - c.iloc[-20]) / c.iloc[-20] * 100.0) if len(c) >= 20 else 0.0
-        r_3m = ((lp - c.iloc[-60]) / c.iloc[-60] * 100.0) if len(c) >= 60 else 0.0
-        r_1y = ((lp - c.iloc[0]) / c.iloc[0] * 100.0) if len(c) > 0 else 0.0
+        r_1w = ((lp - c.iloc[-6]) / c.iloc[-6] * 100.0) if len(c) >= 6 else 0.0
+        r_1m = ((lp - c.iloc[-21]) / c.iloc[-21] * 100.0) if len(c) >= 21 else 0.0
+        r_3m = ((lp - c.iloc[-61]) / c.iloc[-61] * 100.0) if len(c) >= 61 else 0.0
+        r_1y = ((lp - c.iloc[0]) / c.iloc[0] * 100.0) if len(c) >= 2 else 0.0
         return r_1w, f"{r_today:+.2f}%", f"{r_1d:+.2f}%", f"{r_2d:+.2f}%", f"{r_1w:+.2f}%", f"{r_1m:+.2f}%", f"{r_3m:+.2f}%", f"{r_1y:+.2f}%"
 
     def calculate_raw_scores(self, df, macro, market, stock_name):
@@ -191,20 +191,20 @@ def generate_buy_analysis(row, macro):
     
     prob = int(np.clip(total_score + (tech_score - 50.0) * 0.2 + (r_1w_val * 0.3), 10, 95))
     if macro.get('VIX', {}).get('val', 15.0) >= 20.0:
-        prob -= 5
+        prob = max(0, prob - 5)
 
     if r_1w_val >= 8.0:
         buy_signal = "🟠 매수 보류 (과열 오버슈팅)"
         buy_opinion = f"[{stock_name}] 최근 1주 등락률(+{r_1w_val:.1f}%) 급등으로 오버슈팅 구간입니다. 눌림목 조정을 기다리세요."
     elif prob >= 70:
         buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
-        buy_opinion = f"[{stock_name}] 기대 상승 확률 약 {prob}%로 최상위 매수 시그널입니다. 분할 진입을 추천합니다."
+        buy_opinion = f"[{stock_name}] 상승 신호 점수 {prob}/100로 최상위 매수 시그널입니다. 분할 진입을 추천합니다."
     elif prob >= 55:
         buy_signal = "🟡 분할 매수 / 눌림목 (Hold) [55%~69%]"
         buy_opinion = f"[{stock_name}] 눌림목 및 상승 기대 구간입니다 (기대 확률 {prob}%). 1차 분할 매수 관점 진입 가능."
     else:
         buy_signal = "🔴 관망 / 매도 (Wait)"
-        buy_opinion = f"[{stock_name}] 기대 상승 확률({prob}%)이 낮습니다. 신규 매수를 보류하세요."
+        buy_opinion = f"[{stock_name}] 상승 신호 점수({prob}/100)이 낮습니다. 신규 매수를 보류하세요."
 
     return prob, buy_signal, buy_opinion
 
@@ -248,6 +248,8 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     except Exception:
         df = pd.DataFrame()
     
+    if df.empty or 'Close' not in df or len(df['Close'].dropna()) < 6:
+        return None  # 가격이 없는 종목은 중립 점수로 위장하지 않음
     raw = engine.calculate_raw_scores(df, macro, market, stock_name)
     r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
     
@@ -293,21 +295,31 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.00)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.1)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v4.00)")
-st.caption(f"부제 4.00 - 2단계: 다변화 정렬 옵션 & 오버슈팅 방지 매매전략 리포트 적용 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v4.1)")
+st.caption(f"v4.1 안정화: 데이터 유효성 검증 및 수익률 기간 수정 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
+st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다.")
+if df.empty:
+    st.error("유효한 종목 가격 데이터를 수집하지 못했습니다. 데이터 공급원과 네트워크 상태를 확인하세요.")
+missing_indices = [k for k in ('KOSPI', 'KOSDAQ', 'S&P500', 'NASDAQ', 'USDKRW', 'VIX')
+                   if not macro_info.get(k, {}).get('val')]
+if missing_indices:
+    st.warning("시세 수집 실패: " + ", ".join(missing_indices) + " (0은 실제 지수가 아닙니다.)")
 
 # 실시간 지수 카드
 cols = st.columns(6)
 idx_list = [("KOSPI", "KOSPI"), ("KOSDAQ", "KOSDAQ"), ("S&P 500", "S&P500"), ("NASDAQ", "NASDAQ"), ("원/달러 환율", "USDKRW"), ("VIX", "VIX")]
 for col, (lbl, k) in zip(cols, idx_list):
     d = macro_info.get(k, {'val':0.0, 'change':0.0})
-    col.metric(lbl, f"{d['val']:,.2f}", f"{d['change']:+.2f}%")
+    if not d.get('val'):
+        col.metric(lbl, "데이터 없음", None)
+    else:
+        col.metric(lbl, f"{d['val']:,.2f}", f"{d['change']:+.2f}%")
 
 st.markdown("---")
 
@@ -336,7 +348,7 @@ if not df.empty:
                         "정렬 옵션 선택:",
                         options=[
                             "퀀트점수 순", 
-                            "미래 기대 수익률 순 (%)", 
+                            "모형 추정치 순 (%)", 
                             "🟢 안전 눌림목 TOP 10", 
                             "🔥 단기 수급/모멘텀 TOP 10",
                             "🔴 매도/손절 대응 순"
@@ -349,7 +361,7 @@ if not df.empty:
                 
                 if not cat_df.empty:
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                    cat_df['예측수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
+                    cat_df['모형추정치(%)'] = cat_df[f"미래수익률_{p_code}"]
                     
                     probs, b_sigs, s_sigs, s_ranks = [], [], [], []
                     for _, r in cat_df.iterrows():
@@ -360,25 +372,25 @@ if not df.empty:
                         s_sigs.append(s_sig)
                         s_ranks.append(s_rank)
                     
-                    cat_df['상승확률(%)'] = probs
+                    cat_df['상승신호점수'] = probs
                     cat_df['매도우선순위'] = s_ranks
 
                     # 정렬 옵션 처리
-                    if "미래 기대 수익률" in cat_sort_opt:
-                        cat_df = cat_df.sort_values(by=['예측수익률(%)', '상승확률(%)'], ascending=[False, False]).head(10)
+                    if "모형 추정치" in cat_sort_opt:
+                        cat_df = cat_df.sort_values(by=['모형추정치(%)', '상승신호점수'], ascending=[False, False]).head(10)
                     elif "안전 눌림목" in cat_sort_opt:
                         temp_df = cat_df[(cat_df['총점'] >= 50) & (cat_df['r_1w_val'] >= -7.0) & (cat_df['r_1w_val'] <= 3.0)]
                         if not temp_df.empty: cat_df = temp_df
-                        cat_df = cat_df.sort_values(by=['상승확률(%)', '총점'], ascending=[False, False]).head(10)
+                        cat_df = cat_df.sort_values(by=['상승신호점수', '총점'], ascending=[False, False]).head(10)
                     elif "단기 수급/모멘텀" in cat_sort_opt:
                         cat_df['모멘텀합산'] = cat_df['수급/거래량'] + cat_df['기술적모멘텀']
                         cat_df = cat_df.sort_values(by=['모멘텀합산', '총점'], ascending=[False, False]).head(10)
                     elif "매도/손절" in cat_sort_opt:
                         cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
                     else:
-                        cat_df = cat_df.sort_values(by=['총점', '상승확률(%)'], ascending=[False, False]).head(10)
+                        cat_df = cat_df.sort_values(by=['총점', '상승신호점수'], ascending=[False, False]).head(10)
 
-                    disp_cols = ['차트링크', '시장', '당일 수익률', '1주 수익률', '총점', '예측수익률(%)'] + FEATURE_NAMES
+                    disp_cols = ['차트링크', '시장', '당일 수익률', '1주 수익률', '총점', '모형추정치(%)'] + FEATURE_NAMES
                     st.write(cat_df[[c for c in disp_cols if c in cat_df.columns]].reset_index(drop=True).to_markdown(), unsafe_allow_html=True)
                     
                     # 상세 매매 전략 리포트
@@ -387,8 +399,8 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 예측 수익률: `+{row['예측수익률(%)']}%` | 상승 확률: `{prob}%` | 퀀트 총점: `{row['총점']}`점)")
-                            st.markdown(f"#### 📈 **[매수 분석]** 상승 기대 확률: `{prob}%` | 시그널: `{buy_signal}`")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 모형 추정치: `+{row['모형추정치(%)']}%` | 상승 신호 점수: `{prob}/100` | 퀀트 총점: `{row['총점']}`점)")
+                            st.markdown(f"#### 📈 **[매수 분석]** 상승 신호 점수: `{prob}/100` | 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
                             
                             st.markdown(f"#### 📉 **[매도 분석]** 시그널: `{s_signal}`")
