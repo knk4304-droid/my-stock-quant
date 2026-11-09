@@ -96,13 +96,21 @@ def show(st):
         st.caption('기간별 가격 흐름으로 정렬한 **관찰 후보**입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
         c1,c2,c3=st.columns([2,1,1])
         with c1: period=st.selectbox('투자 기간',PERIODS,index=1)
-        with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','ETF'])
+        with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
         with c3: theme=st.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
         query=st.text_input('종목 찾기 (선택)',placeholder='삼성전자 / 005930 / NVDA')
         view=fresh.copy()
         if market=='한국 주식': view=view[view.market.isin(['KOSPI','KOSDAQ']) & view.asset_type.eq('STOCK')]
         elif market=='미국 주식': view=view[view.market.isin(['NASDAQ','NYSE/OTHER']) & view.asset_type.eq('STOCK')]
-        elif market=='ETF': view=view[view.asset_type.eq('ETF')]
+        elif market in ('국내 ETF','미국 ETF'):
+            # ETF country is based on listing market, not underlying holdings.
+            # Korean tickers may carry .KS/.KQ suffixes even if market metadata is missing.
+            is_korean_listing = (
+                view['market'].fillna('').astype(str).str.upper().isin(['KOSPI','KOSDAQ','KRX'])
+                | view['ticker'].fillna('').astype(str).str.upper().str.endswith(('.KS','.KQ'))
+            )
+            is_etf = view['asset_type'].fillna('').astype(str).str.upper().eq('ETF')
+            view = view[is_etf & (is_korean_listing if market=='국내 ETF' else ~is_korean_listing)]
         # These are keyword themes, not an official sector classification.
         keywords={'반도체':'반도체|semiconductor|nvidia|advanced micro devices|broadcom|하이닉스',
                   'AI·기술':'ai|artificial intelligence|software|technology|테크|인공지능|마이크로소프트|naver',
