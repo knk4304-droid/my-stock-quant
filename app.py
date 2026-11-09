@@ -365,7 +365,8 @@ with st.expander('🧪 v5.9 배치 종목 품질 및 화면 분석 범위 진단
 with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 대응)', expanded=False):
     st.caption('현재 화면 표본뿐 아니라 배치 저장 종목에서도 검색합니다. 검색에 없으면 외부 종목 목록을 조회할 수 있습니다. 외부 시세는 공급원 상태에 따라 조회되지 않을 수 있습니다.')
     lookup = st.text_input('종목명 또는 코드 (예: 한화오션, 042660, AAPL)', key='v60_report_query').strip()
-    catalog = build_catalog(name_map, load_batch()[0])
+    _, search_name_map = UniverseLoader.get_full_universe()
+    catalog = build_catalog(search_name_map, load_batch()[0])
     if lookup:
         local_results = candidates(lookup, catalog)
         if st.button('🔍 전체 종목 목록에서 추가 검색', key='v60_search_all'):
