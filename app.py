@@ -1,4 +1,5 @@
 import datetime, json, time, warnings
+from kst_display_v68 import now_kst, with_kst
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np, pandas as pd, requests, streamlit as st, yfinance as yf
 from data_quality import valid_prices, return_summary, valid_macro_value
@@ -315,7 +316,7 @@ if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
 st.title("📈 AI 추천 주식 매매 (v6.7.0)")
-st.caption(f"v6.7.0: 추천 스냅샷 품질 점검·사후 성과 검증 보강·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption(f"v6.8.0: 기록시각 한국시간(KST) 표시·UTC 원본 보존·기존 기능 유지 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
@@ -535,7 +536,7 @@ if not df.empty:
     if status.get('state') in ('ok', 'stale'):
         st.info(f"배치 저장 {status['saved']}종목과 화면 분석 {df['티커'].nunique()}종목은 별개입니다. 배치 종목 전체가 화면 추천에 포함된 것은 아닙니다.")
     snapshot = create_snapshot(df)
-    st.download_button('📥 추천 결과 기록용 CSV 다운로드', snapshot.to_csv(index=False).encode('utf-8-sig'),
+    st.download_button('📥 추천 결과 기록용 CSV 다운로드', with_kst(snapshot).to_csv(index=False).encode('utf-8-sig'),
                        file_name='recommendation_snapshot.csv', mime='text/csv', key='snapshot_download')
     st.caption('추천 시점의 점수 기록용입니다. 미래 수익률 검증에는 이후 날짜의 실제 가격과 거래비용을 추가로 비교해야 합니다.')
 with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 CSV)'):
@@ -590,7 +591,7 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
             if history_result.empty:
                 st.info('후속 가격 데이터가 충분하지 않아 평가 가능한 추천이 없습니다.')
             else:
-                st.dataframe(history_result, use_container_width=True)
+                st.dataframe(with_kst(history_result), use_container_width=True)
                 from forward_prices import summarize_returns
                 summary = summarize_returns(history_result)
                 if not summary.empty:
@@ -606,7 +607,7 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
                         st.warning('일부 기간은 평가건수 20건 미만입니다. 추천 전략의 유효성이나 예측 정확도를 판단하기에 표본이 부족합니다.')
                     st.download_button('📥 기간별 검증 요약 CSV', verified.to_csv(index=False).encode('utf-8-sig'),
                                        file_name='verified_performance_v67.csv', mime='text/csv', key='v67_summary_csv')
-                st.download_button('📥 성과 검증 CSV 다운로드', history_result.to_csv(index=False).encode('utf-8-sig'),
+                st.download_button('📥 성과 검증 CSV 다운로드', with_kst(history_result).to_csv(index=False).encode('utf-8-sig'),
                                    file_name='recommendation_performance.csv', mime='text/csv')
         except (ValueError, KeyError, pd.errors.ParserError) as exc:
             st.error('파일 형식을 확인하세요: ' + str(exc))
@@ -631,8 +632,9 @@ with st.expander('📚 v5.9 자동 배치 추천 기록 · 관측 성과 및 품
             st.caption(f"날짜 형식 오류 {quality['invalid_dates']}건 · 가격기준일이 기록일보다 미래인 행 {quality['price_after_record']}건 · 기록일 이후 데이터 혼입 여부는 별도 확인 필요")
             issues = archive_issues(recorded)
             if not issues.empty:
-                st.dataframe(issues.head(30), use_container_width=True)
-            st.dataframe(recorded.tail(30), use_container_width=True)
+                st.dataframe(with_kst(issues.head(30)), use_container_width=True)
+            st.caption('기록시각은 한국시간(KST)으로 추가 표시합니다. 원본 UTC 기록은 보존됩니다.')
+            st.dataframe(with_kst(recorded.tail(30)), use_container_width=True)
             results = evaluate_observed_history(recorded)
             if results.empty:
                 st.info('아직 평가에 필요한 이후 거래일 관측값이 충분하지 않습니다.')
@@ -640,7 +642,7 @@ with st.expander('📚 v5.9 자동 배치 추천 기록 · 관측 성과 및 품
                 st.caption('후속 관측 가격 간 수익률이며 실제 거래일·독립 거래·모델 적중률을 의미하지 않습니다. 거래비용·배당 미반영, 누락 거래일 가능. 양의 수익률 비율도 검증된 예측 적중률이 아닙니다.')
                 stats = observed_return_stats(results)
                 st.dataframe(stats, use_container_width=True)
-                st.download_button('📥 배치 성과 CSV', results.to_csv(index=False).encode('utf-8-sig'),
+                st.download_button('📥 배치 성과 CSV', with_kst(results).to_csv(index=False).encode('utf-8-sig'),
                                    file_name='batch_observed_performance.csv', mime='text/csv')
         except (ValueError, KeyError, OSError, pd.errors.ParserError) as exc:
             st.warning('자동 기록을 읽을 수 없습니다: ' + str(exc))
