@@ -6,6 +6,7 @@ from stock_insights import classify_product, risk_notice, read_batch_status
 from market_data import fetch_usdkrw
 from risk_review import scenario_risk_reward, coverage_message
 from universe_membership import category_tickers, etf_weights
+from ranking_options import SORT_OPTIONS, rank_candidates
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -292,12 +293,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v5.3)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v5.4)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v5.3)")
-st.caption(f"v5.3 통합: 중복 지수 소속 복원·ETF 가중치 분리·기존 품질 진단 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v5.4)")
+st.caption(f"v5.4 통합: 핵심 정렬 3종·결측값 제외·추천 신호의 한계 안내 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다. 성장성·ROE·재무건전성 등 일부 화면 항목은 실제 기업 공시자료가 아닌 가격 기반 대용 지표 또는 기본 점수입니다. ETF에 기업 재무점수를 그대로 적용한 값은 투자 판단 근거로 사용하지 마세요.")
@@ -456,13 +457,7 @@ if not df.empty:
                 with col_head2:
                     cat_sort_opt = st.selectbox(
                         "정렬 옵션 선택:",
-                        options=[
-                            "퀀트점수 순", 
-                            "모형 추정치 순 (%)", 
-                            "🟢 안전 눌림목 TOP 10", 
-                            "🔥 단기 수급/모멘텀 TOP 10",
-                            "🔴 매도/손절 대응 순"
-                        ],
+                        options=list(SORT_OPTIONS),
                         index=0,
                         key=f"sort_{cat}_{p_code}"
                     )
@@ -493,20 +488,14 @@ if not df.empty:
                     cat_df['상승신호점수'] = probs
                     cat_df['매도우선순위'] = s_ranks
 
-                    # 정렬 옵션 처리
-                    if "모형 추정치" in cat_sort_opt:
-                        cat_df = cat_df.sort_values(by=['모형추정치(%)', '상승신호점수'], ascending=[False, False]).head(10)
-                    elif "안전 눌림목" in cat_sort_opt:
-                        temp_df = cat_df[(cat_df['총점'] >= 50) & (cat_df['r_1w_val'] >= -7.0) & (cat_df['r_1w_val'] <= 3.0)]
-                        if not temp_df.empty: cat_df = temp_df
-                        cat_df = cat_df.sort_values(by=['상승신호점수', '총점'], ascending=[False, False]).head(10)
-                    elif "단기 수급/모멘텀" in cat_sort_opt:
-                        cat_df['모멘텀합산'] = cat_df['수급/거래량'] + cat_df['기술적모멘텀']
-                        cat_df = cat_df.sort_values(by=['모멘텀합산', '총점'], ascending=[False, False]).head(10)
-                    elif "매도/손절" in cat_sort_opt:
-                        cat_df = cat_df.sort_values(by=['매도우선순위', 'r_1w_val'], ascending=[False, False]).head(10)
+                    # Consistent, transparent ranking for every market and horizon.
+                    cat_df = rank_candidates(cat_df, cat_sort_opt, limit=10)
+                    if cat_sort_opt == SORT_OPTIONS[1]:
+                        st.caption('매수 적합순: 과열·급락 여부와 신호 점수를 함께 고려합니다. 조건 미충족 종목은 후순위이며 매수 권유가 아닙니다.')
+                    elif cat_sort_opt == SORT_OPTIONS[2]:
+                        st.caption('안정성 우선순: 기존 점수와 최근 가격 변화에 근거한 대용 순위입니다. 실제 변동성·최대낙폭·유동성 검증을 대신하지 않습니다.')
                     else:
-                        cat_df = cat_df.sort_values(by=['총점', '상승신호점수'], ascending=[False, False]).head(10)
+                        st.caption('종합 추천순: 투자기간별 퀀트 총점 기준이며 검증된 미래 수익률 순위가 아닙니다.')
 
                     cat_df['상품유형'] = [classify_product(r.get('티커', ''), r.get('종목명', '')) for _, r in cat_df.iterrows()]
                     disp_cols = ['차트링크', '시장', '상품유형', '당일 수익률', '1주 수익률', '총점', '모형추정치(%)'] + FEATURE_NAMES
