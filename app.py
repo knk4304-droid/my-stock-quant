@@ -16,6 +16,7 @@ from stock_search import build_catalog, candidates
 from batch_explorer_v72 import prepare_batch, filter_batch
 from stock_chart_v73 import prepare_close_chart, change_percent
 from chart_insights_v74 import build_chart_indicators, trend_summary
+from performance_readiness_v75 import readiness_summary
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -311,15 +312,20 @@ def run_quant_analysis():
                 failures.append({'티커': ticker, '원인': f'{type(exc).__name__}: {str(exc)[:180]}'})
     return pd.DataFrame(results), engine, macro, pd.DataFrame(failures), len(tasks)
 
+@st.cache_data(ttl=900, show_spinner=False)
+def cached_chart_history(symbol, period):
+    """Cache provider responses for 15 minutes; no fake quote fallback."""
+    return yf.Ticker(symbol).history(period=period, interval='1d', timeout=8)
+
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v7.3.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v7.5.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v7.3.0)")
-st.caption(f"v7.3.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v7.5.0)")
+st.caption(f"v7.5.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 # v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
@@ -506,7 +512,7 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
             st.caption('매력도 점수는 과거 가격·거래량·시장 환경을 가중 합산한 규칙 점수입니다. 상승 확률이나 예상 수익률이 아닙니다.')
             st.dataframe(pd.DataFrame(report_rows(selected_row)), use_container_width=True, hide_index=True)
             st.markdown('#### 📉 가격 추세·이동평균·거래량 (v7.4)')
-            st.caption('Yahoo Finance의 일별 종가 차트입니다. 실시간 호가가 아니며 데이터 지연·조정 가능성이 있습니다.')
+            st.caption('Yahoo Finance의 일별 종가 차트입니다. 실시간 호가가 아니며 데이터 지연·조정 가능성이 있습니다. 동일 종목·기간 조회는 15분간 캐시하여 재조회 속도를 높입니다.')
             _chart_period = st.selectbox('차트 조회 기간', ['1mo', '3mo', '6mo', '1y'],
                                          format_func=lambda x: {'1mo':'1개월','3mo':'3개월','6mo':'6개월','1y':'1년'}[x],
                                          index=2, key=f'v73_chart_period_{ticker}')
@@ -514,7 +520,7 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
             if st.button('📈 일별 종가 차트 조회', key=f'v73_chart_btn_{ticker}'):
                 with st.spinner('일별 종가 조회 중...'):
                     try:
-                        _hist = yf.Ticker(ticker).history(period=_chart_period, interval='1d', timeout=8)
+                        _hist = cached_chart_history(ticker, _chart_period)
                         st.session_state[_chart_key] = prepare_close_chart(_hist)
                         st.session_state[_chart_key + '_indicators'] = build_chart_indicators(_hist)
                     except Exception as _chart_exc:
@@ -691,6 +697,29 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
         st.caption('자동 조회 결과: ' + st.session_state['v48_fetch_status'])
     if prices_file is None and 'v48_auto_prices' in st.session_state:
         auto_prices = st.session_state['v48_auto_prices']
+
+    if recommendation_file is not None:
+        try:
+            recommendation_file.seek(0)
+            _snapshot_ready = pd.read_csv(recommendation_file)
+            if prices_file is not None:
+                prices_file.seek(0)
+                _prices_ready = pd.read_csv(prices_file)
+                prices_file.seek(0)
+            else:
+                _prices_ready = auto_prices
+            _ready = readiness_summary(_snapshot_ready, _prices_ready)
+            st.markdown('#### 🧪 성과 검증 준비상태 (v7.5)')
+            _r1, _r2, _r3 = st.columns(3)
+            _r1.metric('추천 기록', f"{_ready['records']:,}건")
+            _r2.metric('추천 티커', f"{_ready['symbols']:,}개")
+            _r3.metric('후속 종가 확보 티커 비율', f"{_ready['coverage_pct']:.1f}%")
+            st.caption('상태: ' + _ready['status'] + ' · 단순 데이터 확보율이며 추천 정확도·수익률이 아닙니다.')
+            for _note in _ready['notes']:
+                st.info(_note)
+            recommendation_file.seek(0)
+        except (ValueError, UnicodeError, pd.errors.ParserError) as _ready_exc:
+            st.warning('성과 검증 준비상태 확인 실패: ' + str(_ready_exc))
 
     benchmark_file = st.file_uploader('선택: 시장지수 종가 CSV (ticker,date,close; 국내 ^KS11 / 미국 ^GSPC)', type='csv', key='v70_benchmark_prices')
     st.caption('지수 비교는 추천 후 첫 관측 종가일과 평가일에 지수 종가가 모두 있는 경우에만 계산합니다. 날짜가 일치하지 않으면 비교에서 제외합니다.')
