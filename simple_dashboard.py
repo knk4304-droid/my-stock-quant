@@ -116,7 +116,28 @@ def show(st):
                     })[['추천 기록 시각','투자 기간','종목명','종목코드','추천 기준일','기준 종가',
                          '이후 관측일','이후 종가','경과 일수','관측 수익률(%)']],
                         hide_index=True,use_container_width=True)
-                    st.warning('이후 가격은 해당 종목이 자동 분석에 다시 포함되었을 때만 기록됩니다. 따라서 모든 추천의 1일·1주·1개월 수익률을 검증한 결과가 아니며, 매수·매도 체결 성과도 아닙니다.')
+                    st.markdown('**추천 이후 1·5·20거래일 성과 (확인된 자료만)**')
+                    for h in (1, 5, 20):
+                        col=f'return_{h}d_pct'
+                        if col not in hist.columns: hist[col]=float('nan')
+                        hist[col]=pd.to_numeric(hist[col],errors='coerce')
+                    horizon_cols=st.columns(3)
+                    for ui,h in zip(horizon_cols,(1,5,20)):
+                        observed=hist[f'return_{h}d_pct'].dropna()
+                        ui.metric(f'{h}거래일 평균', f'{observed.mean():+.2f}%' if len(observed) else '미확인',
+                                  help=f'관측 완료 {len(observed):,}건 / 전체 {len(hist):,}건. 추천 기준 종가 대비 이후 {h}번째 거래일 종가 변화')
+                        ui.caption(f'확인 {len(observed):,}/{len(hist):,}건')
+                    periods=[]
+                    for period_name, group in hist.groupby('period',dropna=False):
+                        item={'투자 기간':period_name,'추천 기록':len(group)}
+                        for h in (1,5,20):
+                            vals=group[f'return_{h}d_pct'].dropna()
+                            item[f'{h}일 확인']=len(vals)
+                            item[f'{h}일 평균(%)']=round(vals.mean(),2) if len(vals) else None
+                        periods.append(item)
+                    st.dataframe(pd.DataFrame(periods),hide_index=True,use_container_width=True)
+                    st.caption('거래일은 해당 종목 거래소의 실제 거래 세션 기준입니다. 거래 수수료·세금·슬리피지는 제외되며, 추천 기준 종가에 실제로 매수했다고 가정할 수 없습니다.')
+                    st.warning('관측 가능한 추천만 평균에 포함되어 선택 편향이 있을 수 있습니다. 장중·장마감 시차, 데이터 누락 및 자동 수집 한계가 있으며, 미래 수익을 보장하거나 매매 적중률을 뜻하지 않습니다.')
             except (OSError,ValueError,KeyError) as exc:
                 st.warning(f'추천 기록 파일을 읽지 못했습니다: {exc}')
     st.subheader('🏆 추천 후보')

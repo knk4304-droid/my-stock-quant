@@ -78,7 +78,7 @@ def update():
                             'elapsed_days':pd.NA,'observed_return_pct':pd.NA})
     if new: history=pd.concat([history,pd.DataFrame(new)],ignore_index=True)
     DATA.mkdir(parents=True,exist_ok=True)
-    history[COLS].to_csv(path,index=False,encoding='utf-8-sig')
+    history.to_csv(path,index=False,encoding='utf-8-sig')
     return f'Existing/created tracked recommendations: {len(history)}; new: {len(new)}'
 
 if __name__=='__main__': print(update())
