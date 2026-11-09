@@ -310,12 +310,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.5.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.6.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.5.0)")
-st.caption(f"v6.5.0: 데이터 수집 진단·투자금 대비 손실한도 계산·기간별 추천·종목 리포트·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.6.0)")
+st.caption(f"v6.6.0: 추천 스냅샷 품질 점검·사후 성과 검증 보강·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
@@ -542,6 +542,23 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
     st.caption('추천 당시 CSV와 이후 날짜의 가격 CSV(ticker,date,close)를 직접 업로드하면 실제 수익률을 계산합니다. 단순 보유 수익률 비교이며 완전한 백테스트는 아닙니다.')
     recommendation_file = st.file_uploader('추천 스냅샷 CSV', type='csv', key='v47_recommendations')
     prices_file = st.file_uploader('후속 종가 CSV', type='csv', key='v47_prices')
+    if recommendation_file is not None:
+        from snapshot_quality_v66 import inspect_snapshot
+        try:
+            snapshot_frame = pd.read_csv(recommendation_file)
+            quality_metrics, quality_warnings = inspect_snapshot(snapshot_frame)
+            st.caption(f"스냅샷 검사: {quality_metrics['rows']}행 · 고유 티커 {quality_metrics['unique_tickers']}개")
+            if quality_metrics.get('first_date'):
+                st.caption(f"추천 기록 기간: {quality_metrics['first_date']} ~ {quality_metrics['last_date']}")
+            if quality_warnings:
+                for message in quality_warnings:
+                    st.warning('스냅샷 점검: ' + message)
+            else:
+                st.success('스냅샷 기본 형식 점검 통과 (추천 정확도 검증과는 별개)')
+        except (ValueError, UnicodeError, pd.errors.ParserError) as exc:
+            st.error(f'스냅샷 CSV 읽기 오류: {exc}')
+        finally:
+            recommendation_file.seek(0)
     st.caption('CSV 없이 자동 조회하려면 추천 스냅샷 CSV만 올린 뒤 아래 버튼을 누르세요. 조회는 최대 30개 티커·최근 2년으로 제한됩니다.')
     auto_prices = None
     import hashlib
