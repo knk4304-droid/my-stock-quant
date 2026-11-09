@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install scanner dependencies
-        run: pip install pandas numpy requests yfinance pykrx
+        run: pip install pandas numpy requests yfinance pykrx finance-datareader
       - name: Scan next batch
         env:
           SCAN_BATCH_SIZE: '250'
