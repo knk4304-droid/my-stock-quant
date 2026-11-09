@@ -160,6 +160,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 
     row = {
         '시장': market,
+        '티커': ticker,
         '종목명': stock_name,
         '차트링크': chart_link,
         'news_score': news_score,
@@ -200,7 +201,13 @@ def execute_batch_update():
     macro = fetch_realtime_macro()
 
     # Preserve the first market assignment and avoid repeated provider requests.
-    tasks = list(dict.fromkeys((ticker, market) for market, tickers in universe.items() for ticker in tickers))
+    # One security may appear in multiple index universes. Keep the first category,
+    # and request its price only once (not once per index membership).
+    ticker_market = {}
+    for market, tickers in universe.items():
+        for ticker in tickers:
+            ticker_market.setdefault(ticker, market)
+    tasks = list(ticker_market.items())
     results = []
     failures = Counter()
     if not tasks:
@@ -229,8 +236,10 @@ def execute_batch_update():
         raise RuntimeError(f"Insufficient coverage: {len(results)}/{len(tasks)}; previous data preserved")
     df_results = pd.DataFrame(results)
     # Never publish a partially duplicated result set.
-    if df_results['차트링크'].duplicated().any():
-        raise RuntimeError('Duplicate chart links in batch results; previous data preserved')
+    # Defensive check: repeated symbols are a data issue; distinct symbols can
+    # legitimately share an external URL, so do not reject solely on URL.
+    if '티커' in df_results.columns and df_results['티커'].duplicated().any():
+        raise RuntimeError('Duplicate ticker symbols in batch results; previous data preserved')
     nasdaq_data = macro.get('나스닥', macro.get('NASDAQ 100', {}))
 
     macro_df = pd.DataFrame([{

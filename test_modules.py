@@ -1,4 +1,6 @@
 import unittest
+import ast
+from pathlib import Path
 import pandas as pd
 from unittest.mock import patch
 import importlib.util
@@ -44,6 +46,18 @@ class DataQualityTests(unittest.TestCase):
              patch('batch_update.process_single_stock', return_value=None):
             with self.assertRaisesRegex(RuntimeError, 'No stock data collected'):
                 execute_batch_update()
+
+    def test_batch_deduplication_by_symbol(self):
+        # Static regression check: same symbol in S&P500 and NASDAQ100 must
+        # not create two tasks with different market labels.
+        source = Path(__file__).with_name('batch_update.py').read_text(encoding='utf-8')
+        self.assertIn('ticker_market.setdefault(ticker, market)', source)
+        self.assertNotIn('dict.fromkeys((ticker, market)', source)
+
+    def test_batch_preserves_ticker_identity(self):
+        source = Path(__file__).with_name('batch_update.py').read_text(encoding='utf-8')
+        self.assertIn("'티커': ticker", source)
+        self.assertIn("df_results['티커'].duplicated()", source)
 
     def test_quant_engine_return_contract(self):
         out=return_summary(pd.DataFrame({'Close':list(range(100,110))}))
