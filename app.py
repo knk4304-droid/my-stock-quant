@@ -13,6 +13,7 @@ from individual_report import normalize_symbol, report_rows, overall_assessment,
 from trade_plan_v62 import build_trade_plan, get_reference_quote
 from technical_report_v63 import get_technical_report
 from stock_search import build_catalog, candidates
+from batch_explorer_v72 import prepare_batch, filter_batch
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -311,12 +312,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v7.1.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v7.2.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v7.1.0)")
-st.caption(f"v7.1.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v7.2.0)")
+st.caption(f"v7.2.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 # v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
@@ -415,6 +416,35 @@ with st.expander('🧪 v5.9 배치 종목 품질 및 화면 분석 범위 진단
             st.warning('배치 품질 경고가 있습니다. 이 데이터를 화면 추천 점수로 자동 변환하지 않습니다.')
         with st.expander('배치 데이터 열 구성 확인'):
             st.write(check['columns'])
+
+# Read-only batch explorer: the stored universe is not the same as live scored recommendations.
+with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록 (v7.2)', expanded=False):
+    st.caption('자동 저장된 종목을 찾아보는 화면입니다. 저장 데이터는 현재 시세가 아니며, 아래 목록은 실시간 추천 순위가 아닙니다.')
+    _batch_data, _batch_err = load_batch()
+    if _batch_err:
+        st.warning(_batch_err)
+    else:
+        _batch_view, _batch_problem = prepare_batch(_batch_data)
+        if _batch_problem:
+            st.warning(_batch_problem)
+        else:
+            _bc1, _bc2 = st.columns([2, 1])
+            with _bc1:
+                _bq = st.text_input('저장 종목명 또는 티커 검색', key='v72_batch_search', placeholder='예: 삼성전자, AAPL, 005930')
+            with _bc2:
+                _markets = ['전체'] + sorted(_batch_view['시장'].dropna().unique().tolist())
+                _bm = st.selectbox('시장 구분', _markets, key='v72_batch_market')
+            _filtered = filter_batch(_batch_view, _bq, _bm)
+            _bm1, _bm2, _bm3 = st.columns(3)
+            _bm1.metric('저장된 고유 종목', f'{len(_batch_view):,}개')
+            _bm2.metric('검색 결과', f'{len(_filtered):,}개')
+            _bm3.metric('시장 구분', f'{_batch_view["시장"].nunique():,}개')
+            st.dataframe(_filtered.head(300), use_container_width=True, hide_index=True)
+            if len(_filtered) > 300:
+                st.caption('화면에는 처음 300개만 표시합니다. 검색 조건을 좁히거나 전체 목록 CSV를 이용하세요.')
+            st.download_button('📥 검색 결과 CSV 저장', _filtered.to_csv(index=False).encode('utf-8-sig'),
+                               file_name='AI_STOCK_MASTER_batch_search_v72.csv', mime='text/csv', key='v72_batch_csv')
+            st.info('종목별 최신 가격·기술지표·매수 및 매도 대응은 아래 「종목 검색 · 종합 투자 리포트」에서 티커를 입력해 확인하세요. 데이터 공급원 조회 성공 여부에 따라 결과가 달라집니다.')
 
 # Individual report: batch-wide and provider-backed lookup (not limited to 46 live rows).
 with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 대응)', expanded=False):
