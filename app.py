@@ -17,6 +17,7 @@ from batch_explorer_v72 import prepare_batch, filter_batch
 from stock_chart_v73 import prepare_close_chart, change_percent
 from chart_insights_v74 import build_chart_indicators, trend_summary
 from performance_readiness_v75 import readiness_summary
+from dashboard_quality_v80 import dashboard_coverage, ranking_safety
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -320,12 +321,12 @@ def cached_chart_history(symbol, period):
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v7.5.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v8.0.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v7.5.0)")
-st.caption(f"v7.5.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v8.0.0)")
+st.caption(f"v8.0.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 # v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
@@ -351,6 +352,33 @@ with st.expander("🗂️ 현재 자동 분석 대상 종목 전체 보기 (설�
     st.caption('총 48개 고유 티커를 자동 분석하도록 설정했습니다. 지수 전체 편입 종목이 아닙니다. 화면 자동 분석과 배치 저장은 별개입니다.')
     st.dataframe(pd.DataFrame(_items), hide_index=True, use_container_width=True)
 
+
+# v8.0: quick-start navigation and explicit universe coverage.
+with st.expander('🧭 빠른 사용 안내 · 3단계', expanded=True):
+    st.markdown('**① 종목 검색:** 아래 종목 검색에서 이름·티커를 입력해 종합 분석과 차트를 조회합니다.  \n**② 기간별 추천:** 아래쪽 단기·스윙·중기·장기 탭에서 표본 내 점수 순위를 확인합니다.  \n**③ 성과 검증:** 추천 기록과 이후 실제 종가가 모두 있는 경우에만 관측 수익률을 계산합니다.')
+    st.caption('화면 자동 분석 표본과 GitHub 배치 저장 목록은 서로 다릅니다. 추천 점수는 검증된 상승 확률이 아닙니다.')
+
+# The batch source is intentionally read-only; the data pipelines use different scores.
+try:
+    _v80_stored, _v80_error = load_batch()
+except Exception as _v80_exc:
+    _v80_stored, _v80_error = None, str(_v80_exc)
+_v80_cov = dashboard_coverage(requested_count, df, _v80_stored)
+_v80_quality = ranking_safety(df)
+with st.expander('📊 v8.0 분석 범위 · 추천 데이터 신뢰성 한눈에 보기', expanded=True):
+    _v80_cols = st.columns(4)
+    _v80_cols[0].metric('화면 분석 성공', f"{_v80_cov['live']}/{_v80_cov['requested']}개")
+    _v80_cols[1].metric('배치 저장 종목', f"{_v80_cov['stored']:,}개")
+    _v80_cols[2].metric('양쪽 공통 종목', f"{_v80_cov['overlap']:,}개")
+    _v80_cols[3].metric('화면 수집률', f"{_v80_cov['live_pct']:.1f}%")
+    st.caption(f"배치 전용 종목 {_v80_cov['stored_only']:,}개 · 배치 저장 목록은 자동 추천 순위나 실시간 시세가 아닙니다.")
+    if _v80_error:
+        st.warning('배치 데이터 확인 불가: ' + str(_v80_error))
+    if _v80_quality['duplicate'] or _v80_quality['missing_score']:
+        st.warning(f"화면 분석 데이터 점검: 중복 티커 {_v80_quality['duplicate']}건, 총점 누락·범위 오류 {_v80_quality['missing_score']}건. 순위 해석에 주의하세요.")
+    else:
+        st.caption('화면 분석 결과에서 중복 티커 및 총점 누락·범위 오류가 감지되지 않았습니다. 이는 추천 정확도 검증과 다릅니다.')
+    st.markdown('**용어 설명:** 종합점수=규칙 기반 상대 평가 · 매수 신호 강도=내부 신호 지표 · 과거 수익률=실제 과거 가격 변화 · 관측 성과=추천 이후 가격이 확인된 기록만 평가')
 
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
 # v6.5: 수집 성공률은 데이터 커버리지 지표이며 모델 정확도와 다릅니다.
