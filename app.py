@@ -14,6 +14,7 @@ from trade_plan_v62 import build_trade_plan, get_reference_quote
 from technical_report_v63 import get_technical_report
 from stock_search import build_catalog, candidates
 from batch_explorer_v72 import prepare_batch, filter_batch
+from batch_coverage_v82 import compare_universes, coverage_by_market
 from stock_chart_v73 import prepare_close_chart, change_percent
 from chart_insights_v74 import build_chart_indicators, trend_summary
 from performance_readiness_v75 import readiness_summary
@@ -321,12 +322,12 @@ def cached_chart_history(symbol, period):
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v8.1.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v8.2.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v8.1.0)")
-st.caption(f"v8.1.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v8.2.0)")
+st.caption(f"v8.2.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 # v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
@@ -365,7 +366,7 @@ except Exception as _v80_exc:
     _v80_stored, _v80_error = None, str(_v80_exc)
 _v80_cov = dashboard_coverage(requested_count, df, _v80_stored)
 _v80_quality = ranking_safety(df)
-with st.expander('📊 종목 분석 현황 · 숫자 쉽게 이해하기 (v8.1)', expanded=True):
+with st.expander('📊 종목 분석 현황 · 숫자 쉽게 이해하기 (v8.2)', expanded=True):
     st.markdown('**오늘 자동 분석한 종목과 전체 저장 목록은 서로 다릅니다.** 아래 숫자는 분석 범위를 보여주며, 추천 성공률이나 투자 수익률을 뜻하지 않습니다.')
     _v80_cols = st.columns(4)
     _v80_cols[0].metric('오늘 분석 완료', f"{_v80_cov['live']:,} / {_v80_cov['requested']:,}개")
@@ -463,7 +464,7 @@ with st.expander('🧪 v5.9 배치 종목 품질 및 화면 분석 범위 진단
             st.write(check['columns'])
 
 # Read-only batch explorer: the stored universe is not the same as live scored recommendations.
-with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록 (v7.3)', expanded=False):
+with st.expander('🗃️ 저장 종목 검색 · 분석 포함 여부 (v8.2)', expanded=False):
     st.caption('자동 저장된 종목을 찾아보는 화면입니다. 저장 데이터는 현재 시세가 아니며, 아래 목록은 실시간 추천 순위가 아닙니다.')
     _batch_data, _batch_err = load_batch()
     if _batch_err:
@@ -479,7 +480,17 @@ with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록
             with _bc2:
                 _markets = ['전체'] + sorted(_batch_view['시장'].dropna().unique().tolist())
                 _bm = st.selectbox('시장 구분', _markets, key='v72_batch_market')
-            _filtered = filter_batch(_batch_view, _bq, _bm)
+            _compared = compare_universes(_batch_view, df)
+            st.markdown('#### 저장 종목 중 이번 화면에서 분석한 종목 확인')
+            st.caption('저장 목록에만 있음은 분석 실패를 뜻하지 않습니다. 이번 화면의 자동 분석 대상으로 선택되지 않았다는 뜻입니다.')
+            _scope = st.radio('분석 범위', ['전체 저장 종목', '이번 화면 분석 포함', '저장 목록에만 있음'], horizontal=True, key='v82_scope')
+            with st.expander('시장별 분석 포함 현황 · 자세히 보기', expanded=False):
+                st.dataframe(coverage_by_market(_compared), use_container_width=True, hide_index=True)
+                st.caption('분석 포함 비율은 저장 목록 대비 이번 화면 분석 종목의 비중입니다. 추천 정확도나 수익률이 아닙니다.')
+            _filtered = filter_batch(_compared, _bq, _bm)
+            if _scope != '전체 저장 종목':
+                _filtered = _filtered.loc[_filtered['화면 분석 여부'].eq(_scope)]
+
             _bm1, _bm2, _bm3 = st.columns(3)
             _bm1.metric('저장된 고유 종목', f'{len(_batch_view):,}개')
             _bm2.metric('검색 결과', f'{len(_filtered):,}개')
@@ -488,8 +499,8 @@ with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록
             if len(_filtered) > 300:
                 st.caption('화면에는 처음 300개만 표시합니다. 검색 조건을 좁히거나 전체 목록 CSV를 이용하세요.')
             st.download_button('📥 검색 결과 CSV 저장', _filtered.to_csv(index=False).encode('utf-8-sig'),
-                               file_name='AI_STOCK_MASTER_batch_search_v73.csv', mime='text/csv', key='v72_batch_csv')
-            st.caption('아래 종목을 선택해 상세 분석으로 연결할 수 있습니다. 목록의 저장 기준가는 과거 배치 값입니다.')
+                               file_name='AI_STOCK_MASTER_batch_search_v82.csv', mime='text/csv', key='v72_batch_csv')
+            st.caption('검색 결과를 선택하면 종합 리포트로 이동합니다. 저장 기준가는 과거 값이며 최신 시세와 다를 수 있습니다.')
             if not _filtered.empty:
                 _choices = _filtered['티커'].astype(str).tolist()[:300]
                 _name_map = dict(zip(_filtered['티커'].astype(str), _filtered['종목명'].astype(str)))
