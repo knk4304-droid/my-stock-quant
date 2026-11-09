@@ -1,5 +1,5 @@
 import datetime, json, time, warnings
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np, pandas as pd, requests, streamlit as st, yfinance as yf
 from data_quality import valid_prices, return_summary, valid_macro_value
 from stock_insights import classify_product, risk_notice, read_batch_status
@@ -283,37 +283,48 @@ def process_single_stock(ticker, market, name_map, engine, macro):
         row[f"미래수익률_{p}"] = engine.calculate_pure_future_return(raw, market, p, r_1w_val, macro)
     return row
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900)
 def run_quant_analysis():
     universe, name_map = UniverseLoader.get_full_universe()
     engine, macro = QuantEngine(), fetch_realtime_macro()
-    # A ticker can belong to several indices. Keep one fetch, but preserve
-    # category membership independently when filtering the display.
     unique_tasks = {ticker: (ticker, market) for market, tickers in reversed(list(universe.items())) for ticker in tickers}
     for ticker in universe.get("국내 ETF", []):
         unique_tasks[ticker] = (ticker, "국내 ETF")
     tasks = list(unique_tasks.values())
-    results = []
-    with ThreadPoolExecutor(max_workers=20) as ex:
-        futures = [ex.submit(process_single_stock, t, m, name_map, engine, macro) for t, m in tasks]
-        for f in futures:
+    results, failures = [], []
+    # 공급원의 요청 제한을 줄이고 티커별 오류를 보존합니다.
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futures = {ex.submit(process_single_stock, t, m, name_map, engine, macro): t for t, m in tasks}
+        for future in as_completed(futures):
+            ticker = futures[future]
             try:
-                r = f.result()
-                if r: results.append(r)
-            except Exception: pass
-    return pd.DataFrame(results), engine, macro
+                result = future.result()
+                if result is not None:
+                    results.append(result)
+                else:
+                    failures.append({'티커': ticker, '원인': '유효한 가격 데이터 없음 (조회 실패/가격 부족/공급원 제한)'})
+            except Exception as exc:
+                failures.append({'티커': ticker, '원인': f'{type(exc).__name__}: {str(exc)[:180]}'})
+    return pd.DataFrame(results), engine, macro, pd.DataFrame(failures), len(tasks)
 
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.3)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.3.2)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.3)")
-st.caption(f"v6.3: 기술적 지표 기반 전략·배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.3.2)")
+st.caption(f"v6.3.2: 시세 수집 실패 진단·정렬 빈 결과 보호·기술적 지표 기반 전략·배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-df, engine, macro_info = run_quant_analysis()
+df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
+st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
+with st.expander("🛠️ 시세 수집 실패 진단 (추천 목록이 비어 있을 때 확인)"):
+    if fetch_failures.empty:
+        st.success("수집 단계에서 확인된 실패가 없습니다.")
+    else:
+        st.dataframe(fetch_failures, use_container_width=True, hide_index=True)
+        st.caption("가격 미수집 종목에는 임의 점수나 추천 순위를 생성하지 않습니다. 실패가 많으면 공급원 요청 제한 또는 네트워크 상태를 확인하세요.")
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다. 성장성·ROE·재무건전성 등 일부 화면 항목은 실제 기업 공시자료가 아닌 가격 기반 대용 지표 또는 기본 점수입니다. ETF에 기업 재무점수를 그대로 적용한 값은 투자 판단 근거로 사용하지 마세요.")
 if df.empty:
     st.error("유효한 종목 가격 데이터를 수집하지 못했습니다. 데이터 공급원과 네트워크 상태를 확인하세요.")
@@ -605,6 +616,7 @@ if not df.empty:
                 
                 if cat_df.empty:
                     st.info(coverage_message(0))
+                    st.caption("추천 대상 0개: 수집 실패 진단에서 가격 조회 성공 여부를 확인하세요.")
                 else:
                     st.caption(coverage_message(len(cat_df)))
                     if "통합" not in cat:
@@ -625,7 +637,16 @@ if not df.empty:
                     cat_df['매도우선순위'] = s_ranks
 
                     # Consistent, transparent ranking for every market and horizon.
-                    cat_df = rank_candidates(cat_df, cat_sort_opt, limit=10)
+                    try:
+                        ranked = rank_candidates(cat_df, cat_sort_opt, limit=10)
+                        if ranked is None or ranked.empty:
+                            st.warning(f"정렬 결과가 비었습니다. 정렬 전 분석 가능 {len(cat_df)}개 종목을 총점순으로 표시합니다.")
+                            cat_df = cat_df.sort_values('총점', ascending=False).head(10)
+                        else:
+                            cat_df = ranked
+                    except Exception as exc:
+                        st.warning(f"정렬 기능 오류 ({type(exc).__name__}): 총점순으로 대체 표시합니다.")
+                        cat_df = cat_df.sort_values('총점', ascending=False).head(10)
                     if cat_sort_opt == SORT_OPTIONS[1]:
                         st.caption('매수 적합순: 과열·급락 여부와 신호 점수를 함께 고려합니다. 조건 미충족 종목은 후순위이며 매수 권유가 아닙니다.')
                     elif cat_sort_opt == SORT_OPTIONS[2]:
