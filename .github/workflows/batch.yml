@@ -37,7 +37,7 @@ jobs:
           git config user.name 'GitHub Action Bot'
           mkdir -p "$RUNNER_TEMP/quant-output"
           found=0
-          for f in quant_stocks.parquet quant_macro.parquet batch_status.json; do
+          for f in quant_stocks.parquet quant_macro.parquet batch_status.json recommendation_history.csv; do
             if [[ -f "$f" ]]; then cp "$f" "$RUNNER_TEMP/quant-output/$f"; found=1; fi
           done
           if [[ "$found" -eq 0 ]]; then echo 'No batch outputs found'; exit 1; fi
@@ -45,7 +45,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             cp "$RUNNER_TEMP/quant-output/"* .
-            git add -- quant_stocks.parquet quant_macro.parquet batch_status.json
+            git add -- quant_stocks.parquet quant_macro.parquet batch_status.json recommendation_history.csv
             if git diff --cached --quiet; then echo 'No data changes to commit'; exit 0; fi
             git commit -m "Auto update quant data [skip ci]"
             if git push origin HEAD:main; then echo 'Batch outputs pushed'; exit 0; fi
