@@ -9,6 +9,7 @@ from universe_membership import category_tickers, etf_weights
 from ranking_options import SORT_OPTIONS, rank_candidates
 from batch_universe_quality import inspect_batch, load_batch
 from individual_report import normalize_symbol, report_rows, overall_assessment, price_scenarios
+from trade_plan_v62 import build_trade_plan, get_reference_quote
 from stock_search import build_catalog, candidates
 
 try:
@@ -304,12 +305,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.1)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.2)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.1)")
-st.caption(f"v5.9 통합: 배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.2)")
+st.caption(f"v6.2: 개별 종목 시세 기준 전략·배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다. 성장성·ROE·재무건전성 등 일부 화면 항목은 실제 기업 공시자료가 아닌 가격 기반 대용 지표 또는 기본 점수입니다. ETF에 기업 재무점수를 그대로 적용한 값은 투자 판단 근거로 사용하지 마세요.")
@@ -403,7 +404,30 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
             st.markdown(f'**종합 판단: {assessment}** — {explanation}')
             st.caption(f"티커: {selected_row.get('티커')} | 시장: {selected_row.get('시장')} | 상품 위험유형: {kind}")
             st.warning('이 리포트는 과거 가격 기반 규칙 점수이며 투자 권유나 미래 수익률 예측이 아닙니다. 실시간 호가·기업 공시·실적·뉴스 검증은 포함되지 않습니다.')
+            st.caption('매력도 점수는 과거 가격·거래량·시장 환경을 가중 합산한 규칙 점수입니다. 상승 확률이나 예상 수익률이 아닙니다.')
             st.dataframe(pd.DataFrame(report_rows(selected_row)), use_container_width=True, hide_index=True)
+            st.markdown('#### 📌 확인 가능한 종가 기준 매매 계획')
+            st.caption('시세 제공원 마지막 일별 종가를 기준으로 계산합니다. 장중 실시간 호가가 아니며, 목표가·손절가는 사용자가 조절하는 가정 시나리오입니다.')
+            quote_key = f'v62_quote_{ticker}'
+            if st.button('📊 최근 종가 조회 · 전략 계산', key=f'v62_quote_btn_{ticker}'):
+                with st.spinner('최근 거래일 가격 확인 중...'):
+                    st.session_state[quote_key] = get_reference_quote(ticker)
+            quote = st.session_state.get(quote_key)
+            if quote:
+                if quote.get('error'):
+                    st.warning(quote['error'])
+                else:
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric('최근 확인 종가', f"{quote['close']:,.2f} {quote['currency']}")
+                    c2.metric('거래일', quote['date'])
+                    c3.metric('데이터 공급원', quote['source'])
+                    risk_pct = st.slider('손실 허용 범위 (%) · 가정', 1.0, 10.0, 4.0, 0.5, key=f'v62_risk_{ticker}')
+                    plan = build_trade_plan(quote['close'], risk_pct, quote['currency'])
+                    st.dataframe(pd.DataFrame([plan]), hide_index=True, use_container_width=True)
+                    st.caption('1차 목표 +4%, 2차 목표 +8%, 1차 분할 진입 -2%, 2차 분할 진입 -4%는 사용자 가정값입니다. 실제 지지·저항이나 미래 가격 예측이 아닙니다.')
+                    st.info('현재가는 실시간 체결가가 아닙니다. 주문 전 증권사 호가, 공시, 거래량 및 수수료를 다시 확인하세요.')
+            else:
+                st.info('버튼을 누르면 마지막 거래일 종가를 조회하고 가정 매매 가격을 표시합니다.')
             st.markdown('**종합의견:** 기간별 점수가 일치하면 방향성이 비교적 일관적이며, 상충하면 매매보다 관찰과 위험 관리가 우선입니다.')
             st.markdown('**매수 전략:** 거래량·추세·지지 구간을 확인하고 분할 진입 여부를 판단하세요. **매도 전략:** 진입 전에 손실한도와 목표 시나리오를 설정하고, 추세 이탈 시 재평가하세요.')
             with st.expander('🎯 내 기준가로 목표·손실 시나리오 계산 (예측값 아님)'):
