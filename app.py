@@ -311,14 +311,38 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v7.0.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v7.1.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v7.0.0)")
-st.caption(f"v7.0.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v7.1.0)")
+st.caption(f"v7.1.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
+# v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
+with st.expander("📖 처음 사용하는 분을 위한 화면 안내", expanded=False):
+    st.markdown("""**① 시장 현황:** 지수와 환율의 최근 수집값을 확인합니다. 실시간 체결가는 아닐 수 있습니다.  
+**② 종목 검색:** 이름 또는 티커로 검색하고 매수·매도 및 위험관리 리포트를 조회합니다.  
+**③ 추천 TOP 10:** 투자기간과 시장 그룹을 선택해 내부 규칙 점수 순위를 확인합니다.  
+**④ 성과 검증:** 추천 당시 기록과 실제 이후 가격이 모두 있는 경우에만 성과를 계산합니다.  
+**참고:** 총점·매수 신호 강도는 미래 수익률이나 상승 확률이 아닙니다.""")
+
+with st.expander("🗂️ 현재 자동 분석 대상 종목 전체 보기 (설정된 표본)", expanded=False):
+    _groups, _names = UniverseLoader.get_full_universe()
+    _groups_view = {
+        '국내 대형주 (코스피200 표본)': _groups.get('코스피200', []),
+        '국내 성장주 (코스닥100 표본 + 일부 코스피)': _groups.get('코스닥100', []),
+        '미국 대형주 (S&P500 표본)': _groups.get('S&P500', []),
+        '미국 성장주': _groups.get('미국 소형 고성장주', []),
+        '국내 상장 ETF': _groups.get('국내 ETF', []),
+    }
+    _items = [{'구분': _label, '종목명': _names.get(_ticker, _ticker), '티커': _ticker,
+               '이번 실행 가격수집': '성공' if not df.empty and '티커' in df.columns and _ticker in set(df['티커']) else '미확인/실패'}
+              for _label, _tickers in _groups_view.items() for _ticker in _tickers]
+    st.caption('총 48개 고유 티커를 자동 분석하도록 설정했습니다. 지수 전체 편입 종목이 아닙니다. 화면 자동 분석과 배치 저장은 별개입니다.')
+    st.dataframe(pd.DataFrame(_items), hide_index=True, use_container_width=True)
+
+
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
 # v6.5: 수집 성공률은 데이터 커버리지 지표이며 모델 정확도와 다릅니다.
 fetch_success_rate = (len(df) / requested_count * 100) if requested_count else 0.0
@@ -700,7 +724,18 @@ if not df.empty:
         with tab:
             st.markdown(f"### 🎯 [{p_code}] 투자 호흡별 맞춤형 스크리닝 및 순위 정렬")
             
-            for cat in FIXED_CATEGORIES:
+            st.caption('먼저 시장 그룹을 고르세요. 한 번에 한 그룹만 표시하여 긴 스크롤을 줄였습니다.')
+            cat = st.selectbox('📂 추천 종목 그룹', FIXED_CATEGORIES,
+                               key=f'v71_group_{p_code}',
+                               help='이 그룹들은 지수 전체가 아니라 미리 설정한 대표종목 표본입니다.')
+            with st.expander('❔ 점수·수익률·매매 신호 설명', expanded=False):
+                st.markdown("""- **종합점수(100점):** 가격·거래량 및 일부 대용 지표를 합산한 내부 규칙 점수입니다.
+- **매수 신호 강도(100점):** 내부 규칙 신호이며 상승 확률이 아닙니다.
+- **당일/1주 수익률:** 최근 수집한 일별 종가를 바탕으로 한 과거 변화율입니다.
+- **목표가·손절가:** 사용자가 가정한 시나리오이며 미래 가격 예측이나 주문 지시가 아닙니다.
+- **RSI·MACD:** 과거 가격 흐름에서 과열 및 추세 변화를 살피는 보조지표입니다.
+- **손익비:** 목표수익 폭을 손실허용 폭으로 나눈 값입니다. 거래비용·급락 위험은 별도로 확인해야 합니다.""")
+            for cat in [cat]:
                 col_head1, col_head2 = st.columns([3, 1])
                 with col_head1:
                     st.markdown(f"### 🏆 {cat} 상위 최대 10개")
@@ -743,7 +778,7 @@ if not df.empty:
                     try:
                         ranked = rank_candidates(cat_df, cat_sort_opt, limit=10)
                         if ranked is None or ranked.empty:
-                            st.warning(f"정렬 결과가 비었습니다. 정렬 전 분석 가능 {len(cat_df)}개 종목을 총점순으로 표시합니다.")
+                            st.warning(f"선택한 정렬 조건에 맞는 결과가 없어 총점순으로 대신 표시합니다. 분석 가능 {len(cat_df)}개 종목을 총점순으로 표시합니다.")
                             cat_df = cat_df.sort_values('총점', ascending=False).head(10)
                         else:
                             cat_df = ranked
@@ -773,7 +808,11 @@ if not df.empty:
                     
                     # 상세 매매 전략 리포트
                     with st.expander(f"🔍 [{cat}] 종목별 매수·매도 대응 리포트 (가격 기반 분석)"):
-                        for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
+                        _choices = list(cat_df.index)
+                        _selected = st.selectbox('📌 자세히 분석할 종목 한 개 선택', _choices,
+                            format_func=lambda i: f"{cat_df.loc[i, '종목명']} ({cat_df.loc[i, '티커']})",
+                            key=f'v71_report_{p_code}_{cat}')
+                        for idx, (_, row) in enumerate(cat_df.loc[[_selected]].iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
