@@ -66,3 +66,25 @@ class DataQualityTests(unittest.TestCase):
 
 if __name__=='__main__':
     unittest.main()
+
+class StockInsightsTests(unittest.TestCase):
+    def test_product_types(self):
+        from stock_insights import classify_product
+        self.assertEqual(classify_product('252670.KS', 'KODEX 200선물인버스2X'), '인버스/레버리지 ETF')
+        self.assertEqual(classify_product('AAPL', '애플'), '주식/기타 (추정)')
+        self.assertEqual(classify_product('069500.KS', 'KODEX 200'), '일반 ETF (추정)')
+
+    def test_batch_status_valid_and_stale(self):
+        import tempfile, json, datetime as dt
+        from stock_insights import read_batch_status
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)/'batch_status.json'
+            p.write_text(json.dumps({'updated_at':'2026-11-09 09:00:00','requested':100,'saved':94}), encoding='utf-8')
+            self.assertEqual(read_batch_status(p, dt.datetime(2026,11,9,10))['state'], 'ok')
+            self.assertEqual(read_batch_status(p, dt.datetime(2026,11,11,10))['state'], 'stale')
+            p.write_text('{broken', encoding='utf-8')
+            self.assertEqual(read_batch_status(p)['state'], 'invalid')
+
+    def test_missing_status(self):
+        from stock_insights import read_batch_status
+        self.assertEqual(read_batch_status('/not/existing/batch_status.json')['state'], 'unknown')

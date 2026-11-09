@@ -2,6 +2,7 @@ import datetime, json, time, warnings
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np, pandas as pd, requests, streamlit as st, yfinance as yf
 from data_quality import valid_prices, return_summary, valid_macro_value
+from stock_insights import classify_product, risk_notice, read_batch_status
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -250,6 +251,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     
     row = {
         '시장': market,
+        '티커': ticker,
         '종목명': stock_name,
         '차트링크': f"[{stock_name}]({link})",
         'r_1w_val': r_1w_val,
@@ -287,12 +289,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.2)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.4)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v4.2)")
-st.caption(f"v4.2 데이터 안정화: 데이터 유효성 검증 및 수익률 기간 수정 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v4.4)")
+st.caption(f"v4.4 통합: 데이터 수집 상태·상품 위험도·종목 검색 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다.")
@@ -313,6 +315,29 @@ for col, (lbl, k) in zip(cols, idx_list):
     else:
         change = d.get("change")
         col.metric(lbl, f"{d['val']:,.2f}", f"{change:+.2f}%" if change is not None else None)
+
+# 배치 데이터와 화면 실시간 조회는 별도 경로임을 명시합니다.
+status = read_batch_status()
+if status['state'] == 'ok':
+    st.caption('📦 ' + status['message'] + ' (배치 저장 시각, 화면 실시간 시세와 별도)')
+elif status['state'] == 'stale':
+    st.warning('배치 데이터 갱신 지연: ' + status['message'])
+else:
+    st.caption('📦 ' + status['message'])
+
+with st.expander('🔎 종목 빠른 검색 및 상품 위험도 (현재 화면 분석 종목 기준)'):
+    query = st.text_input('종목명 또는 티커 검색', key='v44_search').strip()
+    if query:
+        matched = df[df['종목명'].astype(str).str.contains(query, case=False, regex=False, na=False) |
+                     df['티커'].astype(str).str.contains(query, case=False, regex=False, na=False)] if '티커' in df.columns else df[df['종목명'].astype(str).str.contains(query, case=False, regex=False, na=False)]
+        if matched.empty:
+            st.info('현재 분석 대상에서 검색 결과가 없습니다. 전체 시장 검색 기능은 아직 지원하지 않습니다.')
+        else:
+            for _, item in matched.head(15).iterrows():
+                kind = classify_product(item.get('티커', ''), item.get('종목명', ''))
+                st.markdown(f"**{item['종목명']}** · {item['시장']} · {kind}")
+                st.caption(risk_notice(kind))
+                st.caption('단기 점수: ' + str(item.get('총점_1~3D', 'N/A')) + ' / 스윙 점수: ' + str(item.get('총점_1~2W', 'N/A')))
 
 st.markdown("---")
 
@@ -383,7 +408,8 @@ if not df.empty:
                     else:
                         cat_df = cat_df.sort_values(by=['총점', '상승신호점수'], ascending=[False, False]).head(10)
 
-                    disp_cols = ['차트링크', '시장', '당일 수익률', '1주 수익률', '총점', '모형추정치(%)'] + FEATURE_NAMES
+                    cat_df['상품유형'] = [classify_product(r.get('티커', ''), r.get('종목명', '')) for _, r in cat_df.iterrows()]
+                    disp_cols = ['차트링크', '시장', '상품유형', '당일 수익률', '1주 수익률', '총점', '모형추정치(%)'] + FEATURE_NAMES
                     st.write(cat_df[[c for c in disp_cols if c in cat_df.columns]].reset_index(drop=True).to_markdown(), unsafe_allow_html=True)
                     
                     # 상세 매매 전략 리포트
@@ -392,6 +418,7 @@ if not df.empty:
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
+                            st.caption(risk_notice(classify_product(row.get('티커', ''), row.get('종목명', ''))))
                             st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 모형 추정치: `+{row['모형추정치(%)']}%` | 상승 신호 점수: `{prob}/100` | 퀀트 총점: `{row['총점']}`점)")
                             st.markdown(f"#### 📈 **[매수 분석]** 상승 신호 점수: `{prob}/100` | 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
