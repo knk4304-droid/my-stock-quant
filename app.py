@@ -9,6 +9,7 @@ from universe_membership import category_tickers, etf_weights
 from ranking_options import SORT_OPTIONS, rank_candidates
 from batch_universe_quality import inspect_batch, load_batch
 from individual_report import normalize_symbol, report_rows, overall_assessment, price_scenarios
+from stock_search import build_catalog, candidates
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -80,7 +81,7 @@ def fetch_realtime_macro():
 class UniverseLoader:
     @staticmethod
     def get_full_universe():
-        kr_large = {'005930.KS':'삼성전자', '000660.KS':'SK하이닉스', '035420.KS':'NAVER', '005380.KS':'현대차', '000270.KS':'기아', '068270.KS':'셀트리온', '005490.KS':'POSCO홀딩스', '035720.KS':'카카오', '051910.KS':'LG화학', '006400.KS':'삼성SDI', '373220.KS':'LG에너지솔루션', '207940.KS':'삼성바이오로직스'}
+        kr_large = {'042660.KS':'한화오션', '005930.KS':'삼성전자', '000660.KS':'SK하이닉스', '035420.KS':'NAVER', '005380.KS':'현대차', '000270.KS':'기아', '068270.KS':'셀트리온', '005490.KS':'POSCO홀딩스', '035720.KS':'카카오', '051910.KS':'LG화학', '006400.KS':'삼성SDI', '373220.KS':'LG에너지솔루션', '207940.KS':'삼성바이오로직스'}
         kr_small = {'196170.KQ':'알테오젠', '086520.KQ':'에코프로비엠', '028300.KQ':'HLB', '247540.KQ':'엘앤에프', '214150.KQ':'클래시스', '058470.KQ':'리노공업', '035900.KQ':'JYP Ent.', '277810.KQ':'레인보우로보틱스', '053690.KQ':'한미반도체'}
         us_large = {'AAPL':'애플', 'MSFT':'마이크로소프트', 'AMZN':'아마존', 'NVDA':'엔비디아', 'GOOGL':'알파벳', 'META':'메타', 'TSLA':'테슬라', 'BRK-B':'버크셔해서웨이', 'UNH':'유나이티드헬스', 'JNJ':'존슨앤드존슨', 'LLY':'일라이릴리', 'JPM':'JP모건체이스'}
         us_small = {'PLTR':'팔란티어', 'SMCI':'슈퍼마이크로컴퓨터', 'IONQ':'아이온큐', 'ROKU':'로쿠', 'SOFI':'소파이', 'PATH':'유아이패스'}
@@ -339,10 +340,10 @@ with st.expander('🧪 v5.9 배치 종목 품질 및 화면 분석 범위 진단
         live_symbols = df['티커'].dropna().astype(str).tolist() if '티커' in df.columns else []
         check = inspect_batch(batch_frame, live_symbols)
         a, b, c, d = st.columns(4)
-        a.metric('배치 행 수', f"{check['rows']:,}")
-        b.metric('배치 고유 티커', f"{check['unique']:,}")
-        c.metric('화면 분석 종목', f"{len(set(live_symbols)):,}")
-        d.metric('양쪽 공통 티커', f"{check['overlap']:,}")
+        a.metric('자동 저장 데이터 행 수', f"{check['rows']:,}")
+        b.metric('저장된 고유 종목 수', f"{check['unique']:,}")
+        c.metric('화면 분석 가능 종목', f"{len(set(live_symbols)):,}")
+        d.metric('저장·화면 공통 종목', f"{check['overlap']:,}")
         st.caption('배치 데이터와 화면 추천은 서로 다른 분석 엔진을 사용합니다. 공통 티커는 동일 점수 또는 동일 시세를 의미하지 않습니다.')
         st.caption(f"중복 티커 행 {check['duplicates']:,}개 · 티커 누락 {check['missing_ticker']:,}개 · 비정상/누락 가격 {check['missing_price'] if check['missing_price'] is not None else '가격 열 없음'}")
         if not check['ticker_column']:
@@ -352,42 +353,46 @@ with st.expander('🧪 v5.9 배치 종목 품질 및 화면 분석 범위 진단
         with st.expander('배치 데이터 열 구성 확인'):
             st.write(check['columns'])
 
-# Individual report: existing universe lookup or an explicitly supplied ticker.
-with st.expander('📑 개별 종목 종합분석 리포트 (검색·매수·매도 전략)', expanded=False):
-    st.caption('기존 분석 종목은 이름 또는 티커로 검색할 수 있습니다. 목록 밖 종목은 정확한 거래소 티커를 입력하세요. 국내 코스닥은 123456.KQ처럼 입력합니다.')
-    lookup = st.text_input('종목명 또는 티커', key='v59_report_query').strip()
+# Individual report: batch-wide and provider-backed lookup (not limited to 46 live rows).
+with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 대응)', expanded=False):
+    st.caption('현재 화면 표본뿐 아니라 배치 저장 종목에서도 검색합니다. 검색에 없으면 외부 종목 목록을 조회할 수 있습니다. 외부 시세는 공급원 상태에 따라 조회되지 않을 수 있습니다.')
+    lookup = st.text_input('종목명 또는 코드 (예: 한화오션, 042660, AAPL)', key='v60_report_query').strip()
+    catalog = build_catalog(name_map, load_batch()[0])
     if lookup:
-        choices = df[df['종목명'].astype(str).str.contains(lookup, case=False, regex=False, na=False) |
-                     df['티커'].astype(str).str.contains(lookup, case=False, regex=False, na=False)] if not df.empty else pd.DataFrame()
-        if not choices.empty:
-            selected = st.selectbox('분석 종목 선택', choices.index.tolist(),
-                                    format_func=lambda idx: f"{df.loc[idx, '종목명']} ({df.loc[idx, '티커']})", key='v59_report_choice')
-            selected_row = df.loc[selected].to_dict()
-        else:
-            selected_row = None
-            ticker = normalize_symbol(lookup)
-            if ticker is None:
-                st.warning('검색 결과가 없습니다. 외부 종목은 정확한 티커를 입력하세요 (예: AAPL, 005930.KS, 086520.KQ).')
-            elif st.button('해당 티커 가격 조회 후 분석', key='v59_fetch_ticker'):
-                with st.spinner('종목 가격 데이터 확인 중...'):
-                    try:
-                        market = '국내 종목' if ticker.endswith(('.KS', '.KQ')) else '미국/기타 종목'
-                        selected_row = process_single_stock(ticker, market, {ticker: ticker}, engine, macro_info)
-                        if selected_row is not None:
-                            st.session_state['v59_report_extra'] = (ticker, selected_row)
-                    except Exception as exc:
-                        st.warning('시세 조회가 실패했습니다. 티커·거래소·데이터 공급원 상태를 확인하세요.')
-            cached = st.session_state.get('v59_report_extra')
-            if selected_row is None and cached and cached[0] == ticker:
+        local_results = candidates(lookup, catalog)
+        if st.button('🔍 전체 종목 목록에서 추가 검색', key='v60_search_all'):
+            with st.spinner('거래소·외부 종목 검색 중...'):
+                st.session_state['v60_remote_results'] = (lookup, candidates(lookup, catalog, include_remote=True))
+        remote_saved = st.session_state.get('v60_remote_results')
+        options = remote_saved[1] if remote_saved and remote_saved[0] == lookup else local_results
+        selected_row = None
+        if options:
+            labels = {t: n for t, n in options}
+            ticker = st.selectbox('검색 결과 · 종목 선택', list(labels), format_func=lambda t: f'{labels[t]} ({t})', key='v60_selected_ticker')
+            cached = st.session_state.get('v60_report_extra')
+            matched = df[df['티커'].astype(str).str.upper() == ticker] if not df.empty else pd.DataFrame()
+            if not matched.empty:
+                selected_row = matched.iloc[0].to_dict()
+            elif cached and cached[0] == ticker:
                 selected_row = cached[1]
-            if selected_row is None and ticker is not None:
-                st.info('해당 티커의 유효한 가격 데이터를 확보한 뒤 리포트를 표시합니다. 가격이 없으면 임의의 점수를 생성하지 않습니다.')
+            if selected_row is None and st.button('선택 종목 가격 조회 및 리포트 생성', key='v60_fetch_ticker'):
+                with st.spinner('최근 가격 및 분석 지표 확인 중...'):
+                    market = '국내 종목' if ticker.endswith(('.KS', '.KQ')) else '미국/기타 종목'
+                    selected_row = process_single_stock(ticker, market, {ticker: labels[ticker]}, engine, macro_info)
+                    if selected_row is not None:
+                        st.session_state['v60_report_extra'] = (ticker, selected_row)
+                    else:
+                        st.warning('해당 티커의 유효한 가격 데이터를 확보하지 못했습니다. 한국 종목은 코스피(.KS)와 코스닥(.KQ) 거래소를 확인하고, 거래정지·신규상장·공급원 장애 여부를 점검하세요. 점수는 생성하지 않았습니다.')
+            if selected_row is None:
+                st.info('검색 결과를 선택하고 가격 조회 버튼을 누르세요. 검색 목록에 있는 것과 실제 시세 분석 가능 여부는 다릅니다.')
+        else:
+            st.warning('현재 저장 목록에서 일치하는 종목이 없습니다. 위의 전체 종목 추가 검색을 눌러 확인하세요. 검색 실패가 상장되지 않았다는 뜻은 아닙니다.')
         if selected_row is not None:
             kind = classify_product(selected_row.get('티커'), selected_row.get('종목명'))
             st.subheader(f"{selected_row.get('종목명')} · 종합 투자 분석")
             assessment, explanation = overall_assessment(selected_row)
             st.markdown(f'**종합 판단: {assessment}** — {explanation}')
-            st.caption(f"티커: {selected_row.get('티커')} | 시장: {selected_row.get('시장')} | 유형: {kind}")
+            st.caption(f"티커: {selected_row.get('티커')} | 시장: {selected_row.get('시장')} | 상품 위험유형: {kind}")
             st.warning('이 리포트는 과거 가격 기반 규칙 점수이며 투자 권유나 미래 수익률 예측이 아닙니다. 실시간 호가·기업 공시·실적·뉴스 검증은 포함되지 않습니다.')
             st.dataframe(pd.DataFrame(report_rows(selected_row)), use_container_width=True, hide_index=True)
             st.markdown('**종합의견:** 기간별 점수가 일치하면 방향성이 비교적 일관적이며, 상충하면 매매보다 관찰과 위험 관리가 우선입니다.')
@@ -410,20 +415,6 @@ with st.expander('📑 개별 종목 종합분석 리포트 (검색·매수·매
             st.caption(risk_notice(kind))
             if selected_row.get('차트링크'):
                 st.link_button('가격 차트 확인', selected_row['차트링크'])
-
-with st.expander('🔎 종목 빠른 검색 및 상품 위험도 (현재 화면 분석 종목 기준)'):
-    query = st.text_input('종목명 또는 티커 검색', key='v44_search').strip()
-    if query:
-        matched = df[df['종목명'].astype(str).str.contains(query, case=False, regex=False, na=False) |
-                     df['티커'].astype(str).str.contains(query, case=False, regex=False, na=False)] if '티커' in df.columns else df[df['종목명'].astype(str).str.contains(query, case=False, regex=False, na=False)]
-        if matched.empty:
-            st.info('현재 분석 대상에서 검색 결과가 없습니다. 전체 시장 검색 기능은 아직 지원하지 않습니다.')
-        else:
-            for _, item in matched.head(15).iterrows():
-                kind = classify_product(item.get('티커', ''), item.get('종목명', ''))
-                st.markdown(f"**{item['종목명']}** · {item['시장']} · {kind}")
-                st.caption(risk_notice(kind))
-                st.caption('단기 점수: ' + str(item.get('총점_1~3D', 'N/A')) + ' / 스윙 점수: ' + str(item.get('총점_1~2W', 'N/A')))
 
 # 추천 스냅샷은 사용자가 CSV로 저장해야 하며 자동으로 성과가 추적되지는 않습니다.
 from recommendation_audit import create_snapshot, coverage_report
@@ -558,7 +549,7 @@ if not df.empty:
                     if "통합" not in cat:
                         st.caption(f"설정 후보 {len(category_tickers(category_universe, cat))}개 중 실제 가격 분석 {len(cat_df)}개 (지수 전체 구성종목 아님)")
                     cat_df['총점'] = cat_df[f"총점_{p_code}"]
-                    cat_df['모형추정치(%)'] = cat_df[f"미래수익률_{p_code}"]
+                    cat_df['가정 수익률(%)'] = cat_df[f"미래수익률_{p_code}"]
                     
                     probs, b_sigs, s_sigs, s_ranks = [], [], [], []
                     for _, r in cat_df.iterrows():
@@ -569,7 +560,7 @@ if not df.empty:
                         s_sigs.append(s_sig)
                         s_ranks.append(s_rank)
                     
-                    cat_df['상승신호점수'] = probs
+                    cat_df['매수 신호 강도'] = probs
                     cat_df['매도우선순위'] = s_ranks
 
                     # Consistent, transparent ranking for every market and horizon.
@@ -583,7 +574,7 @@ if not df.empty:
 
                     cat_df['상품유형'] = [classify_product(r.get('티커', ''), r.get('종목명', '')) for _, r in cat_df.iterrows()]
                     # Compact decision-support view. All original factors remain available below.
-                    core_cols = ['종목명', '차트링크', '시장', '상품유형', '당일 수익률', '1주 수익률', '총점', '상승신호점수', '모형추정치(%)']
+                    core_cols = ['종목명', '차트링크', '시장', '상품유형', '당일 수익률', '1주 수익률', '총점', '매수 신호 강도']
                     st.dataframe(cat_df[[c for c in core_cols if c in cat_df.columns]].reset_index(drop=True),
                                  use_container_width=True, hide_index=True,
                                  column_config={'차트링크': st.column_config.LinkColumn('차트 보기', display_text='차트 열기')})
@@ -596,15 +587,16 @@ if not df.empty:
                         st.caption('ETF 포함: 성장성·ROE·재무건전성 등은 기업 공시 기반 실제 재무지표가 아닐 수 있으며 주식과 직접 비교하면 안 됩니다.')
                     
                     # 상세 매매 전략 리포트
-                    with st.expander(f"🔍 [{cat}] 종목별 실시간 매수/매도 전략 상세 리포트"):
+                    with st.expander(f"🔍 [{cat}] 종목별 매수·매도 대응 리포트 (가격 기반 분석)"):
                         for idx, (_, row) in enumerate(cat_df.iterrows(), start=1):
                             prob, buy_signal, buy_opinion = generate_buy_analysis(row, macro_info)
                             s_signal, s_reason, action, target_p, stop_l, _ = generate_sell_analysis(row)
                             
                             st.caption(risk_notice(classify_product(row.get('티커', ''), row.get('종목명', ''))))
-                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 모형 추정치: `+{row['모형추정치(%)']}%` | 상승 신호 점수: `{prob}/100` | 퀀트 총점: `{row['총점']}`점)")
-                            st.markdown(f"#### 📈 **[매수 분석]** 상승 신호 점수: `{prob}/100` | 시그널: `{buy_signal}`")
+                            st.markdown(f"### {idx}. {row['종목명']} ({row['시장']} | 종합 투자 매력도: `{row['총점']}`/100 | 매수 신호 강도: `{prob}`/100)")
+                            st.markdown(f"#### 📈 **[매수 분석]** 매수 신호 강도: `{prob}/100` | 시그널: `{buy_signal}`")
                             st.info(f"💡 **매수 의견:** {buy_opinion}")
+                            st.caption('종합 투자 매력도와 매수 신호 강도는 내부 규칙 점수입니다. 상승 확률이 아닙니다. 수익률 가정은 실거래 목표가가 아닙니다.')
                             
                             st.markdown(f"#### 📉 **[매도 분석]** 시그널: `{s_signal}`")
                             st.markdown(f"- 🎯 **가정한 목표수익률 범위:** `{target_p}` | 🛑 **가정한 손실 제한 범위:** `{stop_l}`")
