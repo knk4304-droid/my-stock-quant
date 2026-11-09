@@ -46,11 +46,22 @@ def update_forward_returns(max_tickers=None):
                 end=(now + pd.Timedelta(days=1)).date().isoformat(), auto_adjust=True, timeout=12)
             if bars is None or bars.empty or 'Close' not in bars:
                 continue
+            # Scanner also uses auto_adjust=True. Compare the recorded entry
+            # close to the newly fetched adjusted close: splits/dividends can
+            # retrospectively change the historical adjusted price basis.
             close = pd.to_numeric(bars['Close'], errors='coerce').dropna()
             close.index = pd.DatetimeIndex(close.index).tz_localize(None).normalize()
             close = close[~close.index.duplicated(keep='last')].sort_index()
             for idx, r in rows.iterrows():
                 # First next trading session is horizon 1. Never substitute a later day.
+                # Require the original recommendation session to be present in the price series.
+                # Missing entry-day prices can otherwise shift the horizon count.
+                if r['entry_date'] not in close.index:
+                    continue
+                baseline = float(close.loc[r['entry_date']])
+                if abs(baseline / float(r['entry_close']) - 1) > 0.015:
+                    print(f'Validation skipped {ticker}: entry close basis changed')
+                    continue
                 future = close[close.index > r['entry_date']]
                 for h in HORIZONS:
                     if pd.notna(df.at[idx, f'return_{h}d_pct']) or len(future) < h:

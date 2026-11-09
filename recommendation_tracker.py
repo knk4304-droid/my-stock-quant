@@ -40,6 +40,8 @@ def update():
     if df.empty: return 'No valid scan data'
     newest=df.sort_values('scanned_at_utc').drop_duplicates('ticker',keep='last')
     recent=newest[newest.scanned_at_utc.ge(pd.Timestamp.now(tz='UTC')-pd.Timedelta(days=7))]
+    # Do not create today's recommendations from stale price closes.
+    recent=recent[recent.asof_price.ge((pd.Timestamp.now(tz='UTC')-pd.Timedelta(days=7)).tz_localize(None))]
     path=DATA/'recommendation_history.csv'
     history=pd.read_csv(path,dtype={'ticker':str}) if path.exists() else pd.DataFrame(columns=COLS)
     for k in COLS:

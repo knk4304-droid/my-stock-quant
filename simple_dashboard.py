@@ -233,7 +233,7 @@ def show(st):
                                                             '쉬운 설명':st.column_config.TextColumn(width='large')})
                     st.warning('매수·목표·손절 가격은 과거 차트로 계산한 참고 구간입니다. 실제 수익률 검증이나 미래 가격 예측이 아닙니다.')
                     with st.expander('📊 실제 추천 성과 검증 상태'):
-                        st.info('현재 이 화면은 추천 후 1일·1주·1개월 실제 수익률과 적중률을 계산하지 않습니다. 추천 당시 종목·가격·시각을 저장하고, 미래 시세가 쌓인 후 비교하는 별도 검증 체계가 필요합니다.')
+                        st.info('실제 추천 성과는 아래 ‘지난 추천 성과 확인’에서 1·5·20거래일 관측 수익률과 통계 점검 결과를 확인하세요. 충분한 표본이 쌓이기 전에는 검증 부족으로 표시됩니다.')
                 else:
                     st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
         with st.expander('📊 지난 추천 성과 확인 (관측된 가격 기준)'):
@@ -273,6 +273,22 @@ def show(st):
                             ui.metric(f'{h}거래일 평균', f'{observed.mean():+.2f}%' if len(observed) else '미확인',
                                       help=f'관측 완료 {len(observed):,}건 / 전체 {len(hist):,}건. 추천 기준 종가 대비 이후 {h}번째 거래일 종가 변화')
                             ui.caption(f'확인 {len(observed):,}/{len(hist):,}건')
+                        from statistical_validation import report as statistical_report
+                        stats=statistical_report(history_file)
+                        st.markdown('**통계적 신뢰성 점검**')
+                        if stats['issues']:
+                            st.error('데이터 검증 문제: ' + '; '.join(stats['issues'][:5]))
+                        stat_rows=[]
+                        for h, info in stats['horizons'].items():
+                            stat_rows.append({'기간':f'{h}거래일','판정':info['status'],
+                                '유효 추천':info.get('total',0),'관측 완료':info.get('observed',0),
+                                '관측률(%)':info.get('coverage_pct',0),'서로 다른 추천일':info.get('days',0),
+                                '서로 다른 종목':info.get('tickers',0),'평균 수익률(%)':info.get('mean_pct'),
+                                '중앙값(%)':info.get('median_pct'),'상승 비율(%)':info.get('win_rate_pct'),
+                                '95% 탐색구간 하한(%)':info.get('ci_low_pct'),
+                                '95% 탐색구간 상한(%)':info.get('ci_high_pct')})
+                        st.dataframe(pd.DataFrame(stat_rows),hide_index=True,use_container_width=True)
+                        st.caption('30건 이상·추천일 10일 이상·서로 다른 종목 10개 이상·관측률 70% 이상인 경우에만 날짜 단위 재표집으로 탐색적 95% 구간을 계산합니다. 추천 간 상관, 시장 국면, 거래비용, 데이터 누락 때문에 통계적 우위의 증명은 아닙니다.')
                         periods=[]
                         for period_name, group in hist.groupby('period',dropna=False):
                             item={'투자 기간':period_name,'추천 기록':len(group)}
