@@ -43,7 +43,21 @@ def resolve_symbol(raw):
         except (OSError,ValueError,KeyError): pass
     return raw.upper()
 
+from functools import lru_cache
+
+@lru_cache(maxsize=256)
+def cached_report(ticker):
+    return get_technical_report(ticker)
+
 def show(st):
+    st.markdown('''<style>
+    .block-container {max-width: 1450px; padding-top: 1.1rem; padding-left: 1.4rem; padding-right: 1.4rem;}
+    html, body, [data-testid="stAppViewContainer"] {font-size: 16px;}
+    [data-testid="stDataFrame"] {font-size: 15px;}
+    div[data-testid="stMetricValue"] {font-size: 1.55rem;}
+    h2, h3 {margin-top: .65rem !important;}
+    div[data-testid="stVerticalBlock"] {gap: .55rem;}
+    </style>''', unsafe_allow_html=True)
     st.title('📈 AI STOCK MASTER')
     st.caption('한 화면에서 추천 후보 확인 → 종목 선택 → 기술적 매매 시나리오 확인')
     state, scores=load_data()
@@ -84,32 +98,74 @@ def show(st):
         mask=view['name'].fillna('').astype(str).str.contains(query.strip(),case=False,regex=False) | view['ticker'].fillna('').astype(str).str.contains(query.strip(),case=False,regex=False)
         view=view[mask]
     ranked=rank(view,period) if not view.empty else view
-    st.caption(f'최근 7일 데이터에서 조건에 맞는 종목 {len(ranked):,}개 · 최대 15개 표시')
+    st.caption(f'최근 7일 데이터에서 조건에 맞는 종목 {len(ranked):,}개 · 상위 10개 표시')
     cols={'name':'종목명','ticker':'종목코드','market':'시장','score':'기술 점수','return_5d_pct':'최근 5일(%)','return_20d_pct':'최근 20일(%)','asof_price':'가격 기준일'}
     if ranked.empty:
         st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
     else:
-        st.dataframe(ranked.head(15).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','기술 점수','가격 기준일']],hide_index=True,use_container_width=True)
-    st.subheader('🔎 종목 상세 분석 · 매수/매도 참고 구간')
-    st.caption('추천 목록과 관계없이 종목명 또는 코드를 입력할 수 있습니다. 예: 삼성전자, 005930.KS, NVDA')
-    options={str(r['ticker']):str(r['name']) for _,r in ranked.head(15).iterrows()} if not ranked.empty else {}
-    picked=st.selectbox('추천 목록에서 선택', ['직접 입력']+[f'{name} ({ticker})' for ticker,name in options.items()])
-    symbol=st.text_input('분석할 종목코드',value='',placeholder='삼성전자 / 005930.KS / NVDA',key='simple_ticker')
-    if picked!='직접 입력': symbol=picked.rsplit('(',1)[-1].rstrip(')')
-    if st.button('종목 분석 실행',type='primary'):
-        if not symbol.strip(): st.warning('종목코드를 입력하거나 추천 목록에서 종목을 선택해 주세요.')
+        st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','기술 점수','가격 기준일']],hide_index=True,use_container_width=True)
+    st.subheader('🔎 상위 10종목 상세 분석 · 매수/매도 참고 구간')
+    st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
+    top = ranked.head(10) if not ranked.empty else pd.DataFrame()
+    if not top.empty:
+        # Preserve reports across Streamlit reruns; avoid showing stale reports after filters change.
+        symbols = tuple(str(t) for t in top['ticker'].tolist())
+        if st.button('상위 10종목 상세 분석 실행', type='primary', use_container_width=True):
+            progress = st.progress(0, text='상위 종목의 가격 데이터를 확인하고 있습니다.')
+            reports = []
+            for i, (_, r) in enumerate(top.iterrows()):
+                ticker = str(r['ticker'])
+                result = cached_report(ticker)
+                reports.append((str(r['name']), ticker, result))
+                progress.progress((i + 1) / len(top), text=f'{i+1}/{len(top)} 종목 분석 완료')
+            st.session_state['simple_batch_reports'] = {'symbols': symbols, 'reports': reports}
+            progress.empty()
+        stored = st.session_state.get('simple_batch_reports', {})
+        if stored.get('symbols') == symbols:
+            report_rows = []
+            for name, ticker, result in stored['reports']:
+                if 'error' in result:
+                    report_rows.append({'종목명':name,'코드':ticker,'의견':'조회 실패','기술점수':None,
+                                        '현재가':None,'1차 매수':None,'2차 매수':None,'1차 목표':None,'2차 목표':None,'손절 참고':None})
+                else:
+                    report_rows.append({'종목명':name,'코드':ticker,'의견':result.get('종합 의견'),
+                                        '기술점수':result.get('종합 점수(100)'),
+                                        '현재가':result.get('기준 종가'),
+                                        '1차 매수':result.get('1차 매수 관찰가'),
+                                        '2차 매수':result.get('2차 매수 관찰가'),
+                                        '1차 목표':result.get('1차 목표 관찰가'),
+                                        '2차 목표':result.get('2차 목표 관찰가'),
+                                        '손절 참고':result.get('손실 제한 참고가')})
+            st.dataframe(pd.DataFrame(report_rows), hide_index=True, use_container_width=True, height=390,
+                         column_config={'종목명':st.column_config.TextColumn(width='medium'),
+                                        '의견':st.column_config.TextColumn(width='medium')})
+            for i,(name,ticker,result) in enumerate(stored['reports'],1):
+                with st.expander(f'{i}. {name} ({ticker}) · {result.get("종합 의견", "분석 실패")}'):
+                    if 'error' in result:
+                        st.warning(result['error'])
+                    else:
+                        st.write(f"**기술 점수 {result['종합 점수(100)']}점** · 기준일 {result['기준일']} · 통화 {result['통화']}")
+                        indicators=['5일선','20일선','60일선','RSI(14)','MACD 히스토그램','거래량/20일 평균',
+                                    '추세 점수(30)','진입 시점 점수(25)','거래량 점수(20)','위험 관리 점수(25)']
+                        st.dataframe(pd.DataFrame([{'지표':k,'값':result.get(k)} for k in indicators]),
+                                     hide_index=True, use_container_width=True, height=380)
+            st.warning('매수·목표·손절 가격은 과거 차트로 계산한 참고 구간입니다. 실제 수익률 검증이나 미래 가격 예측이 아닙니다.')
         else:
-            with st.spinner('과거 시세를 확인하고 있습니다...'):
-                result=get_technical_report(resolve_symbol(symbol))
-            if 'error' in result: st.warning(result['error'])
+            st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
+    with st.expander('다른 종목 직접 분석'):
+        st.caption('상위 10종목 외의 종목도 조회할 수 있습니다. 예: 삼성전자, 005930.KS, NVDA')
+        symbol=st.text_input('종목명 또는 코드',placeholder='삼성전자 / 005930.KS / NVDA',key='simple_ticker')
+        if st.button('선택 종목 분석'):
+            if not symbol.strip():
+                st.warning('종목명을 입력해 주세요.')
             else:
-                st.success(f"{result['조회 티커']} · {result['종합 의견']} · 기술 점수 {result['종합 점수(100)']}점")
-                st.caption(f"기준일: {result['기준일']} · 통화: {result['통화']} · 가격 공급원: {result['데이터 공급원']}")
-                keys=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
-                st.dataframe(pd.DataFrame([{'항목':k,'가격':result[k]} for k in keys]),hide_index=True,use_container_width=True)
-                with st.expander('기술 지표 및 평가 근거'):
-                    st.dataframe(pd.DataFrame([{'항목':k,'값':v} for k,v in result.items() if k not in keys]),hide_index=True,use_container_width=True)
-                st.warning('매수·목표·손실 가격은 과거 차트로 계산한 가정 구간입니다. 실거래 주문·미래 수익 보장·검증된 예측이 아닙니다.')
+                result=cached_report(resolve_symbol(symbol))
+                if 'error' in result:
+                    st.warning(result['error'])
+                else:
+                    st.success(f"{result['조회 티커']} · {result['종합 의견']} · 기술 점수 {result['종합 점수(100)']}점")
+                    keys=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
+                    st.dataframe(pd.DataFrame([{'항목':k,'가격':result[k]} for k in keys]),hide_index=True,use_container_width=True)
     with st.expander('⚙️ 운영 상태 · 분석 범위와 점수 설명'):
         st.write(f"마지막 자동 분석(UTC): {state.get('updated_utc','확인 불가')}")
         st.write(f"검색 가능한 종목 목록: {state.get('catalog_size',0):,}개 · 최근 조회 시도: {state.get('attempted',0):,}개")
