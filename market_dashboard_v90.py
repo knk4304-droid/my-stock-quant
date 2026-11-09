@@ -58,7 +58,7 @@ def show(st):
         expected={'KOSPI','KOSDAQ','KR ETF','NASDAQ','NYSE/OTHER'}
         missing=sorted(expected-available)
         if missing: st.warning('분석 결과가 없는 시장: '+', '.join(missing)+' · 전체 시장을 충분히 분석한 것으로 해석하지 마세요.')
-        st.caption('기본 설정은 전체 시장·주식과 ETF 모두·최근 30일 분석입니다. 아래 목록은 자동 분석을 마친 종목 중 조건에 맞는 후보만 보여줍니다.')
+        st.caption('기본 설정은 전체 시장·주식과 ETF 모두·최근 30일 분석·최소 점수 0점입니다. 아래 목록은 자동 분석을 마친 종목 중 조건에 맞는 후보만 보여줍니다.')
         c_market,c_period=st.columns(2)
         with c_market:
             market_options=['전체']+sorted(scores.market.dropna().astype(str).unique().tolist())
@@ -69,13 +69,17 @@ def show(st):
         with st.expander('⚙️ 상세 검색 조건 (필요할 때만 변경)',expanded=False):
             max_age=st.selectbox('분석 기록 기간',['7일','30일','전체'],index=1,key='v90_age',help='7일·30일은 해당 기간에 분석한 기록만 표시합니다. 전체에는 오래된 기록도 포함될 수 있습니다.')
             asset_label=st.selectbox('종목 종류',['모두 보기','주식만','ETF만'],key='v94_asset_label')
-            min_score=st.slider('최소 기술 평가 점수',0,100,60,5,key='v91_score',help='이 점수보다 낮은 종목을 제외합니다. 60점은 기본 검색 기준일 뿐 매수 적합 판정이 아닙니다.')
+            min_score=st.slider('최소 기술 평가 점수',0,100,0,5,key='v941_score',help='이 점수보다 낮은 종목을 제외합니다. 기본값 0점은 분석 완료 종목을 빠짐없이 확인하기 위한 설정입니다.')
             st.caption('기술 평가 점수는 과거 가격의 추세·수익률·변동성으로 계산한 규칙 점수이며 매수 성공 확률이 아닙니다.')
-        if max_age!='전체': scores=scores.loc[age.le(7 if max_age=='7일' else 30)].copy()
+        if max_age!='전체' and not q.strip(): scores=scores.loc[age.le(7 if max_age=='7일' else 30)].copy()
         if market!='전체': scores=scores[scores.market.eq(market)]
         asset={'모두 보기':'전체','주식만':'STOCK','ETF만':'ETF'}[asset_label]
         if asset!='전체': scores=scores[scores.asset_type.eq(asset)]
-        if q: scores=scores[scores['name'].astype(str).str.contains(q,case=False,regex=False)|scores['ticker'].astype(str).str.contains(q,case=False,regex=False)]
+        if q.strip():
+            query=q.strip()
+            scores=scores[scores['name'].astype(str).str.contains(query,case=False,regex=False)|scores['ticker'].astype(str).str.contains(query,case=False,regex=False)]
+            if scores.empty:
+                st.warning(f'「{query}」의 저장된 분석 결과가 없습니다. 전체 상장 종목이 아닌 분석 완료 종목에서만 검색합니다. 아래 개별 종목 분석 메뉴에서 직접 조회하거나, 자동 분석 작업으로 해당 종목의 결과를 저장해야 합니다.')
         # Simple horizon-specific ranking using only observed historical features.
         # These are ranking heuristics, not validated expected returns.
         for key in ['return_5d_pct','return_20d_pct','volatility_annual']:
@@ -91,7 +95,7 @@ def show(st):
         else: rank_score=base
         scores['관점별 참고점수']=rank_score.round(2)
         ranked=scores.sort_values(['관점별 참고점수','score'],ascending=[False,False])
-        ranked=ranked.loc[ranked['score'].ge(min_score)]
+        ranked=ranked.loc[ranked['score'].ge(0 if q.strip() else min_score)]
         display=ranked.head(30).rename(columns={'ticker':'종목코드','name':'종목명','market':'시장','asset_type':'유형','close':'기준 종가','score':'기술 점수','return_5d_pct':'최근 5거래일 수익률(%)','return_20d_pct':'최근 20거래일 수익률(%)','volatility_annual':'연율 변동성','asof_price':'가격 기준일','scanned_at_utc':'분석 저장 시각(UTC)'})
         st.markdown(f'**조건에 맞는 후보: {len(ranked):,}개** · 점수순 상위 30개')
         if not ranked.empty:
@@ -99,7 +103,7 @@ def show(st):
             st.caption('후보 시장별 분포: '+ ' · '.join(f'{k} {v:,}개' for k,v in ranked_markets.items()))
             if len(ranked_markets)==1 and market=='전체':
                 st.warning('현재 필터를 통과한 후보는 한 시장에만 있습니다. 다른 시장이 분석되지 않았거나 점수·기간 조건에서 제외되었을 수 있습니다.')
-        if ranked.empty: st.info('현재 조건에 맞는 종목이 없습니다. 상세 검색 조건에서 기간을 전체로 변경하거나 최소 점수를 낮춰 보세요.')
+        if ranked.empty and not q.strip(): st.info('조건에 맞는 분석 완료 종목이 없습니다. 분석 기록 기간을 전체로 변경하거나 자동 분석 저장 상태를 확인하세요.')
         preferred=['종목코드','종목명','시장','유형','기준 종가','기술 점수','관점별 참고점수','가격 기준일','분석 저장 시각(UTC)']
         st.dataframe(display[[c for c in preferred if c in display.columns]],hide_index=True,use_container_width=True)
         with st.expander('📋 상세 수익률·변동성 데이터',expanded=False):
