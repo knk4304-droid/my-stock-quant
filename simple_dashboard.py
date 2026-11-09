@@ -1,0 +1,120 @@
+"""Simple, read-only recommendation workspace based on persisted market scans."""
+from pathlib import Path
+import json
+import pandas as pd
+from technical_report_v63 import get_technical_report
+
+DATA = Path(__file__).resolve().parent / 'market_scan_data'
+PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (1년 이상)']
+
+def load_data():
+    state_file, scores_file = DATA/'state.json', DATA/'scores.csv'
+    state = json.loads(state_file.read_text(encoding='utf-8')) if state_file.exists() else {}
+    scores = pd.read_csv(scores_file, dtype={'ticker':str}) if scores_file.exists() else pd.DataFrame()
+    return state, scores
+
+def rank(frame, period):
+    d=frame.copy()
+    for k in ('score','return_5d_pct','return_20d_pct','volatility_annual'):
+        d[k]=pd.to_numeric(d[k],errors='coerce') if k in d else float('nan')
+    r5=d['return_5d_pct'].clip(-25,25).fillna(0)
+    r20=d['return_20d_pct'].clip(-40,40).fillna(0)
+    vol=d['volatility_annual'].clip(0,3).fillna(1)
+    base=d['score'].fillna(0)
+    if period.startswith('단기'): score=base*.5+r5*.8-vol*12
+    elif period.startswith('스윙'): score=base*.6+r5*.35+r20*.25-vol*10
+    elif period.startswith('중기'): score=base*.7+r20*.35-vol*10
+    else: score=base*.8+r20*.15-vol*18
+    d['추천 참고점수']=score.round(1)
+    return d.sort_values('추천 참고점수',ascending=False)
+
+def resolve_symbol(raw):
+    """Resolve exact company name/code against saved catalog without a network call."""
+    raw=raw.strip()
+    if not raw: return ''
+    if raw.isdigit() and len(raw)==6: raw=raw+'.KS'
+    catalog=DATA/'catalog.csv'
+    if catalog.exists():
+        try:
+            f=pd.read_csv(catalog,dtype=str,usecols=['ticker','name'])
+            exact=f[f['name'].fillna('').str.casefold().eq(raw.casefold()) | f['ticker'].fillna('').str.casefold().eq(raw.casefold())]
+            if len(exact)==1: return str(exact.iloc[0]['ticker']).upper()
+            if raw.endswith('.KS') and not exact.empty: return str(exact.iloc[0]['ticker']).upper()
+        except (OSError,ValueError,KeyError): pass
+    return raw.upper()
+
+def show(st):
+    st.title('📈 AI STOCK MASTER')
+    st.caption('한 화면에서 추천 후보 확인 → 종목 선택 → 기술적 매매 시나리오 확인')
+    state, scores=load_data()
+    if scores.empty:
+        st.warning('저장된 시장 분석 결과가 없습니다. GitHub Actions의 Market scan v9을 먼저 실행해 주세요.')
+        return
+    scores=scores.copy()
+    scores['scanned_at_utc']=pd.to_datetime(scores['scanned_at_utc'],utc=True,errors='coerce')
+    now=pd.Timestamp.now(tz='UTC')
+    scores['분석 경과일']=(now-scores['scanned_at_utc']).dt.total_seconds()/86400
+    fresh=scores[scores['분석 경과일'].between(0,7)].copy()
+    a,b,c=st.columns(3)
+    a.metric('저장된 분석 종목',f'{len(scores):,}개')
+    b.metric('최근 7일 분석',f'{len(fresh):,}개')
+    c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개")
+    st.caption('저장된 분석은 모든 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다.')
+    st.subheader('🏆 추천 후보')
+    st.caption('기간별 가격 흐름으로 정렬한 **관찰 후보**입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
+    c1,c2,c3=st.columns([2,1,1])
+    with c1: period=st.selectbox('투자 기간',PERIODS,index=1)
+    with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','ETF'])
+    with c3: theme=st.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
+    query=st.text_input('종목 찾기 (선택)',placeholder='삼성전자 / 005930 / NVDA')
+    view=fresh.copy()
+    if market=='한국 주식': view=view[view.market.isin(['KOSPI','KOSDAQ']) & view.asset_type.eq('STOCK')]
+    elif market=='미국 주식': view=view[view.market.isin(['NASDAQ','NYSE/OTHER']) & view.asset_type.eq('STOCK')]
+    elif market=='ETF': view=view[view.asset_type.eq('ETF')]
+    # These are keyword themes, not an official sector classification.
+    keywords={'반도체':'반도체|semiconductor|nvidia|advanced micro devices|broadcom|하이닉스',
+              'AI·기술':'ai|artificial intelligence|software|technology|테크|인공지능|마이크로소프트|naver',
+              '금융':'bank|financial|finance|은행|금융|증권',
+              '헬스케어':'health|pharma|bio|바이오|제약|헬스',
+              '배당':'dividend|배당'}
+    if theme!='전체':
+        view=view[view['name'].fillna('').astype(str).str.contains(keywords[theme],case=False,regex=True)]
+        st.caption('테마는 현재 종목명 키워드로 임시 분류합니다. 정확한 업종·테마 분류는 추후 별도 데이터로 보강해야 합니다.')
+    if query.strip():
+        mask=view['name'].fillna('').astype(str).str.contains(query.strip(),case=False,regex=False) | view['ticker'].fillna('').astype(str).str.contains(query.strip(),case=False,regex=False)
+        view=view[mask]
+    ranked=rank(view,period) if not view.empty else view
+    st.caption(f'최근 7일 데이터에서 조건에 맞는 종목 {len(ranked):,}개 · 최대 15개 표시')
+    cols={'name':'종목명','ticker':'종목코드','market':'시장','score':'기술 점수','return_5d_pct':'최근 5일(%)','return_20d_pct':'최근 20일(%)','asof_price':'가격 기준일'}
+    if ranked.empty:
+        st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
+    else:
+        st.dataframe(ranked.head(15).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','기술 점수','가격 기준일']],hide_index=True,use_container_width=True)
+    st.subheader('🔎 종목 상세 분석 · 매수/매도 참고 구간')
+    st.caption('추천 목록과 관계없이 종목명 또는 코드를 입력할 수 있습니다. 예: 삼성전자, 005930.KS, NVDA')
+    options={str(r['ticker']):str(r['name']) for _,r in ranked.head(15).iterrows()} if not ranked.empty else {}
+    picked=st.selectbox('추천 목록에서 선택', ['직접 입력']+[f'{name} ({ticker})' for ticker,name in options.items()])
+    symbol=st.text_input('분석할 종목코드',value='',placeholder='삼성전자 / 005930.KS / NVDA',key='simple_ticker')
+    if picked!='직접 입력': symbol=picked.rsplit('(',1)[-1].rstrip(')')
+    if st.button('종목 분석 실행',type='primary'):
+        if not symbol.strip(): st.warning('종목코드를 입력하거나 추천 목록에서 종목을 선택해 주세요.')
+        else:
+            with st.spinner('과거 시세를 확인하고 있습니다...'):
+                result=get_technical_report(resolve_symbol(symbol))
+            if 'error' in result: st.warning(result['error'])
+            else:
+                st.success(f"{result['조회 티커']} · {result['종합 의견']} · 기술 점수 {result['종합 점수(100)']}점")
+                st.caption(f"기준일: {result['기준일']} · 통화: {result['통화']} · 가격 공급원: {result['데이터 공급원']}")
+                keys=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
+                st.dataframe(pd.DataFrame([{'항목':k,'가격':result[k]} for k in keys]),hide_index=True,use_container_width=True)
+                with st.expander('기술 지표 및 평가 근거'):
+                    st.dataframe(pd.DataFrame([{'항목':k,'값':v} for k,v in result.items() if k not in keys]),hide_index=True,use_container_width=True)
+                st.warning('매수·목표·손실 가격은 과거 차트로 계산한 가정 구간입니다. 실거래 주문·미래 수익 보장·검증된 예측이 아닙니다.')
+    with st.expander('⚙️ 운영 상태 · 분석 범위와 점수 설명'):
+        st.write(f"마지막 자동 분석(UTC): {state.get('updated_utc','확인 불가')}")
+        st.write(f"검색 가능한 종목 목록: {state.get('catalog_size',0):,}개 · 최근 조회 시도: {state.get('attempted',0):,}개")
+        st.write(f"최근 조회 실패: {state.get('failed',0):,}개 · 누적 저장 결과: {len(scores):,}개")
+        st.caption('목록 등록, 분석 성공, 최근 데이터 확보는 서로 다른 개념입니다. 현재 점수는 과거 가격 지표의 규칙 기반 평가이며 성과 검증과 별도입니다.')
+        if 'market' in scores:
+            st.dataframe(scores.groupby('market').size().rename('누적 저장 종목').reset_index(),hide_index=True,use_container_width=True)
+        st.caption('안정적 표본 1,200종목 운영은 차기 배치 개선 대상입니다. 현 배치는 전체 종목 목록을 시장별로 순환 조회합니다.')
