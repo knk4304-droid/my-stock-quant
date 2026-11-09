@@ -184,11 +184,11 @@ def generate_buy_analysis(row, macro):
         buy_signal = "🟠 매수 보류 (과열 오버슈팅)"
         buy_opinion = f"[{stock_name}] 최근 1주 등락률(+{r_1w_val:.1f}%) 급등으로 오버슈팅 구간입니다. 눌림목 조정을 기다리세요."
     elif prob >= 70:
-        buy_signal = "🟢 강력 매수 (Buy) [70% 이상]"
-        buy_opinion = f"[{stock_name}] 상승 신호 점수 {prob}/100로 최상위 매수 시그널입니다. 분할 진입을 추천합니다."
+        buy_signal = "🟢 상승 신호 강함 (참고용)"
+        buy_opinion = f"[{stock_name}] 상승 신호 점수 {prob}/100로 최상위 매수 시그널입니다. 매수 전 위험과 실제 재무정보를 확인하세요."
     elif prob >= 55:
-        buy_signal = "🟡 분할 매수 / 눌림목 (Hold) [55%~69%]"
-        buy_opinion = f"[{stock_name}] 눌림목 및 상승 기대 구간입니다 (기대 확률 {prob}%). 1차 분할 매수 관점 진입 가능."
+        buy_signal = "🟡 상승 신호 보통 (참고용)"
+        buy_opinion = f"[{stock_name}] 점수 기반 신호는 {prob}/100이며 실제 상승 확률이 아닙니다."
     else:
         buy_signal = "🔴 관망 / 매도 (Wait)"
         buy_opinion = f"[{stock_name}] 상승 신호 점수({prob}/100)이 낮습니다. 신규 매수를 보류하세요."
@@ -216,9 +216,9 @@ def generate_sell_analysis(row):
             action = f"V자 반등 가능성이 높으니 손절가({stop_loss}) 엄수 하에 보유 유지를 권장합니다."
             sell_rank_score = 60
         else:
-            sell_signal = "🔴 즉시 매도 / 교체 (Cut Loss)"
+            sell_signal = "🔴 위험 신호 (매도 검토)"
             sell_reason = f"[{stock_name}] 주가 하락과 퀀트 총점({total_score}점) 악화가 동반되었습니다."
-            action = "전량 매도 후 다른 우량주로 교체 매수를 권장합니다."
+            action = "투자 목적과 실제 위험을 확인한 후 보유 여부를 검토하세요."
             sell_rank_score = 90
     else:
         sell_signal = "🟢 보유 유지 (Hold)"
@@ -271,7 +271,7 @@ def process_single_stock(ticker, market, name_map, engine, macro):
 def run_quant_analysis():
     universe, name_map = UniverseLoader.get_full_universe()
     engine, macro = QuantEngine(), fetch_realtime_macro()
-    tasks = [(ticker, m) for m, tickers in universe.items() for ticker in tickers]
+    tasks = list({ticker: (ticker, market) for market, tickers in universe.items() for ticker in tickers}.values())
     results = []
     with ThreadPoolExecutor(max_workers=20) as ex:
         futures = [ex.submit(process_single_stock, t, m, name_map, engine, macro) for t, m in tasks]
@@ -285,12 +285,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.5)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.6)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v4.5)")
-st.caption(f"v4.5 통합: 환율 다중 소스 검증·데이터 수집 상태·상품 위험도·종목 검색 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v4.6)")
+st.caption(f"v4.6 통합: 추천 결과 감사·수집 범위 안내·데이터 검증 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다.")
@@ -335,6 +335,15 @@ with st.expander('🔎 종목 빠른 검색 및 상품 위험도 (현재 화면 
                 st.caption(risk_notice(kind))
                 st.caption('단기 점수: ' + str(item.get('총점_1~3D', 'N/A')) + ' / 스윙 점수: ' + str(item.get('총점_1~2W', 'N/A')))
 
+# 추천 스냅샷은 사용자가 CSV로 저장해야 하며 자동으로 성과가 추적되지는 않습니다.
+from recommendation_audit import create_snapshot, coverage_report
+st.caption('ℹ️ 현재 종목 목록은 지수 전체 구성종목이 아닌 제한된 표본입니다. 코스피200/S&P500 등의 이름은 표본 그룹명입니다.')
+if not df.empty:
+    st.caption('📊 분석 대상: ' + str(len(df['티커'].dropna().unique())) + '개 고유 티커 · ' + coverage_report(df))
+    snapshot = create_snapshot(df)
+    st.download_button('📥 추천 결과 기록용 CSV 다운로드', snapshot.to_csv(index=False).encode('utf-8-sig'),
+                       file_name='recommendation_snapshot.csv', mime='text/csv', key='snapshot_download')
+    st.caption('추천 시점의 점수 기록용입니다. 미래 수익률 검증에는 이후 날짜의 실제 가격과 거래비용을 추가로 비교해야 합니다.')
 st.markdown("---")
 
 FIXED_CATEGORIES = [
