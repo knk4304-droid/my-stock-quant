@@ -1,43 +1,55 @@
 name: Auto Quant Batch Update
-
 on:
   repository_dispatch:
-    types: [trigger_batch_update]  # 👈 이 부분이 추가되어야 앱 버튼 클릭 시 연동됩니다!
+    types: [trigger_batch_update]
   schedule:
-    - cron: '*/30 * * * *'         # 30분마다 자동 실행
-  workflow_dispatch:               # GitHub 웹에서 수동 실행
-
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 permissions:
   contents: write
-
+concurrency:
+  group: quant-batch-main
+  cancel-in-progress: false
 jobs:
   build-and-cache:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
-
+        with:
+          persist-credentials: true
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Dependencies
-        run: |
-          pip install -r requirements.txt
-
+        run: python -m pip install -r requirements.txt
       - name: Run Offline Quality Tests
-        run: |
-          python -m unittest -v test_modules
-
+        run: python -m unittest discover -p 'test_*.py'
       - name: Run Batch Update Script
-        run: |
-          python batch_update.py
-
+        run: python batch_update.py
       - name: Commit and Push Parquet Files
+        shell: bash
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action Bot"
-          git add quant_stocks.parquet quant_macro.parquet batch_status.json
-          git commit -m "Auto update quant data [$(date)]" || exit 0
-          git push
+          set -euo pipefail
+          git config user.email 'action@github.com'
+          git config user.name 'GitHub Action Bot'
+          mkdir -p "$RUNNER_TEMP/quant-output"
+          found=0
+          for f in quant_stocks.parquet quant_macro.parquet batch_status.json; do
+            if [[ -f "$f" ]]; then cp "$f" "$RUNNER_TEMP/quant-output/$f"; found=1; fi
+          done
+          if [[ "$found" -eq 0 ]]; then echo 'No batch outputs found'; exit 1; fi
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp "$RUNNER_TEMP/quant-output/"* .
+            git add -- quant_stocks.parquet quant_macro.parquet batch_status.json
+            if git diff --cached --quiet; then echo 'No data changes to commit'; exit 0; fi
+            git commit -m "Auto update quant data [skip ci]"
+            if git push origin HEAD:main; then echo 'Batch outputs pushed'; exit 0; fi
+            echo "Push conflict; retry $attempt/5"
+            sleep $((attempt * 2))
+          done
+          echo 'Failed to push after 5 safe retries'; exit 1
