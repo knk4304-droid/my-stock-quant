@@ -1,0 +1,11 @@
+{
+  "updated_at": "2026-11-09 00:36:08",
+  "requested": 919,
+  "saved": 865,
+  "coverage": 0.9412,
+  "failed": 54,
+  "failure_types": {
+    "no_data_or_scoring_error": 54
+  },
+  "missing_macro": []
+}
