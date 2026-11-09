@@ -310,15 +310,32 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.4.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.5.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.4.0)")
-st.caption(f"v6.4.0: 데이터 수집 진단·투자금 대비 손실한도 계산·기간별 추천·종목 리포트·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.5.0)")
+st.caption(f"v6.5.0: 데이터 수집 진단·투자금 대비 손실한도 계산·기간별 추천·종목 리포트·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
+# v6.5: 수집 성공률은 데이터 커버리지 지표이며 모델 정확도와 다릅니다.
+fetch_success_rate = (len(df) / requested_count * 100) if requested_count else 0.0
+if requested_count == 0:
+    st.error("분석 대상으로 설정된 종목이 없습니다. 유니버스 설정을 확인하세요.")
+elif fetch_success_rate < 50:
+    st.error(f"시세 수집 성공률 {fetch_success_rate:.1f}%: 분석 범위가 크게 축소되었습니다. 추천 목록의 대표성이 낮습니다.")
+elif fetch_success_rate < 90:
+    st.warning(f"시세 수집 성공률 {fetch_success_rate:.1f}%: 일부 종목이 누락되어 순위가 달라질 수 있습니다.")
+else:
+    st.caption(f"시세 수집 성공률 {fetch_success_rate:.1f}% · 수집 성공률은 추천 적중률이 아닙니다.")
+if not fetch_failures.empty:
+    st.download_button(
+        "📥 시세 수집 실패 내역 CSV",
+        fetch_failures.to_csv(index=False).encode("utf-8-sig"),
+        file_name="stock_fetch_failures.csv", mime="text/csv", key="v65_fetch_failure_csv"
+    )
+
 with st.expander("🛠️ 시세 수집 실패 진단 (추천 목록이 비어 있을 때 확인)"):
     if fetch_failures.empty:
         st.success("수집 단계에서 확인된 실패가 없습니다.")
@@ -674,7 +691,7 @@ if not df.empty:
                     elif cat_sort_opt == SORT_OPTIONS[2]:
                         st.caption('안정성 우선순: 기존 점수와 최근 가격 변화에 근거한 대용 순위입니다. 실제 변동성·최대낙폭·유동성 검증을 대신하지 않습니다.')
                     else:
-                        st.caption('종합 추천순: 투자기간별 퀀트 총점 기준이며 검증된 미래 수익률 순위가 아닙니다.')
+                        st.caption('종합 추천순: 가격·거래량 기반 내부 규칙 점수입니다. 상승 확률이나 검증된 미래 수익률이 아닙니다.')
 
                     cat_df['상품유형'] = [classify_product(r.get('티커', ''), r.get('종목명', '')) for _, r in cat_df.iterrows()]
                     # Compact decision-support view. All original factors remain available below.
