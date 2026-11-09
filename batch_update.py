@@ -1,6 +1,9 @@
 # batch_update.py - 백그라운드 자동 수집 엔진 (v4.00 완비판)
 import datetime
 import warnings
+import json
+from collections import Counter
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
@@ -196,8 +199,12 @@ def execute_batch_update():
     engine = QuantEngine()
     macro = fetch_realtime_macro()
 
-    tasks = [(ticker, market) for market, tickers in universe.items() for ticker in tickers]
+    # Preserve the first market assignment and avoid repeated provider requests.
+    tasks = list(dict.fromkeys((ticker, market) for market, tickers in universe.items() for ticker in tickers))
     results = []
+    failures = Counter()
+    if not tasks:
+        raise RuntimeError('Empty ticker universe; previous data preserved')
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [
@@ -209,8 +216,10 @@ def execute_batch_update():
                 res = future.result()
                 if res is not None:
                     results.append(res)
-            except Exception:
-                pass
+                else:
+                    failures['no_data_or_scoring_error'] += 1
+            except Exception as exc:
+                failures[type(exc).__name__] += 1
 
     if not results:
         raise RuntimeError("No stock data collected; previous data preserved")
@@ -219,6 +228,9 @@ def execute_batch_update():
     if len(results) < max(10, int(len(tasks) * 0.50)):
         raise RuntimeError(f"Insufficient coverage: {len(results)}/{len(tasks)}; previous data preserved")
     df_results = pd.DataFrame(results)
+    # Never publish a partially duplicated result set.
+    if df_results['차트링크'].duplicated().any():
+        raise RuntimeError('Duplicate chart links in batch results; previous data preserved')
     nasdaq_data = macro.get('나스닥', macro.get('NASDAQ 100', {}))
 
     macro_df = pd.DataFrame([{
@@ -242,11 +254,19 @@ def execute_batch_update():
     missing = [k for k in required if not valid_macro_value(macro.get(k, {}).get('val'))]
     if missing:
         raise RuntimeError(f"Missing macro data {missing}; previous data preserved")
+    print(f'Coverage: {len(results)}/{len(tasks)} ({len(results)/len(tasks):.1%}); failures={dict(failures)}')
     df_results.to_parquet('quant_stocks.parquet.tmp', index=False, engine='pyarrow')
     macro_df.to_parquet('quant_macro.parquet.tmp', index=False, engine='pyarrow')
     from pathlib import Path
     Path('quant_stocks.parquet.tmp').replace('quant_stocks.parquet')
     Path('quant_macro.parquet.tmp').replace('quant_macro.parquet')
+    # Report is written only after both data files are successfully published.
+    report = {'updated_at': now_str, 'requested': len(tasks), 'saved': len(results),
+              'coverage': round(len(results)/len(tasks), 4),
+              'failed': len(tasks)-len(results), 'failure_types': dict(failures),
+              'missing_macro': missing}
+    Path('batch_status.json.tmp').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    Path('batch_status.json.tmp').replace('batch_status.json')
 
     print(f"[{now_str}] ✅ 성공적으로 {len(df_results)}개 종목 수집 및 Parquet 저장 완료!")
 

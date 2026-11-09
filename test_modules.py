@@ -1,5 +1,7 @@
 import unittest
 import pandas as pd
+from unittest.mock import patch
+import importlib.util
 from data_quality import valid_prices, return_summary, valid_macro_value
 
 class DataQualityTests(unittest.TestCase):
@@ -24,6 +26,24 @@ class DataQualityTests(unittest.TestCase):
         for value in [None,0,float('nan'),-1]:
             self.assertFalse(valid_macro_value(value))
         self.assertTrue(valid_macro_value(1350.5))
+
+    @unittest.skipUnless(importlib.util.find_spec("yfinance"), "yfinance not installed locally")
+    def test_batch_empty_universe_preserves_files(self):
+        from batch_update import execute_batch_update
+        with patch('batch_update.UniverseLoader.get_full_universe', return_value=({}, {})), \
+             patch('batch_update.fetch_realtime_macro', return_value={}):
+            with self.assertRaisesRegex(RuntimeError, 'Empty ticker universe'):
+                execute_batch_update()
+
+    @unittest.skipUnless(importlib.util.find_spec("yfinance"), "yfinance not installed locally")
+    def test_batch_insufficient_coverage_preserves_files(self):
+        from batch_update import execute_batch_update
+        universe = {'test': [f'T{i}' for i in range(30)]}
+        with patch('batch_update.UniverseLoader.get_full_universe', return_value=(universe, {})), \
+             patch('batch_update.fetch_realtime_macro', return_value={}), \
+             patch('batch_update.process_single_stock', return_value=None):
+            with self.assertRaisesRegex(RuntimeError, 'No stock data collected'):
+                execute_batch_update()
 
     def test_quant_engine_return_contract(self):
         out=return_summary(pd.DataFrame({'Close':list(range(100,110))}))
