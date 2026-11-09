@@ -644,7 +644,7 @@ if not df.empty:
                         st.dataframe(cat_df[[c for c in detail_cols if c in cat_df.columns]].reset_index(drop=True),
                                      use_container_width=True, hide_index=True,
                                      column_config={'차트링크': st.column_config.LinkColumn('차트 보기', display_text='차트 열기')})
-                    if cat_df['상품유형'].str.contains('ETF', na=False).any():
+                    if cat_df['상품유형'].map(lambda value: 'ETF' in str(value).upper() if value is not None else False).any():
                         st.caption('ETF 포함: 성장성·ROE·재무건전성 등은 기업 공시 기반 실제 재무지표가 아닐 수 있으며 주식과 직접 비교하면 안 됩니다.')
                     
                     # 상세 매매 전략 리포트
