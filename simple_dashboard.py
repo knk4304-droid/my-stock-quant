@@ -44,10 +44,21 @@ def resolve_symbol(raw):
     return raw.upper()
 
 from functools import lru_cache
+from datetime import datetime, timezone
 
-@lru_cache(maxsize=256)
-def cached_report(ticker):
+@lru_cache(maxsize=512)
+def _cached_report_by_day(ticker, day):
     return get_technical_report(ticker)
+
+def cached_report(ticker):
+    # Expire cached market data daily rather than holding outdated levels indefinitely.
+    return _cached_report_by_day(ticker, datetime.now(timezone.utc).date().isoformat())
+
+def valid_scenario(buy, target, stop):
+    if any(v is None or not pd.notna(v) for v in (buy,target,stop)) or buy<=0:
+        return False
+    return stop < buy < target
+
 
 def show(st):
     st.markdown('''<style>
@@ -69,11 +80,16 @@ def show(st):
     now=pd.Timestamp.now(tz='UTC')
     scores['분석 경과일']=(now-scores['scanned_at_utc']).dt.total_seconds()/86400
     fresh=scores[scores['분석 경과일'].between(0,7)].copy()
+    # A ticker may appear in several saved scan batches; only its newest result is ranked.
+    fresh=fresh.sort_values('scanned_at_utc').drop_duplicates(subset=['ticker'],keep='last')
+    if fresh.empty:
+        st.warning('최근 7일 이내에 분석된 종목이 없습니다. GitHub Actions에서 자동 분석을 실행하세요.')
+
     a,b,c=st.columns(3)
     a.metric('저장된 분석 종목',f'{len(scores):,}개')
     b.metric('최근 7일 분석',f'{len(fresh):,}개')
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개")
-    st.caption('저장된 분석은 모든 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다.')
+    st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
     st.subheader('🏆 추천 후보')
     st.caption('기간별 가격 흐름으로 정렬한 **관찰 후보**입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
     c1,c2,c3=st.columns([2,1,1])
@@ -127,7 +143,7 @@ def show(st):
                 if not isinstance(result, dict) or result.get('error'):
                     report_rows.append({'종목명':name,'코드':ticker,'매매 판단':'분석 불가','분석 점수':None,
                                         '현재가':None,'1차 매수가':None,'1차 목표가':None,'손절 기준가':None,
-                                        '예상 상승폭':None,'예상 하락폭':None,'손익비':None})
+                                        '예상 상승폭':None,'예상 하락폭':None,'손익비':None,'가격 조건':'확인 불가'})
                     continue
                 def numeric(key):
                     try:
@@ -141,12 +157,15 @@ def show(st):
                 # Percentage comparisons are anchored to the proposed entry, not today's price.
                 upside=round((target/buy-1)*100,1) if buy and target else None
                 downside=round((1-stop/buy)*100,1) if buy and stop else None
-                rr=round(upside/downside,2) if upside is not None and downside and downside>0 else None
+                scenario_ok=valid_scenario(buy,target,stop)
+                rr=round(upside/downside,2) if scenario_ok and upside is not None and downside and downside>0 else None
                 report_rows.append({'종목명':name,'코드':ticker,'매매 판단':result.get('종합 의견'),
                                     '분석 점수':numeric('종합 점수(100)'),'현재가':current,
                                     '1차 매수가':buy,'1차 목표가':target,'손절 기준가':stop,
-                                    '예상 상승폭':upside,'예상 하락폭':downside,'손익비':rr})
+                                    '예상 상승폭':upside if scenario_ok else None,'예상 하락폭':downside if scenario_ok else None,'손익비':rr,'가격 조건':'정상' if scenario_ok else '재검토 필요'})
             st.markdown('**추천 종목 한눈에 비교**')
+            if any(r.get('가격 조건')=='재검토 필요' for r in report_rows):
+                st.warning('일부 종목의 손절가·매수가·목표가 순서가 맞지 않아 수익·손실 비교를 생략했습니다. 해당 가격은 재검토가 필요합니다.')
             st.caption('상승폭·하락폭은 1차 매수가를 기준으로 계산한 시나리오입니다. 손익비는 예상 상승폭 ÷ 예상 하락폭이며, 실제 수익을 보장하지 않습니다.')
             st.dataframe(pd.DataFrame(report_rows), hide_index=True, use_container_width=True,
                          height=min(430, 40+len(report_rows)*35),
@@ -162,6 +181,7 @@ def show(st):
                              '예상 상승폭':st.column_config.NumberColumn('상승 여지',format='%+.1f%%'),
                              '예상 하락폭':st.column_config.NumberColumn('손실 위험',format='%.1f%%'),
                              '손익비':st.column_config.NumberColumn('손익비',format='%.2f'),
+                             '가격 조건':st.column_config.TextColumn('가격 조건',width='small'),
                          })
             with st.expander('📘 표에 나오는 용어 쉽게 이해하기'):
                 st.markdown("""
@@ -174,6 +194,8 @@ def show(st):
                 - **상승 여지**: 1차 매수가에서 1차 목표가까지의 가격 차이를 백분율로 계산한 값입니다.
                 - **손실 위험**: 1차 매수가에서 손절 참고가까지의 가격 차이를 백분율로 계산한 값입니다.
                 - **손익비**: 상승 여지 ÷ 손실 위험입니다. 예를 들어 2라면 예상 이익 폭이 예상 손실 폭의 2배입니다.
+                - **가격 조건**: 손절가 < 매수가 < 목표가 순서가 맞는지 확인합니다. 맞지 않으면 수익률과 손익비를 계산하지 않습니다.
+                - **추천 검증**: 현재 화면의 점수는 과거 가격 기반 지표이며, 추천 이후 실제 수익률·적중률 검증과는 다릅니다.
                 """)
             st.markdown('**종목별 분석 결과**')
             for i,(name,ticker,result) in enumerate(stored['reports'],1):
@@ -208,6 +230,8 @@ def show(st):
                                      column_config={'지표':st.column_config.TextColumn(width='medium'),
                                                     '쉬운 설명':st.column_config.TextColumn(width='large')})
             st.warning('매수·목표·손절 가격은 과거 차트로 계산한 참고 구간입니다. 실제 수익률 검증이나 미래 가격 예측이 아닙니다.')
+            with st.expander('📊 실제 추천 성과 검증 상태'):
+                st.info('현재 이 화면은 추천 후 1일·1주·1개월 실제 수익률과 적중률을 계산하지 않습니다. 추천 당시 종목·가격·시각을 저장하고, 미래 시세가 쌓인 후 비교하는 별도 검증 체계가 필요합니다.')
         else:
             st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
     with st.expander('다른 종목 직접 분석'):
