@@ -32,6 +32,8 @@ jobs:
         env:
           VALIDATION_MAX_TICKERS: "40"
         run: python forward_validation_v95.py
+      - name: Validate stored recommendation data
+        run: python validation_smoke.py --data market_scan_data/recommendation_history.csv
       - name: Save scan results
         run: |
           git config user.name 'github-actions[bot]'
