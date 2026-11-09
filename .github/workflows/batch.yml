@@ -7,17 +7,20 @@ on:
     - cron: '*/30 * * * *'         # 30분마다 자동 실행
   workflow_dispatch:               # GitHub 웹에서 수동 실행
 
+permissions:
+  contents: write
+
 jobs:
   build-and-cache:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install Dependencies
         run: |
