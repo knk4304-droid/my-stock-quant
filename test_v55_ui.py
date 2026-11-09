@@ -8,7 +8,7 @@ class V55DisplayTests(unittest.TestCase):
         cls.source = Path(__file__).with_name('app.py').read_text(encoding='utf-8')
 
     def test_version_and_compact_table(self):
-        self.assertIn('AI 추천 주식 매매 (v5.7)', self.source)
+        self.assertIn('AI 추천 주식 매매 (v5.8)', self.source)
         self.assertIn("core_cols = ['종목명', '차트링크'", self.source)
         self.assertIn("with st.expander('📊 세부 평가 지표 전체 보기')", self.source)
 

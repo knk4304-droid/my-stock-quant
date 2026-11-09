@@ -6,7 +6,7 @@ SOURCE = Path(__file__).with_name('app.py').read_text(encoding='utf-8')
 
 class V56LinkTests(unittest.TestCase):
     def test_version(self):
-        self.assertIn('AI 추천 주식 매매 (v5.7)', SOURCE)
+        self.assertIn('AI 추천 주식 매매 (v5.8)', SOURCE)
     def test_url_not_markdown(self):
         self.assertIn("'차트링크': link,", SOURCE)
         self.assertNotIn("'차트링크': f\"[{stock_name}]({link})\"", SOURCE)

@@ -8,6 +8,7 @@ from risk_review import scenario_risk_reward, coverage_message
 from universe_membership import category_tickers, etf_weights
 from ranking_options import SORT_OPTIONS, rank_candidates
 from batch_universe_quality import inspect_batch, load_batch
+from individual_report import normalize_symbol, report_rows
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -294,12 +295,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v5.7)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v5.8)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v5.7)")
-st.caption(f"v5.7 통합: 배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v5.8)")
+st.caption(f"v5.8 통합: 배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다. 성장성·ROE·재무건전성 등 일부 화면 항목은 실제 기업 공시자료가 아닌 가격 기반 대용 지표 또는 기본 점수입니다. ETF에 기업 재무점수를 그대로 적용한 값은 투자 판단 근거로 사용하지 마세요.")
@@ -330,7 +331,7 @@ elif status['state'] == 'stale':
 else:
     st.caption('📦 ' + status['message'])
 
-with st.expander('🧪 v5.7 배치 종목 품질 및 화면 분석 범위 진단'):
+with st.expander('🧪 v5.8 배치 종목 품질 및 화면 분석 범위 진단'):
     batch_frame, batch_error = load_batch()
     if batch_error:
         st.warning(batch_error)
@@ -350,6 +351,49 @@ with st.expander('🧪 v5.7 배치 종목 품질 및 화면 분석 범위 진단
             st.warning('배치 품질 경고가 있습니다. 이 데이터를 화면 추천 점수로 자동 변환하지 않습니다.')
         with st.expander('배치 데이터 열 구성 확인'):
             st.write(check['columns'])
+
+# Individual report: existing universe lookup or an explicitly supplied ticker.
+with st.expander('📑 개별 종목 종합분석 리포트 (검색·매수·매도 전략)', expanded=False):
+    st.caption('기존 분석 종목은 이름 또는 티커로 검색할 수 있습니다. 목록 밖 종목은 정확한 거래소 티커를 입력하세요. 국내 코스닥은 123456.KQ처럼 입력합니다.')
+    lookup = st.text_input('종목명 또는 티커', key='v58_report_query').strip()
+    if lookup:
+        choices = df[df['종목명'].astype(str).str.contains(lookup, case=False, regex=False, na=False) |
+                     df['티커'].astype(str).str.contains(lookup, case=False, regex=False, na=False)] if not df.empty else pd.DataFrame()
+        if not choices.empty:
+            selected = st.selectbox('분석 종목 선택', choices.index.tolist(),
+                                    format_func=lambda idx: f"{df.loc[idx, '종목명']} ({df.loc[idx, '티커']})", key='v58_report_choice')
+            selected_row = df.loc[selected].to_dict()
+        else:
+            selected_row = None
+            ticker = normalize_symbol(lookup)
+            if ticker is None:
+                st.warning('검색 결과가 없습니다. 외부 종목은 정확한 티커를 입력하세요 (예: AAPL, 005930.KS, 086520.KQ).')
+            elif st.button('해당 티커 가격 조회 후 분석', key='v58_fetch_ticker'):
+                with st.spinner('종목 가격 데이터 확인 중...'):
+                    try:
+                        market = '국내 종목' if ticker.endswith(('.KS', '.KQ')) else '미국/기타 종목'
+                        selected_row = process_single_stock(ticker, market, {ticker: ticker}, engine, macro_info)
+                        if selected_row is not None:
+                            st.session_state['v58_report_extra'] = (ticker, selected_row)
+                    except Exception as exc:
+                        st.warning('시세 조회가 실패했습니다. 티커·거래소·데이터 공급원 상태를 확인하세요.')
+            cached = st.session_state.get('v58_report_extra')
+            if selected_row is None and cached and cached[0] == ticker:
+                selected_row = cached[1]
+            if selected_row is None and ticker is not None:
+                st.info('해당 티커의 유효한 가격 데이터를 확보한 뒤 리포트를 표시합니다. 가격이 없으면 임의의 점수를 생성하지 않습니다.')
+        if selected_row is not None:
+            kind = classify_product(selected_row.get('티커'), selected_row.get('종목명'))
+            st.subheader(f"{selected_row.get('종목명')} · 종합 투자 분석")
+            st.caption(f"티커: {selected_row.get('티커')} | 시장: {selected_row.get('시장')} | 유형: {kind}")
+            st.warning('이 리포트는 과거 가격 기반 규칙 점수이며 투자 권유나 미래 수익률 예측이 아닙니다. 실시간 호가·기업 공시·실적·뉴스 검증은 포함되지 않습니다.')
+            st.dataframe(pd.DataFrame(report_rows(selected_row)), use_container_width=True, hide_index=True)
+            st.markdown('**종합의견:** 기간별 점수가 일치하면 방향성이 비교적 일관적이며, 상충하면 매매보다 관찰과 위험 관리가 우선입니다.')
+            st.markdown('**매수 전략:** 거래량·추세·지지 구간을 확인하고 분할 진입 여부를 판단하세요. **매도 전략:** 진입 전에 손실한도와 목표 시나리오를 설정하고, 추세 이탈 시 재평가하세요.')
+            st.caption('손절가·목표가는 개인별 진입가와 허용손실, 최근 변동성 자료가 있어야 계산할 수 있습니다. 임의의 절대 가격을 제시하지 않습니다.')
+            st.caption(risk_notice(kind))
+            if selected_row.get('차트링크'):
+                st.link_button('가격 차트 확인', selected_row['차트링크'])
 
 with st.expander('🔎 종목 빠른 검색 및 상품 위험도 (현재 화면 분석 종목 기준)'):
     query = st.text_input('종목명 또는 티커 검색', key='v44_search').strip()
@@ -424,7 +468,7 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
 
 # The archive is generated by the scheduled batch engine, NOT by the live
 # Streamlit scoring engine. It is descriptive and may have missing dates.
-with st.expander('📚 v5.7 자동 배치 추천 기록 · 관측 성과 및 품질 진단'):
+with st.expander('📚 v5.8 자동 배치 추천 기록 · 관측 성과 및 품질 진단'):
     from pathlib import Path
     from audit_history import evaluate_observed_history
     from model_quality import summarize_archive, observed_return_stats, archive_issues
