@@ -51,19 +51,29 @@ def show(st):
         scores['score']=pd.to_numeric(scores['score'],errors='coerce')
         scores['scanned_at_utc']=pd.to_datetime(scores['scanned_at_utc'],utc=True,errors='coerce')
         age=(pd.Timestamp.now(tz='UTC')-scores['scanned_at_utc']).dt.total_seconds()/86400
-        max_age=st.selectbox('최근 분석 결과만 보기',['7일','30일','전체'],index=1,key='v90_age')
+        st.markdown('### 추천 후보 찾아보기')
+        st.caption('기본 설정은 전체 시장·주식과 ETF 모두·최근 30일 분석입니다. 아래 목록은 자동 분석을 마친 종목 중 조건에 맞는 후보만 보여줍니다.')
+        c_market,c_period=st.columns(2)
+        with c_market:
+            market_options=['전체']+sorted(scores.market.dropna().astype(str).unique().tolist())
+            market=st.selectbox('어느 시장을 볼까요?',market_options,key='v90_market',help='전체는 분석이 완료된 모든 시장을 합쳐 보여줍니다. 등록만 된 종목은 포함되지 않습니다.')
+        with c_period:
+            horizon=st.selectbox('투자 기간', ['종합','단기 (1~3일)','스윙 (1~2주)','중기 (1~3개월)','장기 (1년 이상)'],key='v92_horizon',help='투자 기간에 따라 과거 가격 지표의 비중을 다르게 적용합니다. 미래 수익률 예측은 아닙니다.')
+        q=st.text_input('종목 찾기 (선택)',key='v90_query',placeholder='예: 삼성전자, 005930, AAPL')
+        with st.expander('⚙️ 상세 검색 조건 (필요할 때만 변경)',expanded=False):
+            max_age=st.selectbox('분석 기록 기간',['7일','30일','전체'],index=1,key='v90_age',help='7일·30일은 해당 기간에 분석한 기록만 표시합니다. 전체에는 오래된 기록도 포함될 수 있습니다.')
+            asset_label=st.selectbox('종목 종류',['모두 보기','주식만','ETF만'],key='v94_asset_label')
+            min_score=st.slider('최소 기술 평가 점수',0,100,60,5,key='v91_score',help='이 점수보다 낮은 종목을 제외합니다. 60점은 기본 검색 기준일 뿐 매수 적합 판정이 아닙니다.')
+            st.caption('기술 평가 점수는 과거 가격의 추세·수익률·변동성으로 계산한 규칙 점수이며 매수 성공 확률이 아닙니다.')
         if max_age!='전체': scores=scores.loc[age.le(7 if max_age=='7일' else 30)].copy()
-        market=st.selectbox('시장 구분',['전체']+sorted(scores.market.dropna().unique().tolist()),key='v90_market')
         if market!='전체': scores=scores[scores.market.eq(market)]
-        asset=st.selectbox('상품 유형',['전체','STOCK','ETF'],key='v90_asset')
+        asset={'모두 보기':'전체','주식만':'STOCK','ETF만':'ETF'}[asset_label]
         if asset!='전체': scores=scores[scores.asset_type.eq(asset)]
-        q=st.text_input('종목명 또는 티커 검색',key='v90_query')
         if q: scores=scores[scores['name'].astype(str).str.contains(q,case=False,regex=False)|scores['ticker'].astype(str).str.contains(q,case=False,regex=False)]
         # Simple horizon-specific ranking using only observed historical features.
         # These are ranking heuristics, not validated expected returns.
         for key in ['return_5d_pct','return_20d_pct','volatility_annual']:
             scores[key]=pd.to_numeric(scores.get(key),errors='coerce')
-        horizon=st.selectbox('분석 관점',['종합','단기 (1~3일)','스윙 (1~2주)','중기 (1~3개월)','장기 (1년 이상)'],key='v92_horizon')
         r5=scores['return_5d_pct'].clip(-25,25).fillna(0)
         r20=scores['return_20d_pct'].clip(-40,40).fillna(0)
         vol=scores['volatility_annual'].clip(0,3).fillna(1)
@@ -75,13 +85,14 @@ def show(st):
         else: rank_score=base
         scores['관점별 참고점수']=rank_score.round(2)
         ranked=scores.sort_values(['관점별 참고점수','score'],ascending=[False,False])
-        min_score=st.slider('최소 기술 점수 (후보 필터)',0,100,60,5,key='v91_score')
         ranked=ranked.loc[ranked['score'].ge(min_score)]
-        display=ranked.head(100).rename(columns={'ticker':'종목코드','name':'종목명','market':'시장','asset_type':'유형','close':'기준 종가','score':'기술 점수','return_5d_pct':'최근 5거래일 수익률(%)','return_20d_pct':'최근 20거래일 수익률(%)','volatility_annual':'연율 변동성','asof_price':'가격 기준일','scanned_at_utc':'분석 저장 시각(UTC)'})
+        display=ranked.head(30).rename(columns={'ticker':'종목코드','name':'종목명','market':'시장','asset_type':'유형','close':'기준 종가','score':'기술 점수','return_5d_pct':'최근 5거래일 수익률(%)','return_20d_pct':'최근 20거래일 수익률(%)','volatility_annual':'연율 변동성','asof_price':'가격 기준일','scanned_at_utc':'분석 저장 시각(UTC)'})
+        st.markdown(f'**검색 결과: {len(ranked):,}개 후보** (상위 최대 30개 표시)')
+        if ranked.empty: st.info('현재 조건에 맞는 종목이 없습니다. 상세 검색 조건에서 기간을 전체로 변경하거나 최소 점수를 낮춰 보세요.')
         st.dataframe(display,hide_index=True,use_container_width=True)
         st.caption('관점별 참고점수는 기간에 따라 과거 수익률·변동성 가중치를 달리한 임시 규칙입니다. **검증된 예측값이 아닙니다.**')
         st.caption('이 목록은 조건을 충족한 **관찰 후보**이며 매수 확정 신호가 아닙니다. 상세 매수·매도 전략은 아래 종목 검색에서 추가 확인하세요.')
-        st.caption(f'필터 이전 분석 결과 {len(scores):,}개 · 필터 통과 {len(ranked):,}개 · 최대 100개 표시. 기존 정밀 종합점수와 직접 비교하지 마세요.')
+        st.caption(f'필터 이전 분석 결과 {len(scores):,}개 · 필터 통과 {len(ranked):,}개 · 최대 30개 표시. 기존 정밀 종합점수와 직접 비교하지 마세요.')
         with st.expander('📈 이후 가격 관측 기록 · 추천 검증 준비',expanded=False):
             obs=DATA/'observations.csv'
             if obs.exists():
