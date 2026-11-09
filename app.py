@@ -310,12 +310,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.3.2)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.4.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.3.2)")
-st.caption(f"v6.3.2: 시세 수집 실패 진단·정렬 빈 결과 보호·기술적 지표 기반 전략·배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.4.0)")
+st.caption(f"v6.4.0: 데이터 수집 진단·투자금 대비 손실한도 계산·기간별 추천·종목 리포트·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
@@ -437,6 +437,28 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
                     plan = build_trade_plan(quote['close'], risk_pct, quote['currency'])
                     st.dataframe(pd.DataFrame([plan]), hide_index=True, use_container_width=True)
                     st.caption('1차 목표 +4%, 2차 목표 +8%, 1차 분할 진입 -2%, 2차 분할 진입 -4%는 사용자 가정값입니다. 실제 지지·저항이나 미래 가격 예측이 아닙니다.')
+                    st.markdown('#### 💰 투자금 기준 주문 수량 계산 (v6.4)')
+                    st.caption('기본 투자금 1,000만원, 거래당 최대 손실 1%, 하루 최대 손실 3%를 적용한 산술 계산입니다. 자동주문 기능은 아닙니다.')
+                    capital = st.number_input('계산용 투자금 (원)', min_value=100000, max_value=1000000000, value=10000000, step=1000000, key=f'v64_capital_{ticker}')
+                    fx_rate = 1.0
+                    if quote['currency'] != 'KRW':
+                        fx_rate = st.number_input('원화 환산 환율 (원/1달러, 직접 확인 후 입력)', min_value=100.0, max_value=5000.0, value=1400.0, step=10.0, key=f'v64_fx_{ticker}')
+                        st.caption('환율 기본값은 예시이며 현재 환율이 아닙니다. USD 외 통화라면 이 계산기를 사용하지 마세요.')
+                    entry = float(quote['close'])
+                    stop = entry * (1 - risk_pct / 100)
+                    per_share_loss_krw = (entry - stop) * fx_rate
+                    risk_budget = capital * 0.01
+                    day_budget = capital * 0.03
+                    import math
+                    risk_limited_qty = math.floor(risk_budget / per_share_loss_krw) if per_share_loss_krw > 0 else 0
+                    cash_limited_qty = math.floor(capital / (entry * fx_rate)) if entry > 0 else 0
+                    qty = min(risk_limited_qty, cash_limited_qty)
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric('거래당 손실한도', f'{risk_budget:,.0f}원')
+                    c2.metric('하루 손실한도', f'{day_budget:,.0f}원')
+                    c3.metric('계산상 최대 수량', f'{qty:,}주')
+                    st.caption(f'가정 매수가 {entry:,.2f} {quote["currency"]} · 가정 손절가 {stop:,.2f} {quote["currency"]} · 손절 체결 시 예상 가격차 손실 {qty * per_share_loss_krw:,.0f}원 (수수료·세금·환율변동·갭하락·슬리피지 제외)')
+                    st.warning('손절 주문이 가정 가격에 체결된다는 보장은 없습니다. 미국 주식은 환율·소수점 주문 가능 여부를 확인하세요. 투자금 전액을 여러 종목에 중복 배분하지 마세요.')
                     st.info('현재가는 실시간 체결가가 아닙니다. 주문 전 증권사 호가, 공시, 거래량 및 수수료를 다시 확인하세요.')
             else:
                 st.info('버튼을 누르면 마지막 거래일 종가를 조회하고 가정 매매 가격을 표시합니다.')
