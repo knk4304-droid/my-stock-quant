@@ -124,31 +124,89 @@ def show(st):
         if stored.get('symbols') == symbols:
             report_rows = []
             for name, ticker, result in stored['reports']:
-                if 'error' in result:
-                    report_rows.append({'종목명':name,'코드':ticker,'의견':'조회 실패','기술점수':None,
-                                        '현재가':None,'1차 매수':None,'2차 매수':None,'1차 목표':None,'2차 목표':None,'손절 참고':None})
-                else:
-                    report_rows.append({'종목명':name,'코드':ticker,'의견':result.get('종합 의견'),
-                                        '기술점수':result.get('종합 점수(100)'),
-                                        '현재가':result.get('기준 종가'),
-                                        '1차 매수':result.get('1차 매수 관찰가'),
-                                        '2차 매수':result.get('2차 매수 관찰가'),
-                                        '1차 목표':result.get('1차 목표 관찰가'),
-                                        '2차 목표':result.get('2차 목표 관찰가'),
-                                        '손절 참고':result.get('손실 제한 참고가')})
-            st.dataframe(pd.DataFrame(report_rows), hide_index=True, use_container_width=True, height=390,
-                         column_config={'종목명':st.column_config.TextColumn(width='medium'),
-                                        '의견':st.column_config.TextColumn(width='medium')})
+                if not isinstance(result, dict) or result.get('error'):
+                    report_rows.append({'종목명':name,'코드':ticker,'매매 판단':'분석 불가','분석 점수':None,
+                                        '현재가':None,'1차 매수가':None,'1차 목표가':None,'손절 기준가':None,
+                                        '예상 상승폭':None,'예상 하락폭':None,'손익비':None})
+                    continue
+                def numeric(key):
+                    try:
+                        v=float(result.get(key))
+                        return v if pd.notna(v) else None
+                    except (TypeError,ValueError): return None
+                current=numeric('기준 종가')
+                buy=numeric('1차 매수 관찰가')
+                target=numeric('1차 목표 관찰가')
+                stop=numeric('손실 제한 참고가')
+                # Percentage comparisons are anchored to the proposed entry, not today's price.
+                upside=round((target/buy-1)*100,1) if buy and target else None
+                downside=round((1-stop/buy)*100,1) if buy and stop else None
+                rr=round(upside/downside,2) if upside is not None and downside and downside>0 else None
+                report_rows.append({'종목명':name,'코드':ticker,'매매 판단':result.get('종합 의견'),
+                                    '분석 점수':numeric('종합 점수(100)'),'현재가':current,
+                                    '1차 매수가':buy,'1차 목표가':target,'손절 기준가':stop,
+                                    '예상 상승폭':upside,'예상 하락폭':downside,'손익비':rr})
+            st.markdown('**추천 종목 한눈에 비교**')
+            st.caption('상승폭·하락폭은 1차 매수가를 기준으로 계산한 시나리오입니다. 손익비는 예상 상승폭 ÷ 예상 하락폭이며, 실제 수익을 보장하지 않습니다.')
+            st.dataframe(pd.DataFrame(report_rows), hide_index=True, use_container_width=True,
+                         height=min(430, 40+len(report_rows)*35),
+                         column_config={
+                             '종목명':st.column_config.TextColumn('종목',width='medium'),
+                             '코드':st.column_config.TextColumn('코드',width='small'),
+                             '매매 판단':st.column_config.TextColumn('판단',width='medium'),
+                             '분석 점수':st.column_config.NumberColumn('점수 /100',format='%.0f'),
+                             '현재가':st.column_config.NumberColumn('현재가',format='%.2f'),
+                             '1차 매수가':st.column_config.NumberColumn('매수 참고',format='%.2f'),
+                             '1차 목표가':st.column_config.NumberColumn('목표 참고',format='%.2f'),
+                             '손절 기준가':st.column_config.NumberColumn('손절 참고',format='%.2f'),
+                             '예상 상승폭':st.column_config.NumberColumn('상승 여지',format='%+.1f%%'),
+                             '예상 하락폭':st.column_config.NumberColumn('손실 위험',format='%.1f%%'),
+                             '손익비':st.column_config.NumberColumn('손익비',format='%.2f'),
+                         })
+            with st.expander('📘 표에 나오는 용어 쉽게 이해하기'):
+                st.markdown("""
+                - **매매 판단**: 기술적 지표에 따른 관찰 의견입니다. 실제 매수 지시가 아닙니다.
+                - **분석 점수**: 추세·매수 시점·거래량·위험 관리를 합산한 100점 만점의 규칙 기반 점수입니다. 상승 확률이 아닙니다.
+                - **현재가**: 분석에 사용된 마지막 종가로, 실시간 가격과 다를 수 있습니다.
+                - **매수 참고**: 1차 매수를 검토할 가격입니다.
+                - **목표 참고**: 1차 매도 목표를 검토할 가격입니다.
+                - **손절 참고**: 손실 제한을 검토할 가격입니다.
+                - **상승 여지**: 1차 매수가에서 1차 목표가까지의 가격 차이를 백분율로 계산한 값입니다.
+                - **손실 위험**: 1차 매수가에서 손절 참고가까지의 가격 차이를 백분율로 계산한 값입니다.
+                - **손익비**: 상승 여지 ÷ 손실 위험입니다. 예를 들어 2라면 예상 이익 폭이 예상 손실 폭의 2배입니다.
+                """)
+            st.markdown('**종목별 분석 결과**')
             for i,(name,ticker,result) in enumerate(stored['reports'],1):
                 with st.expander(f'{i}. {name} ({ticker}) · {result.get("종합 의견", "분석 실패")}'):
-                    if 'error' in result:
-                        st.warning(result['error'])
-                    else:
-                        st.write(f"**기술 점수 {result['종합 점수(100)']}점** · 기준일 {result['기준일']} · 통화 {result['통화']}")
-                        indicators=['5일선','20일선','60일선','RSI(14)','MACD 히스토그램','거래량/20일 평균',
-                                    '추세 점수(30)','진입 시점 점수(25)','거래량 점수(20)','위험 관리 점수(25)']
-                        st.dataframe(pd.DataFrame([{'지표':k,'값':result.get(k)} for k in indicators]),
-                                     hide_index=True, use_container_width=True, height=380)
+                    if not isinstance(result,dict) or result.get('error'):
+                        st.warning(result.get('error','분석 결과를 불러오지 못했습니다.') if isinstance(result,dict) else '분석 결과 형식이 올바르지 않습니다.')
+                        continue
+                    st.write(f"**기술 점수 {result.get('종합 점수(100)','-')}점 / 100점** · 가격 기준일 {result.get('기준일','-')} · 통화 {result.get('통화','-')}")
+                    def fmt_price(key):
+                        try: return f"{float(result[key]):,.2f}"
+                        except (TypeError,ValueError,KeyError): return '-'
+                    st.markdown(
+                        f"**매수 검토** {fmt_price('1차 매수 관찰가')} / {fmt_price('2차 매수 관찰가')}  "
+                        f"\n\n**목표 가격** {fmt_price('1차 목표 관찰가')} / {fmt_price('2차 목표 관찰가')}  "
+                        f"\n\n**손절 참고** {fmt_price('손실 제한 참고가')}"
+                    )
+                    with st.expander('전문 기술 지표 보기'):
+                        indicators=[
+                            ('5일선','최근 5거래일 평균 주가'),
+                            ('20일선','최근 20거래일 평균 주가'),
+                            ('60일선','최근 60거래일 평균 주가'),
+                            ('RSI(14)','최근 상승·하락 강도. 일반적으로 70 이상 과열 가능성, 30 이하 침체 가능성'),
+                            ('MACD 히스토그램','주가 추세의 상승·하락 모멘텀을 참고하는 지표'),
+                            ('거래량/20일 평균','평소 20일 평균 거래량 대비 몇 배인지'),
+                            ('추세 점수(30)','가격 추세의 방향과 강도: 30점 만점'),
+                            ('진입 시점 점수(25)','매수 진입 시점의 기술적 조건: 25점 만점'),
+                            ('거래량 점수(20)','거래량으로 확인한 신호의 강도: 20점 만점'),
+                            ('위험 관리 점수(25)','가격 변동과 손실 위험 조건: 25점 만점'),
+                        ]
+                        st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),
+                                     hide_index=True,use_container_width=True,height=390,
+                                     column_config={'지표':st.column_config.TextColumn(width='medium'),
+                                                    '쉬운 설명':st.column_config.TextColumn(width='large')})
             st.warning('매수·목표·손절 가격은 과거 차트로 계산한 참고 구간입니다. 실제 수익률 검증이나 미래 가격 예측이 아닙니다.')
         else:
             st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
