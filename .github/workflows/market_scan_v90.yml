@@ -26,6 +26,8 @@ jobs:
           SCAN_BATCH_SIZE: '250'
           REVISIT_TOP_N: '25'
         run: python market_batch_v90.py
+      - name: Record and follow up recommendation snapshots
+        run: python recommendation_tracker.py
       - name: Save scan results
         run: |
           git config user.name 'github-actions[bot]'
