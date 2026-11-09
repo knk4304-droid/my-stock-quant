@@ -324,12 +324,12 @@ def cached_chart_history(symbol, period):
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v9.0.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v9.1.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v9.0.0)")
-st.caption(f"v9.0.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v9.1.0)")
+st.caption(f"v9.1.0: 전체시장 분석현황·성과관측·간편화면 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 show_market_scan(st)
@@ -413,7 +413,7 @@ with st.expander("📖 처음 사용하는 분을 위한 화면 안내", expande
 **④ 성과 검증:** 추천 당시 기록과 실제 이후 가격이 모두 있는 경우에만 성과를 계산합니다.  
 **참고:** 총점·매수 신호 강도는 미래 수익률이나 상승 확률이 아닙니다.""")
 
-with st.expander("🗂️ 현재 자동 분석 대상 종목 전체 보기 (설정된 표본)", expanded=False):
+with st.expander("🛠️ 고급 관리 · 기존 48종목 대표 표본 확인", expanded=False):
     _groups, _names = UniverseLoader.get_full_universe()
     _groups_view = {
         '국내 대형주 (코스피200 표본)': _groups.get('코스피200', []),
@@ -425,7 +425,7 @@ with st.expander("🗂️ 현재 자동 분석 대상 종목 전체 보기 (설�
     _items = [{'구분': _label, '종목명': _names.get(_ticker, _ticker), '티커': _ticker,
                '이번 실행 가격수집': '성공' if not df.empty and '티커' in df.columns and _ticker in set(df['티커']) else '미확인/실패'}
               for _label, _tickers in _groups_view.items() for _ticker in _tickers]
-    st.caption('기본 자동 분석은 48개 표본입니다. v8.3의 분석 확대 기능에서 저장 종목과 추가 CSV 종목을 별도로 분석할 수 있습니다.')
+    st.caption('이 목록은 과거 화면 분석에 사용한 대표 48종목 표본이며 전체 시장 분석 대상이 아닙니다. 전체 시장 순환 분석 결과는 맨 위의 별도 메뉴에서 확인하세요.')
     st.dataframe(pd.DataFrame(_items), hide_index=True, use_container_width=True)
 
 

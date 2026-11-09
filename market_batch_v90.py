@@ -108,6 +108,19 @@ def run(batch_size=100):
         new=pd.DataFrame(records)
         merged=pd.concat([existing,new],ignore_index=True) if not existing.empty else new
         merged=merged.drop_duplicates('ticker',keep='last')
+        # Observe actual later prices for previously scanned symbols. This is NOT a trade backtest.
+        if not existing.empty and {'ticker','close','asof_price','scanned_at_utc'}.issubset(existing.columns):
+            old=existing.drop_duplicates('ticker',keep='last')[['ticker','close','asof_price','scanned_at_utc']]
+            follow=new[['ticker','close','asof_price','scanned_at_utc']].merge(old,on='ticker',suffixes=('_new','_old'))
+            follow=follow[pd.to_datetime(follow.asof_price_new,errors='coerce') > pd.to_datetime(follow.asof_price_old,errors='coerce')].copy()
+            if not follow.empty:
+                follow['observed_return_pct']=((pd.to_numeric(follow.close_new,errors='coerce')/pd.to_numeric(follow.close_old,errors='coerce')-1)*100).round(2)
+                follow=follow.replace([np.inf,-np.inf],np.nan).dropna(subset=['observed_return_pct'])
+                obs_path=DATA/'observations.csv'
+                old_obs=pd.read_csv(obs_path) if obs_path.exists() else pd.DataFrame()
+                all_obs=pd.concat([old_obs,follow],ignore_index=True)
+                all_obs=all_obs.drop_duplicates(['ticker','asof_price_old','asof_price_new'],keep='last')
+                all_obs.to_csv(obs_path,index=False,encoding='utf-8-sig')
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
