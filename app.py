@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np, pandas as pd, requests, streamlit as st, yfinance as yf
 from data_quality import valid_prices, return_summary, valid_macro_value
 from stock_insights import classify_product, risk_notice, read_batch_status
+from market_data import fetch_usdkrw
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -52,12 +53,7 @@ def fetch_realtime_macro():
             except Exception:
                 macro[key] = {'val': None, 'change': None}
 
-    try:
-        url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
-        res = requests.get(url_fx, headers=headers, timeout=3).json()
-        macro['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
-    except Exception:
-        macro['USDKRW'] = {'val': None, 'change': None}
+    macro['USDKRW'] = fetch_usdkrw(yf, requests)
 
     for key, sym in [('S&P500', '^GSPC'), ('NASDAQ', '^IXIC'), ('VIX', '^VIX')]:
         try:
@@ -289,12 +285,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.4)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.5)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v4.4)")
-st.caption(f"v4.4 통합: 데이터 수집 상태·상품 위험도·종목 검색 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v4.5)")
+st.caption(f"v4.5 통합: 환율 다중 소스 검증·데이터 수집 상태·상품 위험도·종목 검색 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다.")
