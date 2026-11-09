@@ -311,12 +311,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.7.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v7.0.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.7.0)")
-st.caption(f"v6.8.0: 기록시각 한국시간(KST) 표시·UTC 원본 보존·기존 기능 유지 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v7.0.0)")
+st.caption(f"v7.0.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
@@ -583,6 +583,8 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
     if prices_file is None and 'v48_auto_prices' in st.session_state:
         auto_prices = st.session_state['v48_auto_prices']
 
+    benchmark_file = st.file_uploader('선택: 시장지수 종가 CSV (ticker,date,close; 국내 ^KS11 / 미국 ^GSPC)', type='csv', key='v70_benchmark_prices')
+    st.caption('지수 비교는 추천 후 첫 관측 종가일과 평가일에 지수 종가가 모두 있는 경우에만 계산합니다. 날짜가 일치하지 않으면 비교에서 제외합니다.')
     fee = st.number_input('편도 거래비용 (bp, 1bp=0.01%)', min_value=0, max_value=1000, value=10, step=5)
     if recommendation_file is not None and (prices_file is not None or auto_prices is not None):
         from performance_review import evaluate
@@ -607,6 +609,39 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
                         st.warning('일부 기간은 평가건수 20건 미만입니다. 추천 전략의 유효성이나 예측 정확도를 판단하기에 표본이 부족합니다.')
                     st.download_button('📥 기간별 검증 요약 CSV', verified.to_csv(index=False).encode('utf-8-sig'),
                                        file_name='verified_performance_v67.csv', mime='text/csv', key='v67_summary_csv')
+                if st.button('📡 시장지수 종가 자동 조회 (최대 2년)', key='v70_fetch_benchmarks'):
+                    from benchmark_review_v70 import fetch_benchmark_prices
+                    try:
+                        start = pd.to_datetime(history_result['진입기준일'], errors='coerce').min()
+                        end = pd.to_datetime(history_result['평가기준일'], errors='coerce').max()
+                        if pd.isna(start) or pd.isna(end):
+                            st.warning('유효한 진입·평가 날짜가 없습니다.')
+                        else:
+                            with st.spinner('시장지수 종가 조회 중...'):
+                                st.session_state['v70_benchmark_auto'] = fetch_benchmark_prices(start, end)
+                    except (ValueError, KeyError) as exc:
+                        st.warning('지수 자동 조회 실패: ' + str(exc))
+                auto_benchmark = st.session_state.get('v70_benchmark_auto') if benchmark_file is None else None
+                if benchmark_file is not None or (auto_benchmark is not None and not auto_benchmark.empty):
+                    from benchmark_review_v70 import compare_benchmark, summarize_comparison
+                    try:
+                        if benchmark_file is not None:
+                            benchmark_file.seek(0)
+                            benchmark_prices = pd.read_csv(benchmark_file)
+                        else:
+                            benchmark_prices = auto_benchmark
+                        compared = compare_benchmark(history_result, benchmark_prices, fee_bps=fee)
+                        st.markdown('#### 📉 v7.0 시장지수 대비 실제 관측 성과')
+                        if compared.empty:
+                            st.info('동일한 진입·평가 날짜의 지수 종가가 없어 비교 가능한 기록이 없습니다.')
+                        else:
+                            st.caption(f'동일 날짜 비교 가능 {len(compared)}건 / 평가 기록 {len(history_result)}건 · 비용은 종목과 지수 모두 동일하게 반영')
+                            st.dataframe(summarize_comparison(compared), use_container_width=True, hide_index=True)
+                            st.dataframe(compared, use_container_width=True, hide_index=True)
+                            st.download_button('📥 지수 대비 성과 CSV', compared.to_csv(index=False).encode('utf-8-sig'), file_name='benchmark_comparison_v70.csv', mime='text/csv', key='v70_benchmark_download')
+                            st.warning('이 결과는 관측 비교이며 백테스트나 추천 전략의 검증된 우수성을 의미하지 않습니다. 표본 편향·중복 추천·비동시 거래일을 주의하세요.')
+                    except (ValueError, KeyError, pd.errors.ParserError) as exc:
+                        st.error('지수 CSV를 확인하세요: ' + str(exc))
                 st.download_button('📥 성과 검증 CSV 다운로드', with_kst(history_result).to_csv(index=False).encode('utf-8-sig'),
                                    file_name='recommendation_performance.csv', mime='text/csv')
         except (ValueError, KeyError, pd.errors.ParserError) as exc:

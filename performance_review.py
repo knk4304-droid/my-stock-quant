@@ -41,6 +41,7 @@ def evaluate(snapshot, prices, fee_bps=0):
             gross = (future / entry - 1) * 100
             record = {'티커':ticker, '기록시각_UTC':row['기록시각_UTC'], '기간':period,
                       '기준가격':entry, '평가가격':future,
+                      '진입기준일':str(history.iloc[0]['timestamp'].date()),
                       '실현전수익률(%)':round(gross, 3),
                       '비용반영수익률(%)':round(gross - 2*fee_bps/100, 3),
                       '평가기준일':str(history.iloc[sessions]['timestamp'].date())}
