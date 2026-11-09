@@ -20,6 +20,8 @@ def build_catalog(name_map, batch=None):
         if ticker_col:
             for _, row in batch.iterrows():
                 ticker = str(row[ticker_col]).strip().upper()
+                if SIX.fullmatch(ticker):
+                    ticker = ticker + ('.KQ' if str(row.get('시장', row.get('Market', ''))).upper().find('KOSDAQ') >= 0 else '.KS')
                 if ticker and ticker != 'NAN':
                     name = str(row[name_col]).strip() if name_col else ticker
                     catalog.setdefault(ticker, name if name and name != 'nan' else ticker)

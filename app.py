@@ -82,10 +82,10 @@ class UniverseLoader:
     @staticmethod
     def get_full_universe():
         kr_large = {'042660.KS':'한화오션', '005930.KS':'삼성전자', '000660.KS':'SK하이닉스', '035420.KS':'NAVER', '005380.KS':'현대차', '000270.KS':'기아', '068270.KS':'셀트리온', '005490.KS':'POSCO홀딩스', '035720.KS':'카카오', '051910.KS':'LG화학', '006400.KS':'삼성SDI', '373220.KS':'LG에너지솔루션', '207940.KS':'삼성바이오로직스'}
-        kr_small = {'196170.KQ':'알테오젠', '086520.KQ':'에코프로비엠', '028300.KQ':'HLB', '247540.KQ':'엘앤에프', '214150.KQ':'클래시스', '058470.KQ':'리노공업', '035900.KQ':'JYP Ent.', '277810.KQ':'레인보우로보틱스', '053690.KQ':'한미반도체'}
+        kr_small = {'196170.KQ':'알테오젠', '086520.KQ':'에코프로비엠', '028300.KQ':'HLB', '247540.KQ':'엘앤에프', '214150.KQ':'클래시스', '058470.KQ':'리노공업', '035900.KQ':'JYP Ent.', '277810.KQ':'레인보우로보틱스', '042700.KS':'한미반도체'}
         us_large = {'AAPL':'애플', 'MSFT':'마이크로소프트', 'AMZN':'아마존', 'NVDA':'엔비디아', 'GOOGL':'알파벳', 'META':'메타', 'TSLA':'테슬라', 'BRK-B':'버크셔해서웨이', 'UNH':'유나이티드헬스', 'JNJ':'존슨앤드존슨', 'LLY':'일라이릴리', 'JPM':'JP모건체이스'}
         us_small = {'PLTR':'팔란티어', 'SMCI':'슈퍼마이크로컴퓨터', 'IONQ':'아이온큐', 'ROKU':'로쿠', 'SOFI':'소파이', 'PATH':'유아이패스'}
-        etf_list = {'069500.KS':'KODEX 200', '102110.KQ':'TIGER 200', '229200.KS':'KODEX 코스닥150', '091230.KS':'TIGER 반도체', '252670.KS':'KODEX 200선물인버스2X', '114800.KS':'KODEX 인버스', '458730.KS':'ACE 미국S&P500', '133690.KS':'TIGER 미국나스닥100'}
+        etf_list = {'069500.KS':'KODEX 200', '102110.KS':'TIGER 200', '229200.KS':'KODEX 코스닥150', '091230.KS':'TIGER 반도체', '252670.KS':'KODEX 200선물인버스2X', '114800.KS':'KODEX 인버스', '458730.KS':'ACE 미국S&P500', '133690.KS':'TIGER 미국나스닥100'}
 
         name_map = {**kr_large, **kr_small, **us_large, **us_small, **etf_list}
         universe = {
@@ -237,10 +237,18 @@ def generate_sell_analysis(row):
 def process_single_stock(ticker, market, name_map, engine, macro):
     stock_name = name_map.get(ticker, ticker.split('.')[0])
     try:
-        df = yf.Ticker(ticker).history(period='1y', timeout=3)
+        df = yf.Ticker(ticker).history(period='1y', timeout=8)
     except Exception:
         df = pd.DataFrame()
     
+    if (df.empty or 'Close' not in df or len(df['Close'].dropna()) < 6) and ticker.endswith(('.KS', '.KQ')):
+        alternate = ticker[:-3] + ('.KQ' if ticker.endswith('.KS') else '.KS')
+        try:
+            alt_df = yf.Ticker(alternate).history(period='1y', timeout=8)
+            if valid_prices(alt_df, 6):
+                ticker, df = alternate, alt_df
+        except Exception:
+            pass
     if df.empty or 'Close' not in df or len(df['Close'].dropna()) < 6:
         return None  # 가격이 없는 종목은 중립 점수로 위장하지 않음
     if not valid_prices(df, 6):
@@ -296,11 +304,11 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v5.9)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.1)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v5.9)")
+st.title("📈 AI 추천 주식 매매 (v6.1)")
 st.caption(f"v5.9 통합: 배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
@@ -368,14 +376,14 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
         selected_row = None
         if options:
             labels = {t: n for t, n in options}
-            ticker = st.selectbox('검색 결과 · 종목 선택', list(labels), format_func=lambda t: f'{labels[t]} ({t})', key='v60_selected_ticker')
+            ticker = st.selectbox('검색 결과 · 종목 선택', list(labels), format_func=lambda t: f'{labels[t]} ({t})', key='v61_selected_ticker')
             cached = st.session_state.get('v60_report_extra')
             matched = df[df['티커'].astype(str).str.upper() == ticker] if not df.empty else pd.DataFrame()
             if not matched.empty:
                 selected_row = matched.iloc[0].to_dict()
             elif cached and cached[0] == ticker:
                 selected_row = cached[1]
-            if selected_row is None and st.button('선택 종목 가격 조회 및 리포트 생성', key='v60_fetch_ticker'):
+            if selected_row is None and st.button('선택 종목 가격 조회 및 리포트 생성', key=f'v61_fetch_ticker_{ticker}'):
                 with st.spinner('최근 가격 및 분석 지표 확인 중...'):
                     market = '국내 종목' if ticker.endswith(('.KS', '.KQ')) else '미국/기타 종목'
                     selected_row = process_single_stock(ticker, market, {ticker: labels[ticker]}, engine, macro_info)
@@ -401,11 +409,11 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
                 st.caption('직접 입력한 기준가와 비율을 이용하는 산술 계산입니다. 실제 시세·추천 목표가가 아닙니다.')
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    reference = st.number_input('기준가 (해당 종목 거래통화)', min_value=0.0, value=0.0, step=100.0, key='v59_reference')
+                    reference = st.number_input('기준가 (해당 종목 거래통화)', min_value=0.0, value=0.0, step=100.0, key=f'v61_reference_{ticker}')
                 with c2:
-                    target = st.number_input('가정 목표 수익률 (%)', min_value=0.1, max_value=100.0, value=8.0, step=0.5, key='v59_target')
+                    target = st.number_input('가정 목표 수익률 (%)', min_value=0.1, max_value=100.0, value=8.0, step=0.5, key=f'v61_target_{ticker}')
                 with c3:
-                    stop = st.number_input('가정 허용 손실률 (%)', min_value=0.1, max_value=100.0, value=4.0, step=0.5, key='v59_stop')
+                    stop = st.number_input('가정 허용 손실률 (%)', min_value=0.1, max_value=100.0, value=4.0, step=0.5, key=f'v61_stop_{ticker}')
                 if reference > 0:
                     scenario = price_scenarios(reference, target, stop)
                     st.dataframe(pd.DataFrame([scenario]), hide_index=True, use_container_width=True)
