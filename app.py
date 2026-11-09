@@ -15,6 +15,8 @@ from technical_report_v63 import get_technical_report
 from stock_search import build_catalog, candidates
 from batch_explorer_v72 import prepare_batch, filter_batch
 from batch_coverage_v82 import compare_universes, coverage_by_market
+from expanded_universe_v83 import normalize_catalog, pending_catalog, merge_analysis
+from market_dashboard_v90 import show as show_market_scan
 from stock_chart_v73 import prepare_close_chart, change_percent
 from chart_insights_v74 import build_chart_indicators, trend_summary
 from performance_readiness_v75 import readiness_summary
@@ -322,14 +324,87 @@ def cached_chart_history(symbol, period):
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v8.2.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v9.0.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v8.2.0)")
-st.caption(f"v8.2.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v9.0.0)")
+st.caption(f"v9.0.0: 차트 조회 캐시·성과 검증 준비상태·한국시간 표시 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
+show_market_scan(st)
+
+# v8.3: Explicit opt-in expansion. Do not issue hundreds of Yahoo calls on each page load.
+if 'v83_scored' not in st.session_state:
+    st.session_state['v83_scored'] = {}
+if 'v83_failed' not in st.session_state:
+    st.session_state['v83_failed'] = {}
+with st.expander('🌐 국내·미국 주식·ETF 분석 대상 확대 (v8.3)', expanded=True):
+    st.caption('기존 대표 48개는 자동 분석합니다. 저장 목록과 추가 CSV 종목은 아래 버튼을 눌러 순차 분석합니다. 분석 결과는 현재 접속 세션에 유지되며 자동 영구 저장되지는 않습니다.')
+    _v83_saved, _v83_err = load_batch()
+    if _v83_err:
+        st.warning(f'저장 목록을 불러오지 못했습니다: {_v83_err}')
+    _v83_file = st.file_uploader('추가 종목 CSV (선택 · 티커, 종목명, 시장 열)', type=['csv'], key='v83_custom_csv')
+    _v83_extra = None
+    if _v83_file is not None:
+        try:
+            _v83_extra = pd.read_csv(_v83_file, dtype=str, encoding='utf-8-sig')
+        except Exception as exc:
+            st.warning(f'추가 CSV 읽기 실패: {exc}')
+    _v83_catalog = normalize_catalog(_v83_saved, _v83_extra)
+    _v83_initial = set(df['티커'].astype(str)) if not df.empty else set()
+    _v83_done = set(st.session_state['v83_scored']) | set(st.session_state['v83_failed'])
+    _v83_pending = pending_catalog(_v83_catalog, _v83_initial, _v83_done)
+    _v83_c1, _v83_c2, _v83_c3, _v83_c4 = st.columns(4)
+    _v83_c1.metric('분석 후보 목록', f'{len(_v83_catalog):,}개')
+    _v83_c2.metric('기존 자동 분석', f'{len(_v83_initial):,}개')
+    _v83_c3.metric('추가 분석 성공', f'{len(st.session_state["v83_scored"]):,}개')
+    _v83_c4.metric('추가 분석 실패', f'{len(st.session_state["v83_failed"]):,}개')
+    _v83_market_options = ['전체'] + sorted(_v83_pending['시장'].dropna().astype(str).unique().tolist())
+    _v83_market = st.selectbox('이번에 분석할 시장', _v83_market_options, key='v83_market')
+    _v83_limit = st.select_slider('한 번에 조회할 종목 수', options=[20, 40, 60, 100], value=40, key='v83_limit')
+    _v83_targets = _v83_pending if _v83_market == '전체' else _v83_pending[_v83_pending['시장'].eq(_v83_market)]
+    st.caption(f'현재 선택한 시장의 미분석 후보: {len(_v83_targets):,}개 · 조회 실패 종목은 중복 요청 방지를 위해 건너뜁니다. 시장 전체 종목을 자동 수집한다는 의미는 아닙니다.')
+    if st.button(f'🔎 다음 {_v83_limit}개 종목 실제 시세 분석', disabled=_v83_targets.empty, key='v83_analyze'):
+        _v83_batch = _v83_targets.head(_v83_limit)
+        _v83_name_map = dict(zip(_v83_batch['티커'], _v83_batch['종목명']))
+        _v83_bar = st.progress(0, text='가격 데이터 수집 중')
+        with ThreadPoolExecutor(max_workers=5) as _v83_pool:
+            _v83_futures = { _v83_pool.submit(process_single_stock, str(r['티커']), str(r['시장']), _v83_name_map, engine, macro_info): str(r['티커']) for _,r in _v83_batch.iterrows() }
+            for _v83_i, _v83_future in enumerate(as_completed(_v83_futures), 1):
+                _v83_ticker = _v83_futures[_v83_future]
+                try:
+                    _v83_row = _v83_future.result()
+                    if _v83_row is not None:
+                        st.session_state['v83_scored'][_v83_ticker] = _v83_row
+                    else:
+                        st.session_state['v83_failed'][_v83_ticker] = '가격 데이터 부족 또는 조회 실패'
+                except Exception as _v83_exc:
+                    st.session_state['v83_failed'][_v83_ticker] = f'{type(_v83_exc).__name__}: {str(_v83_exc)[:100]}'
+                _v83_bar.progress(_v83_i / len(_v83_batch), text=f'{_v83_i}/{len(_v83_batch)}개 조회 완료')
+        st.rerun()
+    if st.session_state['v83_scored']:
+        _v83_result = pd.DataFrame(st.session_state['v83_scored'].values())
+        st.download_button('📥 추가 분석 결과 CSV', _v83_result.to_csv(index=False).encode('utf-8-sig'), file_name='AI_STOCK_MASTER_v83_analysis.csv', mime='text/csv', key='v83_download')
+    if st.session_state['v83_failed']:
+        with st.expander('조회 실패 종목 확인'):
+            st.dataframe(pd.DataFrame([{'티커':k,'사유':v} for k,v in st.session_state['v83_failed'].items()]), hide_index=True, use_container_width=True)
+            if st.button('실패 목록 초기화 · 재시도 허용', key='v83_retry'):
+                st.session_state['v83_failed'] = {}
+                st.rerun()
+    st.caption('주의: 기존 규칙 기반 점수는 투자 수익률·상승 확률이 아닙니다. CSV의 종목코드는 Yahoo Finance 티커 형식이어야 합니다(국내 .KS/.KQ, 미국 AAPL, 미국 ETF SPY 등).')
+
+if st.session_state['v83_scored']:
+    df = merge_analysis(df, pd.DataFrame(st.session_state['v83_scored'].values()))
+    with st.expander('🏆 확대 분석 종목 순위 · 국내/미국/ETF (v8.3)', expanded=True):
+        _v83_horizon = st.selectbox('투자기간별 규칙 점수', ['1~3D','1~2W','1~3M','1Y+'], index=1, key='v83_horizon')
+        _v83_scored_df = pd.DataFrame(st.session_state['v83_scored'].values())
+        _v83_scored_df['점수'] = pd.to_numeric(_v83_scored_df[f'총점_{_v83_horizon}'], errors='coerce')
+        _v83_scored_df = _v83_scored_df.sort_values('점수',ascending=False)
+        _v83_columns = [c for c in ['시장','종목명','티커','점수','당일 수익률','1주 수익률','차트링크'] if c in _v83_scored_df]
+        st.dataframe(_v83_scored_df[_v83_columns].head(100), hide_index=True, use_container_width=True)
+        st.caption('이 순위는 추가 조회에 성공한 종목끼리만 비교한 결과입니다. 전체 시장의 상위 100종목이라는 뜻이 아닙니다.')
+
 # v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
 with st.expander("📖 처음 사용하는 분을 위한 화면 안내", expanded=False):
     st.markdown("""**① 시장 현황:** 지수와 환율의 최근 수집값을 확인합니다. 실시간 체결가는 아닐 수 있습니다.  
@@ -350,7 +425,7 @@ with st.expander("🗂️ 현재 자동 분석 대상 종목 전체 보기 (설�
     _items = [{'구분': _label, '종목명': _names.get(_ticker, _ticker), '티커': _ticker,
                '이번 실행 가격수집': '성공' if not df.empty and '티커' in df.columns and _ticker in set(df['티커']) else '미확인/실패'}
               for _label, _tickers in _groups_view.items() for _ticker in _tickers]
-    st.caption('총 48개 고유 티커를 자동 분석하도록 설정했습니다. 지수 전체 편입 종목이 아닙니다. 화면 자동 분석과 배치 저장은 별개입니다.')
+    st.caption('기본 자동 분석은 48개 표본입니다. v8.3의 분석 확대 기능에서 저장 종목과 추가 CSV 종목을 별도로 분석할 수 있습니다.')
     st.dataframe(pd.DataFrame(_items), hide_index=True, use_container_width=True)
 
 
@@ -693,7 +768,7 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
 
 # 추천 스냅샷은 사용자가 CSV로 저장해야 하며 자동으로 성과가 추적되지는 않습니다.
 from recommendation_audit import create_snapshot, coverage_report
-st.caption('ℹ️ 화면 추천은 제한된 표본입니다. 코스피200/S&P500 등은 전체 구성종목을 보장하지 않는 표본 그룹명이며, 배치 저장 종목과 다릅니다.')
+st.caption('ℹ️ 기본 표본과 v8.3에서 실제 추가 분석한 종목만 추천에 반영합니다. 코스피200/S&P500 그룹은 전체 구성종목을 보장하지 않습니다.')
 if not df.empty:
     st.caption('📊 화면 분석 대상: ' + str(len(df['티커'].dropna().unique())) + '개 고유 티커 · ' + coverage_report(df))
     if status.get('state') in ('ok', 'stale'):
