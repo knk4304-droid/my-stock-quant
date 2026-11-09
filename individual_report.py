@@ -38,3 +38,34 @@ def _number(value):
         return n if math.isfinite(n) else None
     except (ValueError, TypeError):
         return None
+
+
+def overall_assessment(row):
+    """Explain agreement between period scores without treating them as probabilities."""
+    scores = [_number(row.get('총점_' + code)) for code, _ in PERIODS]
+    available = [s for s in scores if s is not None]
+    if not available:
+        return '분석 보류', '유효한 기간별 점수가 없어 종합 판단을 제공하지 않습니다.'
+    strong = sum(s >= 70 for s in available)
+    weak = sum(s < 55 for s in available)
+    if len(available) < 3:
+        return '자료 제한', '평가 가능한 기간이 부족하므로 판단을 보류합니다.'
+    if strong >= 3:
+        return '상대적 강세 · 추격 주의', '여러 기간의 규칙 기반 점수가 강세이나 수익을 보장하지 않습니다. 조정과 거래량을 확인하세요.'
+    if weak >= 3:
+        return '위험 우선 · 관망', '다수 기간의 점수가 낮아 신규 진입보다 하락 위험 점검을 우선합니다.'
+    return '혼조 · 조건부 관찰', '기간별 평가가 엇갈립니다. 진입 전 투자기간과 위험 한도를 먼저 정하세요.'
+
+
+def price_scenarios(reference_price, target_pct=8.0, stop_pct=4.0):
+    """User-defined scenarios, not predicted prices."""
+    price = _number(reference_price)
+    target = _number(target_pct)
+    stop = _number(stop_pct)
+    if price is None or price <= 0 or target is None or stop is None or not (0 < target <= 100 and 0 < stop <= 100):
+        raise ValueError('기준가와 목표·손실 비율을 확인하세요.')
+    return {
+        '목표 시나리오 가격': round(price * (1 + target / 100), 2),
+        '손실 제한 시나리오 가격': round(price * (1 - stop / 100), 2),
+        '가정 손익비': round(target / stop, 2),
+    }
