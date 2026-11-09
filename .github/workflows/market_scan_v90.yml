@@ -28,6 +28,10 @@ jobs:
         run: python market_batch_v90.py
       - name: Record and follow up recommendation snapshots
         run: python recommendation_tracker.py
+      - name: Validate 1/5/20-session forward outcomes
+        env:
+          VALIDATION_MAX_TICKERS: "40"
+        run: python forward_validation_v95.py
       - name: Save scan results
         run: |
           git config user.name 'github-actions[bot]'
