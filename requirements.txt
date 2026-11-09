@@ -7,4 +7,4 @@ tabulate
 pyarrow
 beautifulsoup4
 lxml
-FinanceDataReader
+finance-datareader
