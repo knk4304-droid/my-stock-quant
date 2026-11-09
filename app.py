@@ -310,12 +310,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.6.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.7.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.6.0)")
-st.caption(f"v6.6.0: 추천 스냅샷 품질 점검·사후 성과 검증 보강·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.7.0)")
+st.caption(f"v6.7.0: 추천 스냅샷 품질 점검·사후 성과 검증 보강·기존 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
@@ -596,6 +596,16 @@ with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 C
                 if not summary.empty:
                     st.caption('표본별 사후 보유수익률 요약 (거래비용 반영, 미래 성과 보장 아님)')
                     st.dataframe(summary, use_container_width=True)
+                from verified_performance_v67 import summarize_verified
+                verified = summarize_verified(history_result)
+                if not verified.empty:
+                    st.markdown('#### 📊 v6.7 투자기간별 실제 관측 성과')
+                    st.dataframe(verified, use_container_width=True, hide_index=True)
+                    st.caption('상승비율은 거래비용 차감 후 수익률이 0%보다 큰 비율입니다. 95% 하한은 독립 표본 가정의 Wilson 구간으로, 종목·날짜 중복과 시장 환경 때문에 실제 신뢰도를 보장하지 않습니다.')
+                    if (verified['평가건수'] < 20).any():
+                        st.warning('일부 기간은 평가건수 20건 미만입니다. 추천 전략의 유효성이나 예측 정확도를 판단하기에 표본이 부족합니다.')
+                    st.download_button('📥 기간별 검증 요약 CSV', verified.to_csv(index=False).encode('utf-8-sig'),
+                                       file_name='verified_performance_v67.csv', mime='text/csv', key='v67_summary_csv')
                 st.download_button('📥 성과 검증 CSV 다운로드', history_result.to_csv(index=False).encode('utf-8-sig'),
                                    file_name='recommendation_performance.csv', mime='text/csv')
         except (ValueError, KeyError, pd.errors.ParserError) as exc:

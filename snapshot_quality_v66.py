@@ -8,7 +8,7 @@ def inspect_snapshot(frame, now=None):
         return {'rows': 0, 'unique_tickers': 0}, ['추천 스냅샷이 비어 있습니다.']
     columns = {str(c).strip().lower(): c for c in frame.columns}
     ticker_col = next((columns[k] for k in ('ticker', '티커', 'symbol') if k in columns), None)
-    date_col = next((columns[k] for k in ('date', '추천일', 'snapshot_date', 'timestamp', '추천시각') if k in columns), None)
+    date_col = next((columns[k] for k in ('date', '추천일', 'snapshot_date', 'timestamp', '추천시각', '기록시각_utc') if k in columns), None)
     warnings = []
     metrics = {'rows': len(frame), 'unique_tickers': 0}
     if ticker_col is None:
