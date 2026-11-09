@@ -12,7 +12,7 @@ def read_snapshot():
     return state,scores
 
 def show(st):
-    with st.expander('🌐 전체 시장 자동 탐색 · 추천 후보와 분석 진행 상황 (v9.3)',expanded=True):
+    with st.expander('🌐 전체 시장 자동 탐색 · 추천 후보와 분석 진행 상황 (v9.4)',expanded=True):
         state,scores=read_snapshot()
         if not state:
             st.info('아직 자동 배치 분석 결과가 없습니다. GitHub Actions에서 Market scan v9을 1회 실행하세요.')
@@ -52,6 +52,12 @@ def show(st):
         scores['scanned_at_utc']=pd.to_datetime(scores['scanned_at_utc'],utc=True,errors='coerce')
         age=(pd.Timestamp.now(tz='UTC')-scores['scanned_at_utc']).dt.total_seconds()/86400
         st.markdown('### 추천 후보 찾아보기')
+        st.info('이 표는 전체 상장종목을 동시에 평가한 결과가 아니라, 지금까지 시세 분석이 완료되어 저장된 종목의 후보 순위입니다. 실제 매수 신호가 아닙니다.')
+        market_coverage=scores.groupby('market',dropna=False).size().to_dict()
+        available=set(str(k) for k in market_coverage)
+        expected={'KOSPI','KOSDAQ','KR ETF','NASDAQ','NYSE/OTHER'}
+        missing=sorted(expected-available)
+        if missing: st.warning('분석 결과가 없는 시장: '+', '.join(missing)+' · 전체 시장을 충분히 분석한 것으로 해석하지 마세요.')
         st.caption('기본 설정은 전체 시장·주식과 ETF 모두·최근 30일 분석입니다. 아래 목록은 자동 분석을 마친 종목 중 조건에 맞는 후보만 보여줍니다.')
         c_market,c_period=st.columns(2)
         with c_market:
@@ -87,12 +93,20 @@ def show(st):
         ranked=scores.sort_values(['관점별 참고점수','score'],ascending=[False,False])
         ranked=ranked.loc[ranked['score'].ge(min_score)]
         display=ranked.head(30).rename(columns={'ticker':'종목코드','name':'종목명','market':'시장','asset_type':'유형','close':'기준 종가','score':'기술 점수','return_5d_pct':'최근 5거래일 수익률(%)','return_20d_pct':'최근 20거래일 수익률(%)','volatility_annual':'연율 변동성','asof_price':'가격 기준일','scanned_at_utc':'분석 저장 시각(UTC)'})
-        st.markdown(f'**검색 결과: {len(ranked):,}개 후보** (상위 최대 30개 표시)')
+        st.markdown(f'**조건에 맞는 후보: {len(ranked):,}개** · 점수순 상위 30개')
+        if not ranked.empty:
+            ranked_markets=ranked['market'].fillna('미분류').astype(str).value_counts()
+            st.caption('후보 시장별 분포: '+ ' · '.join(f'{k} {v:,}개' for k,v in ranked_markets.items()))
+            if len(ranked_markets)==1 and market=='전체':
+                st.warning('현재 필터를 통과한 후보는 한 시장에만 있습니다. 다른 시장이 분석되지 않았거나 점수·기간 조건에서 제외되었을 수 있습니다.')
         if ranked.empty: st.info('현재 조건에 맞는 종목이 없습니다. 상세 검색 조건에서 기간을 전체로 변경하거나 최소 점수를 낮춰 보세요.')
-        st.dataframe(display,hide_index=True,use_container_width=True)
+        preferred=['종목코드','종목명','시장','유형','기준 종가','기술 점수','관점별 참고점수','가격 기준일','분석 저장 시각(UTC)']
+        st.dataframe(display[[c for c in preferred if c in display.columns]],hide_index=True,use_container_width=True)
+        with st.expander('📋 상세 수익률·변동성 데이터',expanded=False):
+            st.dataframe(display,hide_index=True,use_container_width=True)
         st.caption('관점별 참고점수는 기간에 따라 과거 수익률·변동성 가중치를 달리한 임시 규칙입니다. **검증된 예측값이 아닙니다.**')
         st.caption('이 목록은 조건을 충족한 **관찰 후보**이며 매수 확정 신호가 아닙니다. 상세 매수·매도 전략은 아래 종목 검색에서 추가 확인하세요.')
-        st.caption(f'필터 이전 분석 결과 {len(scores):,}개 · 필터 통과 {len(ranked):,}개 · 최대 30개 표시. 기존 정밀 종합점수와 직접 비교하지 마세요.')
+        st.caption(f'기간·시장·유형·검색 적용 후 {len(scores):,}개 · 점수 조건 통과 {len(ranked):,}개 · 최대 30개 표시. 기존 정밀 종합점수와 직접 비교하지 마세요.')
         with st.expander('📈 이후 가격 관측 기록 · 추천 검증 준비',expanded=False):
             obs=DATA/'observations.csv'
             if obs.exists():
@@ -102,6 +116,14 @@ def show(st):
                     else:
                         st.dataframe(history.tail(100).iloc[::-1],hide_index=True,use_container_width=True)
                         st.caption('같은 종목을 나중에 다시 분석했을 때의 가격 변화입니다. 추천 수익률, 고정 보유기간 백테스트 또는 실제 거래 성과는 아닙니다.')
+                        if 'observed_return_pct' in history:
+                            values=pd.to_numeric(history['observed_return_pct'],errors='coerce').dropna()
+                            if len(values):
+                                a,b,c=st.columns(3)
+                                a.metric('재조회 관측 건수',f'{len(values):,}건')
+                                b.metric('관측 상승 비율',f'{(values.gt(0).mean()*100):.1f}%')
+                                c.metric('관측 평균 가격 변화',f'{values.mean():+.2f}%')
+                                st.warning('관측 간격이 일정하지 않고 추천 시점의 거래 조건도 반영되지 않았습니다. 승률 또는 투자 성과로 해석할 수 없습니다.')
                 except Exception as exc: st.warning(f'관측 기록을 읽을 수 없습니다: {exc}')
             else: st.info('분석한 종목을 이후에 다시 조회하면 관측 기록이 쌓입니다. 현재는 검증 성과가 충분하지 않습니다.')
         st.download_button('📥 분석 결과 CSV 다운로드',scores.to_csv(index=False).encode('utf-8-sig'),file_name='market_scan_v90.csv',mime='text/csv',key='v90_csv')

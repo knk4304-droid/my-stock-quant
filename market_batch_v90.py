@@ -137,6 +137,8 @@ def run(batch_size=250):
     existing=pd.read_csv(results_path,dtype={'ticker':str}) if results_path.exists() else pd.DataFrame()
     state=json.loads(state_path.read_text()) if state_path.exists() else {}
     chosen, next_cursors=choose_balanced_batch(catalog,state,batch_size)
+    # Keep cursor progress for temporarily missing market groups.
+    next_cursors={**state.get('market_cursors',{}),**next_cursors}
     n=len(chosen)
     # Revisit previously high-scoring candidates so forward observations can accrue
     # without waiting for a complete market rotation. Rotation remains independent.
