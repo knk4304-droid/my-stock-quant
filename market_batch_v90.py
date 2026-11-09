@@ -43,17 +43,64 @@ def us_listings():
     return pd.DataFrame(out,columns=COLS)
 
 def kr_listings():
+    """Collect Korean listings with an independent fallback; never label unknown markets as KOSPI."""
     out=[]
     try:
         from pykrx import stock
-        today=datetime.now().strftime('%Y%m%d')
-        for market,suffix in [('KOSPI','.KS'),('KOSDAQ','.KQ')]:
-            for t in stock.get_market_ticker_list(today,market=market):
-                out.append((t+suffix,stock.get_market_ticker_name(t),market,'STOCK'))
-        for t in stock.get_etf_ticker_list(today):
-            out.append((t+'.KS',stock.get_etf_ticker_name(t),'KR ETF','ETF'))
-    except Exception as exc: print('KR LIST WARNING',type(exc).__name__,str(exc)[:150])
+        # A market holiday/weekend can return no rows for the current day.
+        from datetime import timedelta
+        for offset in range(0, 8):
+            day=(datetime.now()-timedelta(days=offset)).strftime('%Y%m%d')
+            found=[]
+            for market,suffix in [('KOSPI','.KS'),('KOSDAQ','.KQ')]:
+                for t in stock.get_market_ticker_list(day,market=market):
+                    found.append((t+suffix,stock.get_market_ticker_name(t),market,'STOCK'))
+            for t in stock.get_etf_ticker_list(day):
+                found.append((t+'.KS',stock.get_etf_ticker_name(t),'KR ETF','ETF'))
+            if found:
+                out.extend(found)
+                break
+    except Exception as exc:
+        print('KR PYKRX WARNING',type(exc).__name__,str(exc)[:150])
+    if not out:
+        try:
+            import FinanceDataReader as fdr
+            f=fdr.StockListing('KRX')
+            for _,r in f.iterrows():
+                code=str(r.get('Code',r.get('Symbol',''))).strip().zfill(6)
+                market=str(r.get('Market','')).upper()
+                if not re.fullmatch(r'\d{6}',code) or market not in ('KOSPI','KOSDAQ','KONEX'): continue
+                if market=='KONEX': continue  # Yahoo suffix not reliably supported
+                out.append((code+('.KQ' if market=='KOSDAQ' else '.KS'),str(r.get('Name',code)),market,'STOCK'))
+        except Exception as exc:
+            print('KR FDR WARNING',type(exc).__name__,str(exc)[:150])
+    if not out:
+        print('KR LIST WARNING: no Korean symbols obtained; scanner cannot claim Korean coverage')
     return pd.DataFrame(out,columns=COLS)
+
+
+def choose_balanced_batch(catalog, state, batch_size):
+    """Allocate each run across available markets rather than exhausting NASDAQ first."""
+    markets=sorted(catalog.market.dropna().unique().tolist())
+    if not markets: return catalog.head(0), {}
+    cursors=state.get('market_cursors',{})
+    n=min(max(1,int(batch_size)),len(catalog))
+    quotas={m:n//len(markets) for m in markets}
+    for m in markets[:n%len(markets)]: quotas[m]+=1
+    chosen=[]; next_cursors={}
+    for m in markets:
+        subset=catalog[catalog.market.eq(m)].reset_index(drop=True)
+        cursor=int(cursors.get(m,0))%len(subset)
+        count=min(quotas[m],len(subset))
+        indices=[(cursor+i)%len(subset) for i in range(count)]
+        chosen.append(subset.iloc[indices])
+        next_cursors[m]=(cursor+count)%len(subset)
+    result=pd.concat(chosen,ignore_index=True)
+    # Fill spare quota when one market contains fewer symbols than its allocation.
+    if len(result)<n:
+        missing=catalog[~catalog.ticker.isin(result.ticker)].head(n-len(result))
+        result=pd.concat([result,missing],ignore_index=True)
+    return result, next_cursors
 
 def load_catalog():
     DATA.mkdir(exist_ok=True)
@@ -89,9 +136,8 @@ def run(batch_size=250):
     results_path=DATA/'scores.csv'; state_path=DATA/'state.json'
     existing=pd.read_csv(results_path,dtype={'ticker':str}) if results_path.exists() else pd.DataFrame()
     state=json.loads(state_path.read_text()) if state_path.exists() else {}
-    cursor=int(state.get('cursor',0)) % len(catalog)
-    n=min(max(1,int(batch_size)),len(catalog))
-    chosen=pd.concat([catalog.iloc[cursor:],catalog.iloc[:cursor]],ignore_index=True).head(n)
+    chosen, next_cursors=choose_balanced_batch(catalog,state,batch_size)
+    n=len(chosen)
     # Revisit previously high-scoring candidates so forward observations can accrue
     # without waiting for a complete market rotation. Rotation remains independent.
     revisit_limit=max(0,int(os.getenv('REVISIT_TOP_N','25')))
@@ -136,7 +182,7 @@ def run(batch_size=250):
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
-    state={'cursor':(cursor+n)%len(catalog),'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':attempted_total-n,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
+    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':attempted_total-n,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
     state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2))
     pd.DataFrame(failures,columns=['ticker','reason']).to_csv(DATA/'last_failures.csv',index=False,encoding='utf-8-sig')
     print(json.dumps(state,ensure_ascii=False))

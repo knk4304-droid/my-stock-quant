@@ -12,7 +12,7 @@ def read_snapshot():
     return state,scores
 
 def show(st):
-    with st.expander('🌐 전체 시장 자동 탐색 · 추천 후보와 분석 진행 상황 (v9.2)',expanded=True):
+    with st.expander('🌐 전체 시장 자동 탐색 · 추천 후보와 분석 진행 상황 (v9.3)',expanded=True):
         state,scores=read_snapshot()
         if not state:
             st.info('아직 자동 배치 분석 결과가 없습니다. GitHub Actions에서 Market scan v9을 1회 실행하세요.')
@@ -29,6 +29,23 @@ def show(st):
             st.markdown('**검색 가능한 전체 종목**은 확보한 종목코드 목록입니다. **최근 실행에서 조회한 종목**은 한 번의 자동 작업에서 조회를 시도한 수입니다. **분석 완료**는 가격 자료가 충분하여 점수를 계산한 수입니다. **지금까지 분석한 고유 종목**은 이전 실행 결과까지 합친 저장 수이며 최신 시세라는 뜻은 아닙니다.\n\n**추천 점수**는 추세·수익률·변동성에 따른 규칙 점수입니다. 실제 수익률이나 매수 성공 확률이 아닙니다.')
         st.caption(f"이번 작업: 신규 순환 조회 {state.get('rotation_count',state.get('attempted',0)):,}개 · 이전 후보 재확인 {state.get('revisit_count',0):,}개 · 실패 {state.get('failed',0):,}개")
         st.caption(f"마지막 자동 분석(UTC): {state.get('updated_utc','미확인')}")
+        if not scores.empty:
+            summary=scores.groupby('market',dropna=False).size().rename('누적 분석 저장').reset_index().rename(columns={'market':'시장'})
+            catalog_counts=state.get('catalog_by_market',{})
+            if not catalog_counts:
+                catalog_file=DATA/'catalog.csv'
+                if catalog_file.exists():
+                    catalog_counts=pd.read_csv(catalog_file,usecols=['market']).market.value_counts().to_dict()
+            summary['등록 종목']=summary['시장'].map(catalog_counts).fillna(0).astype(int)
+            for m, count in catalog_counts.items():
+                if m not in summary['시장'].values:
+                    summary=pd.concat([summary,pd.DataFrame([{'시장':m,'누적 분석 저장':0,'등록 종목':count}])],ignore_index=True)
+            summary=summary.sort_values('시장')
+            st.markdown('**시장별 실제 분석 현황**')
+            st.dataframe(summary,hide_index=True,use_container_width=True)
+            if not any(str(m).startswith(('KOSPI','KOSDAQ','KR ETF')) for m in catalog_counts):
+                st.warning('국내 주식·ETF 종목 목록이 아직 확보되지 않았습니다. 국내 시장까지 분석했다고 볼 수 없습니다. 자동 분석 작업의 KR LIST WARNING 로그를 확인하세요.')
+            st.caption('등록 종목은 검색 가능한 목록, 누적 분석 저장은 가격을 조회하여 점수가 저장된 종목입니다. 전체 시장 선택 시 저장된 결과만 표시됩니다.')
         if scores.empty: return
         scores=scores.copy()
         scores['score']=pd.to_numeric(scores['score'],errors='coerce')
@@ -57,7 +74,7 @@ def show(st):
         elif horizon.startswith('장기'): rank_score=base*.8+r20*.15-vol*18
         else: rank_score=base
         scores['관점별 참고점수']=rank_score.round(2)
-        ranked=scores.sort_values('관점별 참고점수',ascending=False)
+        ranked=scores.sort_values(['관점별 참고점수','score'],ascending=[False,False])
         min_score=st.slider('최소 기술 점수 (후보 필터)',0,100,60,5,key='v91_score')
         ranked=ranked.loc[ranked['score'].ge(min_score)]
         display=ranked.head(100).rename(columns={'ticker':'종목코드','name':'종목명','market':'시장','asset_type':'유형','close':'기준 종가','score':'기술 점수','return_5d_pct':'최근 5거래일 수익률(%)','return_20d_pct':'최근 20거래일 수익률(%)','volatility_annual':'연율 변동성','asof_price':'가격 기준일','scanned_at_utc':'분석 저장 시각(UTC)'})

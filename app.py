@@ -441,29 +441,19 @@ except Exception as _v80_exc:
     _v80_stored, _v80_error = None, str(_v80_exc)
 _v80_cov = dashboard_coverage(requested_count, df, _v80_stored)
 _v80_quality = ranking_safety(df)
-with st.expander('📊 종목 분석 현황 · 숫자 쉽게 이해하기 (v8.2)', expanded=True):
-    st.markdown('**오늘 자동 분석한 종목과 전체 저장 목록은 서로 다릅니다.** 아래 숫자는 분석 범위를 보여주며, 추천 성공률이나 투자 수익률을 뜻하지 않습니다.')
-    _v80_cols = st.columns(4)
-    _v80_cols[0].metric('오늘 분석 완료', f"{_v80_cov['live']:,} / {_v80_cov['requested']:,}개")
-    _v80_cols[1].metric('전체 저장 종목', f"{_v80_cov['stored']:,}개")
-    _v80_cols[2].metric('두 목록에 함께 있는 종목', f"{_v80_cov['overlap']:,}개")
-    _v80_cols[3].metric('시세 조회 성공률', f"{_v80_cov['live_pct']:.1f}%")
-    st.caption('① 오늘 분석 완료: 프로그램이 이번 실행에서 시세를 가져와 분석한 종목 수 / 설정된 자동 분석 대상 수')
-    st.caption('② 전체 저장 종목: 별도 정기 수집 작업이 저장한 고유 종목 수. 모두 오늘 분석하거나 추천한 종목은 아닙니다.')
-    st.caption('③ 두 목록에 함께 있는 종목: 오늘 분석된 종목 중 저장 목록에도 들어 있는 종목 수. 분석 점수와 저장 데이터는 별개입니다.')
-    st.caption('④ 시세 조회 성공률: 설정된 자동 분석 대상 중 이번 실행에서 시세를 정상 확보한 비율. 투자 추천 적중률과 무관합니다.')
-    st.info(f"이번 실행에서는 설정된 {_v80_cov['requested']:,}개 중 {_v80_cov['live']:,}개를 분석했습니다. 별도 저장 목록에는 {_v80_cov['stored']:,}개가 있으며, 그중 {_v80_cov['overlap']:,}개가 오늘 분석 목록과 겹칩니다.")
-    with st.expander('🔎 숫자가 서로 다른 이유 · 자세한 설명', expanded=False):
-        st.write(f"저장 목록에만 있고 오늘 분석 목록에는 없는 종목: {_v80_cov['stored_only']:,}개")
-        st.write('오늘 분석은 화면에서 정한 소규모 표본을 대상으로 실행합니다. 저장 목록은 별도의 정기 작업으로 만들어집니다. 따라서 두 목록의 크기와 갱신 시각이 다를 수 있습니다.')
-        st.write('시세 조회 성공률 100%는 데이터 수집 상태만 보여줍니다. 추천 정확도, 수익률, 매수 성공 가능성을 뜻하지 않습니다.')
-    if _v80_error:
-        st.warning('저장 목록을 확인하지 못했습니다: ' + str(_v80_error))
-    if _v80_quality['duplicate'] or _v80_quality['missing_score']:
-        st.warning(f"분석 결과 점검: 중복 종목 {_v80_quality['duplicate']}건, 점수 누락·범위 오류 {_v80_quality['missing_score']}건. 추천 순위를 해석할 때 주의하세요.")
-    else:
-        st.caption('기본 데이터 점검: 분석 결과에서 중복 종목이나 점수 누락·범위 오류가 감지되지 않았습니다. 추천의 정확도를 검증한 것은 아닙니다.')
-    st.caption('용어 안내: 종합점수=내부 규칙에 따른 상대 평가 · 매수 신호 강도=기술적 조건의 내부 점수 · 과거 수익률=지나간 가격 변화 · 실제 관측 성과=추천 이후 확인된 가격을 이용한 평가')
+with st.expander('📊 분석 현황 한눈에 보기 · 화면 분석과 정기 분석 구분 (v9.3)', expanded=False):
+    _live_unique = df['티커'].dropna().astype(str).nunique() if '티커' in df.columns else len(df)
+    _requested = max(0, int(requested_count))
+    _success_rate = min(100.0, 100 * _live_unique / _requested) if _requested else 0.0
+    _cc = st.columns(3)
+    _cc[0].metric('이번 화면 조회 요청', f'{_requested:,}개')
+    _cc[1].metric('이번 화면 분석 완료', f'{_live_unique:,}개')
+    _cc[2].metric('화면 조회 성공 비율', f'{_success_rate:.1f}%' if _requested else '계산 불가')
+    st.caption('위 숫자는 현재 화면에서 직접 조회한 종목 기준입니다. 아래 전체 시장 자동 탐색의 누적 저장 건수와 서로 다른 지표입니다.')
+    st.caption('조회 성공 비율은 투자 추천 적중률이 아니며, 실제 조회 요청보다 분석 행 수가 많은 경우에도 100%를 넘겨 표시하지 않습니다.')
+    if _live_unique > _requested:
+        st.warning('분석 완료 종목 수가 조회 요청 수보다 많습니다. 목록 집계 기준을 확인해야 합니다. 이 비율은 참고용입니다.')
+    st.caption('전체 시장별 등록·분석 완료 현황은 상단의 🌐 전체 시장 자동 탐색 메뉴에서 확인하세요.')
 
 st.caption(f"🔎 화면 시세 조회: 요청 {requested_count}종목 · 성공 {len(df)}종목 · 실패 {len(fetch_failures)}종목")
 # v6.5: 수집 성공률은 데이터 커버리지 지표이며 모델 정확도와 다릅니다.
