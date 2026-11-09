@@ -83,7 +83,7 @@ def scan_one(ticker):
     h=yf.Ticker(ticker).history(period='6mo',interval='1d',timeout=10,auto_adjust=True)
     return technical_score(h)
 
-def run(batch_size=100):
+def run(batch_size=250):
     catalog=load_catalog()
     DATA.mkdir(exist_ok=True)
     results_path=DATA/'scores.csv'; state_path=DATA/'state.json'
@@ -92,9 +92,21 @@ def run(batch_size=100):
     cursor=int(state.get('cursor',0)) % len(catalog)
     n=min(max(1,int(batch_size)),len(catalog))
     chosen=pd.concat([catalog.iloc[cursor:],catalog.iloc[:cursor]],ignore_index=True).head(n)
+    # Revisit previously high-scoring candidates so forward observations can accrue
+    # without waiting for a complete market rotation. Rotation remains independent.
+    revisit_limit=max(0,int(os.getenv('REVISIT_TOP_N','25')))
+    if revisit_limit and not existing.empty and {'ticker','score','scanned_at_utc'}.issubset(existing.columns):
+        old=existing.copy()
+        old['score']=pd.to_numeric(old['score'],errors='coerce')
+        old['scanned_at_utc']=pd.to_datetime(old['scanned_at_utc'],utc=True,errors='coerce')
+        old=old[old['scanned_at_utc'].lt(pd.Timestamp.now(tz='UTC')-pd.Timedelta(days=1))]
+        old=old.sort_values('score',ascending=False).drop_duplicates('ticker')
+        revisit=old.head(revisit_limit)[['ticker']].merge(catalog,on='ticker',how='inner')
+        chosen=pd.concat([chosen,revisit],ignore_index=True).drop_duplicates('ticker')
+    attempted_total=len(chosen)
     from concurrent.futures import ThreadPoolExecutor,as_completed
     records=[]; failures=[]
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         futures={pool.submit(scan_one,r.ticker):r for r in chosen.itertuples(index=False)}
         for future in as_completed(futures):
             r=futures[future]
@@ -124,10 +136,10 @@ def run(batch_size=100):
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
-    state={'cursor':(cursor+n)%len(catalog),'catalog_size':len(catalog),'attempted':n,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
+    state={'cursor':(cursor+n)%len(catalog),'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':attempted_total-n,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
     state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2))
     pd.DataFrame(failures,columns=['ticker','reason']).to_csv(DATA/'last_failures.csv',index=False,encoding='utf-8-sig')
     print(json.dumps(state,ensure_ascii=False))
     return state
 
-if __name__=='__main__': run(int(os.getenv('SCAN_BATCH_SIZE','100')))
+if __name__=='__main__': run(int(os.getenv('SCAN_BATCH_SIZE','250')))

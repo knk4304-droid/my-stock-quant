@@ -324,12 +324,12 @@ def cached_chart_history(symbol, period):
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v9.1.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v9.2.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v9.1.0)")
-st.caption(f"v9.1.0: 전체시장 분석현황·성과관측·간편화면 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v9.2.0)")
+st.caption(f"v9.2.0: 시장순환 확대·후보 재확인·기간별 관점 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 show_market_scan(st)

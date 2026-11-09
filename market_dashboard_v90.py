@@ -12,7 +12,7 @@ def read_snapshot():
     return state,scores
 
 def show(st):
-    with st.expander('🌐 전체 시장 자동 탐색 · 추천 후보와 분석 진행 상황 (v9.1)',expanded=True):
+    with st.expander('🌐 전체 시장 자동 탐색 · 추천 후보와 분석 진행 상황 (v9.2)',expanded=True):
         state,scores=read_snapshot()
         if not state:
             st.info('아직 자동 배치 분석 결과가 없습니다. GitHub Actions에서 Market scan v9을 1회 실행하세요.')
@@ -27,6 +27,7 @@ def show(st):
         if total: st.progress(min(1.0,len(scores)/total),text=f'전체 목록 대비 누적 분석 기록: {len(scores):,}/{total:,}종목 ({len(scores)/total:.1%}) · 기록에 오래된 종목이 포함될 수 있음')
         with st.expander('ℹ️ 이 숫자와 추천 점수는 무슨 뜻인가요?',expanded=False):
             st.markdown('**검색 가능한 전체 종목**은 확보한 종목코드 목록입니다. **최근 실행에서 조회한 종목**은 한 번의 자동 작업에서 조회를 시도한 수입니다. **분석 완료**는 가격 자료가 충분하여 점수를 계산한 수입니다. **지금까지 분석한 고유 종목**은 이전 실행 결과까지 합친 저장 수이며 최신 시세라는 뜻은 아닙니다.\n\n**추천 점수**는 추세·수익률·변동성에 따른 규칙 점수입니다. 실제 수익률이나 매수 성공 확률이 아닙니다.')
+        st.caption(f"이번 작업: 신규 순환 조회 {state.get('rotation_count',state.get('attempted',0)):,}개 · 이전 후보 재확인 {state.get('revisit_count',0):,}개 · 실패 {state.get('failed',0):,}개")
         st.caption(f"마지막 자동 분석(UTC): {state.get('updated_utc','미확인')}")
         if scores.empty: return
         scores=scores.copy()
@@ -41,11 +42,27 @@ def show(st):
         if asset!='전체': scores=scores[scores.asset_type.eq(asset)]
         q=st.text_input('종목명 또는 티커 검색',key='v90_query')
         if q: scores=scores[scores['name'].astype(str).str.contains(q,case=False,regex=False)|scores['ticker'].astype(str).str.contains(q,case=False,regex=False)]
-        ranked=scores.sort_values('score',ascending=False)
+        # Simple horizon-specific ranking using only observed historical features.
+        # These are ranking heuristics, not validated expected returns.
+        for key in ['return_5d_pct','return_20d_pct','volatility_annual']:
+            scores[key]=pd.to_numeric(scores.get(key),errors='coerce')
+        horizon=st.selectbox('분석 관점',['종합','단기 (1~3일)','스윙 (1~2주)','중기 (1~3개월)','장기 (1년 이상)'],key='v92_horizon')
+        r5=scores['return_5d_pct'].clip(-25,25).fillna(0)
+        r20=scores['return_20d_pct'].clip(-40,40).fillna(0)
+        vol=scores['volatility_annual'].clip(0,3).fillna(1)
+        base=scores['score'].fillna(0)
+        if horizon.startswith('단기'): rank_score=base*.5+r5*.8-vol*12
+        elif horizon.startswith('스윙'): rank_score=base*.6+r5*.35+r20*.25-vol*10
+        elif horizon.startswith('중기'): rank_score=base*.7+r20*.35-vol*10
+        elif horizon.startswith('장기'): rank_score=base*.8+r20*.15-vol*18
+        else: rank_score=base
+        scores['관점별 참고점수']=rank_score.round(2)
+        ranked=scores.sort_values('관점별 참고점수',ascending=False)
         min_score=st.slider('최소 기술 점수 (후보 필터)',0,100,60,5,key='v91_score')
         ranked=ranked.loc[ranked['score'].ge(min_score)]
         display=ranked.head(100).rename(columns={'ticker':'종목코드','name':'종목명','market':'시장','asset_type':'유형','close':'기준 종가','score':'기술 점수','return_5d_pct':'최근 5거래일 수익률(%)','return_20d_pct':'최근 20거래일 수익률(%)','volatility_annual':'연율 변동성','asof_price':'가격 기준일','scanned_at_utc':'분석 저장 시각(UTC)'})
         st.dataframe(display,hide_index=True,use_container_width=True)
+        st.caption('관점별 참고점수는 기간에 따라 과거 수익률·변동성 가중치를 달리한 임시 규칙입니다. **검증된 예측값이 아닙니다.**')
         st.caption('이 목록은 조건을 충족한 **관찰 후보**이며 매수 확정 신호가 아닙니다. 상세 매수·매도 전략은 아래 종목 검색에서 추가 확인하세요.')
         st.caption(f'필터 이전 분석 결과 {len(scores):,}개 · 필터 통과 {len(ranked):,}개 · 최대 100개 표시. 기존 정밀 종합점수와 직접 비교하지 마세요.')
         with st.expander('📈 이후 가격 관측 기록 · 추천 검증 준비',expanded=False):
