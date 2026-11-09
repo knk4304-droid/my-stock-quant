@@ -285,12 +285,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.6)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.7)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v4.6)")
-st.caption(f"v4.6 통합: 추천 결과 감사·수집 범위 안내·데이터 검증 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v4.7)")
+st.caption(f"v4.7 통합: 추천 결과 감사·수집 범위 안내·데이터 검증 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다.")
@@ -344,6 +344,24 @@ if not df.empty:
     st.download_button('📥 추천 결과 기록용 CSV 다운로드', snapshot.to_csv(index=False).encode('utf-8-sig'),
                        file_name='recommendation_snapshot.csv', mime='text/csv', key='snapshot_download')
     st.caption('추천 시점의 점수 기록용입니다. 미래 수익률 검증에는 이후 날짜의 실제 가격과 거래비용을 추가로 비교해야 합니다.')
+with st.expander('📈 추천 성과 검증 (추천 CSV + 후속 일별 종가 CSV)'):
+    st.caption('추천 당시 CSV와 이후 날짜의 가격 CSV(ticker,date,close)를 직접 업로드하면 실제 수익률을 계산합니다. 단순 보유 수익률 비교이며 완전한 백테스트는 아닙니다.')
+    recommendation_file = st.file_uploader('추천 스냅샷 CSV', type='csv', key='v47_recommendations')
+    prices_file = st.file_uploader('후속 종가 CSV', type='csv', key='v47_prices')
+    fee = st.number_input('편도 거래비용 (bp, 1bp=0.01%)', min_value=0, max_value=1000, value=10, step=5)
+    if recommendation_file is not None and prices_file is not None:
+        from performance_review import evaluate
+        try:
+            history_result = evaluate(pd.read_csv(recommendation_file), pd.read_csv(prices_file), fee)
+            if history_result.empty:
+                st.info('후속 가격 데이터가 충분하지 않아 평가 가능한 추천이 없습니다.')
+            else:
+                st.dataframe(history_result, use_container_width=True)
+                st.download_button('📥 성과 검증 CSV 다운로드', history_result.to_csv(index=False).encode('utf-8-sig'),
+                                   file_name='recommendation_performance.csv', mime='text/csv')
+        except (ValueError, KeyError, pd.errors.ParserError) as exc:
+            st.error('파일 형식을 확인하세요: ' + str(exc))
+
 st.markdown("---")
 
 FIXED_CATEGORIES = [
