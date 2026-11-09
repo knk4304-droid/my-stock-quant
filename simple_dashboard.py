@@ -90,6 +90,35 @@ def show(st):
     b.metric('최근 7일 분석',f'{len(fresh):,}개')
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개")
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
+    with st.expander('📊 지난 추천 성과 확인 (관측된 가격 기준)'):
+        history_file=DATA/'recommendation_history.csv'
+        if not history_file.exists():
+            st.info('추천 기록이 아직 없습니다. 업데이트 후 GitHub Actions의 Market scan v9을 실행하면 기록이 시작됩니다.')
+        else:
+            try:
+                hist=pd.read_csv(history_file,dtype={'ticker':str})
+                if hist.empty:
+                    st.info('기록된 추천이 없습니다.')
+                else:
+                    hist['observed_return_pct']=pd.to_numeric(hist.get('observed_return_pct'),errors='coerce')
+                    hist['elapsed_days']=pd.to_numeric(hist.get('elapsed_days'),errors='coerce')
+                    done=hist.dropna(subset=['observed_return_pct','elapsed_days'])
+                    a,b,c=st.columns(3)
+                    a.metric('누적 추천 기록',f'{len(hist):,}건')
+                    b.metric('이후 가격 확인',f'{len(done):,}건')
+                    c.metric('관측 결과 평균',f"{done.observed_return_pct.mean():+.2f}%" if len(done) else '자료 없음')
+                    st.caption('같은 종목이 여러 날짜·투자 기간에 중복 기록될 수 있습니다. 평균은 투자 수익률이나 전략 적중률이 아닙니다.')
+                    st.dataframe(hist.sort_values('recorded_at_utc',ascending=False).head(100).rename(columns={
+                        'recorded_at_utc':'추천 기록 시각','period':'투자 기간','ticker':'종목코드',
+                        'name':'종목명','entry_date':'추천 기준일','entry_close':'기준 종가',
+                        'observed_date':'이후 관측일','observed_close':'이후 종가',
+                        'elapsed_days':'경과 일수','observed_return_pct':'관측 수익률(%)'
+                    })[['추천 기록 시각','투자 기간','종목명','종목코드','추천 기준일','기준 종가',
+                         '이후 관측일','이후 종가','경과 일수','관측 수익률(%)']],
+                        hide_index=True,use_container_width=True)
+                    st.warning('이후 가격은 해당 종목이 자동 분석에 다시 포함되었을 때만 기록됩니다. 따라서 모든 추천의 1일·1주·1개월 수익률을 검증한 결과가 아니며, 매수·매도 체결 성과도 아닙니다.')
+            except (OSError,ValueError,KeyError) as exc:
+                st.warning(f'추천 기록 파일을 읽지 못했습니다: {exc}')
     st.subheader('🏆 추천 후보')
     st.caption('기간별 가격 흐름으로 정렬한 **관찰 후보**입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
     c1,c2,c3=st.columns([2,1,1])
