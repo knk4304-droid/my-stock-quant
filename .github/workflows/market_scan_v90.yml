@@ -1,0 +1,36 @@
+name: Market scan v9
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 23 * * 1-5'
+permissions:
+  contents: write
+concurrency:
+  group: market-scan-v90
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install scanner dependencies
+        run: pip install pandas numpy requests yfinance pykrx
+      - name: Scan next batch
+        env:
+          SCAN_BATCH_SIZE: '100'
+        run: python market_batch_v90.py
+      - name: Save scan results
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add market_scan_data/catalog.csv market_scan_data/scores.csv market_scan_data/state.json market_scan_data/last_failures.csv
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update market scan data'
+            git push
+          fi
