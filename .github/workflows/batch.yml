@@ -26,6 +26,10 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Run Offline Quality Tests
+        run: |
+          python -m unittest -v test_modules
+
       - name: Run Batch Update Script
         run: |
           python batch_update.py
@@ -34,6 +38,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add quant_stocks.parquet quant_macro.parquet
+          git add quant_stocks.parquet quant_macro.parquet batch_status.json
           git commit -m "Auto update quant data [$(date)]" || exit 0
           git push
