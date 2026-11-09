@@ -5,6 +5,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import yfinance as yf
+from data_quality import return_summary, valid_prices
 
 warnings.filterwarnings('ignore')
 
@@ -52,30 +53,10 @@ class QuantEngine:
             return [0.20, 0.18, 0.12, 0.15, 0.08, 0.05, 0.05, 0.05, 0.07, 0.05]
 
     def calculate_returns(self, df: pd.DataFrame):
-        try:
-            if df.empty or len(df.dropna()) < 2:
-                return 0.0, "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%"
-            
-            close = df['Close'].dropna()
-            curr = close.iloc[-1]
-            
-            r_today = (curr / close.iloc[-2] - 1) * 100 if len(close) >= 2 else 0.0
-            r_1d = (close.iloc[-2] / close.iloc[-3] - 1) * 100 if len(close) >= 3 else 0.0
-            r_2d = (close.iloc[-3] / close.iloc[-4] - 1) * 100 if len(close) >= 4 else 0.0
-            r_1w = (curr / close.iloc[-5] - 1) * 100 if len(close) >= 5 else 0.0
-            r_1m = (curr / close.iloc[-20] - 1) * 100 if len(close) >= 20 else 0.0
-            r_3m = (curr / close.iloc[-60] - 1) * 100 if len(close) >= 60 else 0.0
-            r_1y = (curr / close.iloc[0] - 1) * 100
-            
-            r_1w_val = round(r_1w, 2)
-            fmt = lambda v: f"{'+' if v > 0 else ''}{v:.2f}%"
-            
-            return r_1w_val, fmt(r_today), fmt(r_1d), fmt(r_2d), fmt(r_1w), fmt(r_1m), fmt(r_3m), fmt(r_1y)
-        except Exception:
-            return 0.0, "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%"
+        return return_summary(df)
 
     def calculate_raw_scores(self, df: pd.DataFrame, macro: dict, market: str, stock_name: str, news_score: float = 0.0) -> list:
-        if df.empty or len(df.dropna()) < 5:
+        if not valid_prices(df, 6):
             return [50.0] * 10
 
         close = df['Close'].dropna()
@@ -90,7 +71,7 @@ class QuantEngine:
         vol_ratio = (volume.iloc[-1] / volume.iloc[-5:].mean()) if len(volume) >= 5 and volume.iloc[-5:].mean() > 0 else 1.0
         supply_score = np.clip(50.0 + (vol_ratio - 1.0) * 20.0 + (news_score * 0.2), 10.0, 100.0)
 
-        vix_val = macro.get('VIX', {}).get('val', 15.0)
+        vix_val = macro.get('VIX', {}).get('val') or 15.0
         macro_score = np.clip(80.0 - (vix_val - 15.0) * 2.0, 20.0, 100.0)
 
         raw = [

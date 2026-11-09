@@ -1,6 +1,7 @@
 import datetime, json, time, warnings
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np, pandas as pd, requests, streamlit as st, yfinance as yf
+from data_quality import valid_prices, return_summary, valid_macro_value
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -46,16 +47,16 @@ def fetch_realtime_macro():
                     prev = float(h['Close'].iloc[-2])
                     macro[key] = {'val': curr, 'change': (curr - prev) / prev * 100.0}
                 else:
-                    macro[key] = {'val': 0.0, 'change': 0.0}
+                    macro[key] = {'val': None, 'change': None}
             except Exception:
-                macro[key] = {'val': 0.0, 'change': 0.0}
+                macro[key] = {'val': None, 'change': None}
 
     try:
         url_fx = "https://m.stock.naver.com/api/marketIndex/FX_USDKRW/basic"
         res = requests.get(url_fx, headers=headers, timeout=3).json()
         macro['USDKRW'] = {'val': float(res['closePrice'].replace(',', '')), 'change': float(res['fluctuationsRatio'])}
     except Exception:
-        macro['USDKRW'] = {'val': 0.0, 'change': 0.0}
+        macro['USDKRW'] = {'val': None, 'change': None}
 
     for key, sym in [('S&P500', '^GSPC'), ('NASDAQ', '^IXIC'), ('VIX', '^VIX')]:
         try:
@@ -65,9 +66,9 @@ def fetch_realtime_macro():
                 prev = float(h['Close'].iloc[-2])
                 macro[key] = {'val': curr, 'change': (curr - prev) / prev * 100.0}
             else:
-                macro[key] = {'val': 0.0, 'change': 0.0}
+                macro[key] = {'val': None, 'change': None}
         except Exception:
-            macro[key] = {'val': 0.0, 'change': 0.0}
+            macro[key] = {'val': None, 'change': None}
             
     return macro
 
@@ -110,18 +111,7 @@ class QuantEngine:
         return self.largecap_weights[period]
 
     def calculate_returns(self, df):
-        if df.empty or len(df['Close'].dropna()) < 5:
-            return 0.0, "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%", "0.00%"
-        c = df['Close'].dropna()
-        lp = float(c.iloc[-1])
-        r_today = ((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2] * 100.0) if len(c) >= 2 else 0.0
-        r_1d = ((c.iloc[-2] - c.iloc[-3]) / c.iloc[-3] * 100.0) if len(c) >= 3 else 0.0
-        r_2d = ((c.iloc[-3] - c.iloc[-4]) / c.iloc[-4] * 100.0) if len(c) >= 4 else 0.0
-        r_1w = ((lp - c.iloc[-6]) / c.iloc[-6] * 100.0) if len(c) >= 6 else 0.0
-        r_1m = ((lp - c.iloc[-21]) / c.iloc[-21] * 100.0) if len(c) >= 21 else 0.0
-        r_3m = ((lp - c.iloc[-61]) / c.iloc[-61] * 100.0) if len(c) >= 61 else 0.0
-        r_1y = ((lp - c.iloc[0]) / c.iloc[0] * 100.0) if len(c) >= 2 else 0.0
-        return r_1w, f"{r_today:+.2f}%", f"{r_1d:+.2f}%", f"{r_2d:+.2f}%", f"{r_1w:+.2f}%", f"{r_1m:+.2f}%", f"{r_3m:+.2f}%", f"{r_1y:+.2f}%"
+        return return_summary(df)
 
     def calculate_raw_scores(self, df, macro, market, stock_name):
         if df.empty or len(df.dropna()) < 2: return np.full(10, 50.0)
@@ -155,14 +145,14 @@ class QuantEngine:
         s3 = np.clip(pct_change * 1000.0 + 50.0, 10.0, 100.0)
         s4 = 50.0
         
-        vix = macro.get('VIX', {}).get('val', 15.0)
+        vix = macro.get('VIX', {}).get('val') or 15.0
         s5 = np.clip(75.0 - (vix - 15.0) * 3.0 - volatility * 0.3, 15.0, 85.0) if "소형" in market else np.clip(80.0 - (vix - 15.0) * 1.5, 30.0, 90.0)
         s6 = np.clip(gr + 50.0, 10.0, 100.0)
         s7 = np.clip(50.0 + gr * 0.4, 15.0, 95.0)
         ma20 = float(c.tail(20).mean()) if len(c) >= 20 else lc
         s8 = np.clip(100.0 - abs((lc / ma20) * 100.0 - 100.0) * 2.0, 15.0, 95.0) if ma20 > 0 else 50.0
         s9 = np.clip(100.0 - volatility * 1.2, 20.0, 90.0)
-        s10 = np.clip(70.0 + macro.get('USDKRW', {}).get('change', 0.0) * 5.0, 30.0, 95.0)
+        s10 = np.clip(70.0 + (macro.get('USDKRW', {}).get('change') or 0.0) * 5.0, 30.0, 95.0)
         
         scores = np.array([s1, s2, s3, s4, s5, s6, s7, s8, s9, s10])
         return np.nan_to_num(scores, nan=50.0)
@@ -170,7 +160,7 @@ class QuantEngine:
     def calculate_v3_score(self, raw, market, period, r_1w, macro):
         w = np.array(self.get_weights(market, period))
         base = np.sum(raw * (w / 100.0))
-        vix_p = -5.0 if macro.get('VIX', {}).get('val', 15.0) >= 20.0 else 0.0
+        vix_p = -5.0 if (macro.get('VIX', {}).get('val') or 15.0) >= 20.0 else 0.0
         return round(float(np.clip(base + vix_p, 10.0, 100.0)), 2)
 
     def calculate_pure_future_return(self, raw, market, period, r_1w, macro):
@@ -190,7 +180,7 @@ def generate_buy_analysis(row, macro):
     tech_score = row.get('기술적모멘텀', 50.0)
     
     prob = int(np.clip(total_score + (tech_score - 50.0) * 0.2 + (r_1w_val * 0.3), 10, 95))
-    if macro.get('VIX', {}).get('val', 15.0) >= 20.0:
+    if (macro.get('VIX', {}).get('val') or 15.0) >= 20.0:
         prob = max(0, prob - 5)
 
     if r_1w_val >= 8.0:
@@ -250,6 +240,8 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     
     if df.empty or 'Close' not in df or len(df['Close'].dropna()) < 6:
         return None  # 가격이 없는 종목은 중립 점수로 위장하지 않음
+    if not valid_prices(df, 6):
+        return None
     raw = engine.calculate_raw_scores(df, macro, market, stock_name)
     r_1w_val, r_today, r_1d, r_2d, r_1w, r_1m, r_3m, r_1y = engine.calculate_returns(df)
     
@@ -295,19 +287,19 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v4.1)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v4.2)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v4.1)")
-st.caption(f"v4.1 안정화: 데이터 유효성 검증 및 수익률 기간 수정 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v4.2)")
+st.caption(f"v4.2 데이터 안정화: 데이터 유효성 검증 및 수익률 기간 수정 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다.")
 if df.empty:
     st.error("유효한 종목 가격 데이터를 수집하지 못했습니다. 데이터 공급원과 네트워크 상태를 확인하세요.")
 missing_indices = [k for k in ('KOSPI', 'KOSDAQ', 'S&P500', 'NASDAQ', 'USDKRW', 'VIX')
-                   if not macro_info.get(k, {}).get('val')]
+                   if not valid_macro_value(macro_info.get(k, {}).get('val'))]
 if missing_indices:
     st.warning("시세 수집 실패: " + ", ".join(missing_indices) + " (0은 실제 지수가 아닙니다.)")
 
@@ -315,11 +307,12 @@ if missing_indices:
 cols = st.columns(6)
 idx_list = [("KOSPI", "KOSPI"), ("KOSDAQ", "KOSDAQ"), ("S&P 500", "S&P500"), ("NASDAQ", "NASDAQ"), ("원/달러 환율", "USDKRW"), ("VIX", "VIX")]
 for col, (lbl, k) in zip(cols, idx_list):
-    d = macro_info.get(k, {'val':0.0, 'change':0.0})
-    if not d.get('val'):
+    d = macro_info.get(k, {'val':None, 'change':None})
+    if not valid_macro_value(d.get('val')):
         col.metric(lbl, "데이터 없음", None)
     else:
-        col.metric(lbl, f"{d['val']:,.2f}", f"{d['change']:+.2f}%")
+        change = d.get("change")
+        col.metric(lbl, f"{d['val']:,.2f}", f"{change:+.2f}%" if change is not None else None)
 
 st.markdown("---")
 

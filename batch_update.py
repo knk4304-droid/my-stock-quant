@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from universe import UniverseLoader
 from quant import QuantEngine, fetch_stock_news_sentiment
+from data_quality import valid_prices, valid_macro_value
 
 warnings.filterwarnings('ignore')
 
@@ -131,12 +132,12 @@ def process_single_stock(ticker, market, name_map, engine, macro):
     df = pd.DataFrame()
     try:
         df = yf.Ticker(ticker).history(period='1y', timeout=5)
-        if df.empty or len(df.dropna()) < 2:
+        if not valid_prices(df, 6):
             df = yf.Ticker(ticker).history(period='1mo', timeout=5)
     except Exception:
         df = pd.DataFrame()
 
-    if df.empty or len(df.dropna()) < 2:
+    if not valid_prices(df, 6):
         return None
 
     news_score, pos_cnt, neg_cnt = fetch_stock_news_sentiment(clean_code)
@@ -212,30 +213,40 @@ def execute_batch_update():
                 pass
 
     if not results:
-        print(f"[{now_str}] ⚠️ 수집된 데이터가 없습니다.")
-        return
+        raise RuntimeError("No stock data collected; previous data preserved")
 
+    # Prevent accidental publication of a nearly empty universe after an API outage.
+    if len(results) < max(10, int(len(tasks) * 0.50)):
+        raise RuntimeError(f"Insufficient coverage: {len(results)}/{len(tasks)}; previous data preserved")
     df_results = pd.DataFrame(results)
     nasdaq_data = macro.get('나스닥', macro.get('NASDAQ 100', {}))
 
     macro_df = pd.DataFrame([{
         'updated_at': now_str,
-        'kospi_val': macro.get('KOSPI', {}).get('val', 0.0),
+        'kospi_val': macro.get('KOSPI', {}).get('val'),
         'kospi_chg': macro.get('KOSPI', {}).get('change', 0.0),
-        'kosdaq_val': macro.get('KOSDAQ', {}).get('val', 0.0),
+        'kosdaq_val': macro.get('KOSDAQ', {}).get('val'),
         'kosdaq_chg': macro.get('KOSDAQ', {}).get('change', 0.0),
-        'sp500_val': macro.get('S&P 500', {}).get('val', 0.0),
+        'sp500_val': macro.get('S&P 500', {}).get('val'),
         'sp500_chg': macro.get('S&P 500', {}).get('change', 0.0),
-        'nasdaq_val': nasdaq_data.get('val', 0.0),
+        'nasdaq_val': nasdaq_data.get('val'),
         'nasdaq_chg': nasdaq_data.get('change', 0.0),
-        'usdkrw_val': macro.get('USDKRW', {}).get('val', 1340.0),
+        'usdkrw_val': macro.get('USDKRW', {}).get('val'),
         'usdkrw_chg': macro.get('USDKRW', {}).get('change', 0.0),
-        'vix_val': macro.get('VIX', {}).get('val', 15.0),
-        'vix_chg': macro.get('VIX', {}).get('change', 0.0)
+        'vix_val': macro.get('VIX', {}).get('val'),
+        'vix_chg': macro.get('VIX', {}).get('change')
     }])
 
-    df_results.to_parquet('quant_stocks.parquet', index=False, engine='pyarrow')
-    macro_df.to_parquet('quant_macro.parquet', index=False, engine='pyarrow')
+    # Require a minimum set of real market observations before replacing published files.
+    required = ('KOSPI', 'KOSDAQ', 'S&P 500', 'USDKRW', 'VIX')
+    missing = [k for k in required if not valid_macro_value(macro.get(k, {}).get('val'))]
+    if missing:
+        raise RuntimeError(f"Missing macro data {missing}; previous data preserved")
+    df_results.to_parquet('quant_stocks.parquet.tmp', index=False, engine='pyarrow')
+    macro_df.to_parquet('quant_macro.parquet.tmp', index=False, engine='pyarrow')
+    from pathlib import Path
+    Path('quant_stocks.parquet.tmp').replace('quant_stocks.parquet')
+    Path('quant_macro.parquet.tmp').replace('quant_macro.parquet')
 
     print(f"[{now_str}] ✅ 성공적으로 {len(df_results)}개 종목 수집 및 Parquet 저장 완료!")
 

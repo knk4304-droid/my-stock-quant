@@ -1,30 +1,34 @@
-"""v4.1 offline smoke and regression tests; no market API calls."""
-import ast
 import unittest
-from pathlib import Path
+import pandas as pd
+from data_quality import valid_prices, return_summary, valid_macro_value
 
-ROOT = Path(__file__).resolve().parent
+class DataQualityTests(unittest.TestCase):
+    def test_returns_exact_sessions(self):
+        df=pd.DataFrame({'Close':[100+i for i in range(260)]})
+        out=return_summary(df)
+        self.assertAlmostEqual(out[0],(359/354-1)*100,places=2)
+        self.assertEqual(out[4],f'{(359/354-1)*100:+.2f}%')
+        self.assertNotEqual(out[7],'N/A')
 
-class TestSourceIntegrity(unittest.TestCase):
-    def test_python_syntax(self):
-        for path in ROOT.glob("*.py"):
-            with self.subTest(file=path.name):
-                ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    def test_missing_horizons(self):
+        df=pd.DataFrame({'Close':[100+i for i in range(10)]})
+        out=return_summary(df)
+        self.assertEqual(out[5],'N/A')
+        self.assertEqual(out[7],'N/A')
 
-    def test_required_modules_present(self):
-        for name in ("app.py", "quant.py", "universe.py", "batch_update.py", "backtest.py"):
-            self.assertTrue((ROOT / name).is_file(), name)
+    def test_bad_prices_rejected(self):
+        self.assertFalse(valid_prices(pd.DataFrame({'Close':[1,2,0,4,5,6]})))
+        self.assertFalse(valid_prices(pd.DataFrame({'Open':[1,2,3]})))
 
-    def test_no_obsolete_module_imports(self):
-        text = (ROOT / "test_modules.py").read_text(encoding="utf-8")
-        for name in ("quant_engine", "signal_generator", "macro_analyzer", "ui_components"):
-            self.assertNotIn("import " + name, text)
+    def test_macro_missing(self):
+        for value in [None,0,float('nan'),-1]:
+            self.assertFalse(valid_macro_value(value))
+        self.assertTrue(valid_macro_value(1350.5))
 
-    def test_app_return_periods(self):
-        source = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("c.iloc[-6]", source)
-        self.assertIn("c.iloc[-21]", source)
-        self.assertIn("c.iloc[-61]", source)
+    def test_quant_engine_return_contract(self):
+        out=return_summary(pd.DataFrame({'Close':list(range(100,110))}))
+        self.assertEqual(len(out),8)
+        self.assertEqual(out[5],'N/A')
 
-if __name__ == "__main__":
+if __name__=='__main__':
     unittest.main()
