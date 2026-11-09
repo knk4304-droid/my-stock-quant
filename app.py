@@ -15,6 +15,7 @@ from technical_report_v63 import get_technical_report
 from stock_search import build_catalog, candidates
 from batch_explorer_v72 import prepare_batch, filter_batch
 from stock_chart_v73 import prepare_close_chart, change_percent
+from chart_insights_v74 import build_chart_indicators, trend_summary
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -495,13 +496,16 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
         if selected_row is not None:
             kind = classify_product(selected_row.get('티커'), selected_row.get('종목명'))
             st.subheader(f"{selected_row.get('종목명')} · 종합 투자 분석")
+            st.caption('① 기간별 투자 판단 → ② 가격 차트 → ③ 매매 가격 시나리오 → ④ 기술적 지표 순서로 확인하세요.')
             assessment, explanation = overall_assessment(selected_row)
             st.markdown(f'**종합 판단: {assessment}** — {explanation}')
+            with st.expander('❓ 종합점수와 기술적 점수가 왜 다를까요?'):
+                st.write('종합점수는 가격·거래량·시장 환경 등을 포함한 기간별 규칙 점수이고, 기술적 점수는 최근 일별 시세의 추세·진입 시점·거래량·위험 관리를 따로 평가합니다. 산식과 평가 기간이 다르므로 점수가 달라도 오류를 의미하지 않습니다. 두 점수 모두 실제 상승 확률이나 검증된 예상 수익률이 아닙니다.')
             st.caption(f"티커: {selected_row.get('티커')} | 시장: {selected_row.get('시장')} | 상품 위험유형: {kind}")
             st.warning('이 리포트는 과거 가격 기반 규칙 점수이며 투자 권유나 미래 수익률 예측이 아닙니다. 실시간 호가·기업 공시·실적·뉴스 검증은 포함되지 않습니다.')
             st.caption('매력도 점수는 과거 가격·거래량·시장 환경을 가중 합산한 규칙 점수입니다. 상승 확률이나 예상 수익률이 아닙니다.')
             st.dataframe(pd.DataFrame(report_rows(selected_row)), use_container_width=True, hide_index=True)
-            st.markdown('#### 📉 선택 종목 일별 종가 차트 (v7.3)')
+            st.markdown('#### 📉 가격 추세·이동평균·거래량 (v7.4)')
             st.caption('Yahoo Finance의 일별 종가 차트입니다. 실시간 호가가 아니며 데이터 지연·조정 가능성이 있습니다.')
             _chart_period = st.selectbox('차트 조회 기간', ['1mo', '3mo', '6mo', '1y'],
                                          format_func=lambda x: {'1mo':'1개월','3mo':'3개월','6mo':'6개월','1y':'1년'}[x],
@@ -512,6 +516,7 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
                     try:
                         _hist = yf.Ticker(ticker).history(period=_chart_period, interval='1d', timeout=8)
                         st.session_state[_chart_key] = prepare_close_chart(_hist)
+                        st.session_state[_chart_key + '_indicators'] = build_chart_indicators(_hist)
                     except Exception as _chart_exc:
                         st.session_state[_chart_key] = (pd.DataFrame(), '시세 공급원 조회에 실패했습니다. 잠시 후 다시 시도하세요.')
             if _chart_key in st.session_state:
@@ -524,7 +529,21 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
                     _cc1.metric('차트 첫 종가', f"{_chart_data['종가'].iloc[0]:,.2f}")
                     _cc2.metric('차트 마지막 종가', f"{_chart_data['종가'].iloc[-1]:,.2f}")
                     _cc3.metric('조회 구간 수익률', f'{_delta:+.2f}%' if _delta is not None else '계산 불가')
-                    st.line_chart(_chart_data.set_index('거래일')['종가'], use_container_width=True)
+                    _ind_data, _ind_error = st.session_state.get(_chart_key + '_indicators', (pd.DataFrame(), '지표 데이터 없음'))
+                    if not _ind_error and not _ind_data.empty:
+                        _trend = trend_summary(_ind_data)
+                        st.info(f'**차트 추세 요약:** {_trend} · 과거 이동평균선 배열이며 매수·매도 확정 신호가 아닙니다.')
+                        _chart_view = _ind_data.set_index('거래일')[['종가', '20일선', '60일선']]
+                        st.line_chart(_chart_view, use_container_width=True)
+                        with st.expander('📊 거래량과 차트 지표 설명'):
+                            if _ind_data['거래량'].notna().any():
+                                st.bar_chart(_ind_data.set_index('거래일')['거래량'], use_container_width=True)
+                            else:
+                                st.caption('거래량 데이터가 제공되지 않았습니다.')
+                            st.markdown('**종가:** 해당 거래일 마지막 체결 가격(데이터 공급원 기준). **20일선·60일선:** 최근 20·60거래일 종가 평균으로 단기·중기 추세 참고용입니다. **거래량:** 해당 거래일 거래된 주식 수로, 시장·상품별 비교에는 주의가 필요합니다. 이동평균선은 후행 지표입니다.')
+                    else:
+                        st.line_chart(_chart_data.set_index('거래일')['종가'], use_container_width=True)
+                        st.caption('이동평균선·거래량을 표시할 데이터가 부족해 종가만 표시합니다.')
                     st.caption(f"관측 구간: {_chart_data['거래일'].iloc[0]} ~ {_chart_data['거래일'].iloc[-1]} · 과거 수익률은 미래 수익률을 보장하지 않습니다.")
             st.markdown('#### 📌 확인 가능한 종가 기준 매매 계획')
             st.caption('시세 제공원 마지막 일별 종가를 기준으로 계산합니다. 장중 실시간 호가가 아니며, 목표가·손절가는 사용자가 조절하는 가정 시나리오입니다.')
@@ -570,7 +589,7 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
                     st.info('현재가는 실시간 체결가가 아닙니다. 주문 전 증권사 호가, 공시, 거래량 및 수수료를 다시 확인하세요.')
             else:
                 st.info('버튼을 누르면 마지막 거래일 종가를 조회하고 가정 매매 가격을 표시합니다.')
-            st.markdown('#### 📈 기술적 지표 기반 투자 판단 (v6.3)')
+            st.markdown('#### 📈 기술적 지표 기반 투자 판단')
             st.caption('최근 일별 가격·거래량으로 이동평균선, RSI, MACD, ATR 및 과거 지지·저항 후보를 계산합니다. 장중 실시간 신호나 검증된 예측 확률이 아닙니다.')
             tech_key = f'v63_technical_{ticker}'
             if st.button('📈 기술적 분석 실행', key=f'v63_tech_btn_{ticker}'):
