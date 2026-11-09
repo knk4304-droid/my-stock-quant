@@ -14,6 +14,7 @@ from trade_plan_v62 import build_trade_plan, get_reference_quote
 from technical_report_v63 import get_technical_report
 from stock_search import build_catalog, candidates
 from batch_explorer_v72 import prepare_batch, filter_batch
+from stock_chart_v73 import prepare_close_chart, change_percent
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -312,12 +313,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v7.2.0)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v7.3.0)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v7.2.0)")
-st.caption(f"v7.2.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
+st.title("📈 AI 추천 주식 매매 (v7.3.0)")
+st.caption(f"v7.3.0: 한국시간 표시·추천 성과와 시장지수 비교·기존 기능 유지 | {now_kst()}")
 
 df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 # v7.1: 설명을 먼저 제공하고 복잡한 세부정보는 접어서 표시합니다.
@@ -418,7 +419,7 @@ with st.expander('🧪 v5.9 배치 종목 품질 및 화면 분석 범위 진단
             st.write(check['columns'])
 
 # Read-only batch explorer: the stored universe is not the same as live scored recommendations.
-with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록 (v7.2)', expanded=False):
+with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록 (v7.3)', expanded=False):
     st.caption('자동 저장된 종목을 찾아보는 화면입니다. 저장 데이터는 현재 시세가 아니며, 아래 목록은 실시간 추천 순위가 아닙니다.')
     _batch_data, _batch_err = load_batch()
     if _batch_err:
@@ -443,11 +444,21 @@ with st.expander('🗃️ 배치 저장 종목 전체 검색 · 시장별 목록
             if len(_filtered) > 300:
                 st.caption('화면에는 처음 300개만 표시합니다. 검색 조건을 좁히거나 전체 목록 CSV를 이용하세요.')
             st.download_button('📥 검색 결과 CSV 저장', _filtered.to_csv(index=False).encode('utf-8-sig'),
-                               file_name='AI_STOCK_MASTER_batch_search_v72.csv', mime='text/csv', key='v72_batch_csv')
-            st.info('종목별 최신 가격·기술지표·매수 및 매도 대응은 아래 「종목 검색 · 종합 투자 리포트」에서 티커를 입력해 확인하세요. 데이터 공급원 조회 성공 여부에 따라 결과가 달라집니다.')
+                               file_name='AI_STOCK_MASTER_batch_search_v73.csv', mime='text/csv', key='v72_batch_csv')
+            st.caption('아래 종목을 선택해 상세 분석으로 연결할 수 있습니다. 목록의 저장 기준가는 과거 배치 값입니다.')
+            if not _filtered.empty:
+                _choices = _filtered['티커'].astype(str).tolist()[:300]
+                _name_map = dict(zip(_filtered['티커'].astype(str), _filtered['종목명'].astype(str)))
+                _choice = st.selectbox('상세 분석할 종목 선택 (검색 결과 상위 300개)', _choices,
+                                       format_func=lambda t: f'{_name_map.get(t,t)} ({t})', key='v73_batch_choice')
+                if st.button('🔎 선택 종목 종합 리포트로 이동', key='v73_go_report'):
+                    st.session_state['v60_report_query'] = _choice
+                    st.session_state['v73_open_report'] = True
+                    st.rerun()
+            st.info('저장 목록의 점수와 가격은 최신 추천 신호가 아닙니다. 종합 리포트에서 별도로 최신 일별 시세를 조회하세요.')
 
 # Individual report: batch-wide and provider-backed lookup (not limited to 46 live rows).
-with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 대응)', expanded=False):
+with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 대응)', expanded=st.session_state.get('v73_open_report', False)):
     st.caption('현재 화면 표본뿐 아니라 배치 저장 종목에서도 검색합니다. 검색에 없으면 외부 종목 목록을 조회할 수 있습니다. 외부 시세는 공급원 상태에 따라 조회되지 않을 수 있습니다.')
     lookup = st.text_input('종목명 또는 코드 (예: 한화오션, 042660, AAPL)', key='v60_report_query').strip()
     _, search_name_map = UniverseLoader.get_full_universe()
@@ -490,6 +501,31 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
             st.warning('이 리포트는 과거 가격 기반 규칙 점수이며 투자 권유나 미래 수익률 예측이 아닙니다. 실시간 호가·기업 공시·실적·뉴스 검증은 포함되지 않습니다.')
             st.caption('매력도 점수는 과거 가격·거래량·시장 환경을 가중 합산한 규칙 점수입니다. 상승 확률이나 예상 수익률이 아닙니다.')
             st.dataframe(pd.DataFrame(report_rows(selected_row)), use_container_width=True, hide_index=True)
+            st.markdown('#### 📉 선택 종목 일별 종가 차트 (v7.3)')
+            st.caption('Yahoo Finance의 일별 종가 차트입니다. 실시간 호가가 아니며 데이터 지연·조정 가능성이 있습니다.')
+            _chart_period = st.selectbox('차트 조회 기간', ['1mo', '3mo', '6mo', '1y'],
+                                         format_func=lambda x: {'1mo':'1개월','3mo':'3개월','6mo':'6개월','1y':'1년'}[x],
+                                         index=2, key=f'v73_chart_period_{ticker}')
+            _chart_key = f'v73_chart_{ticker}_{_chart_period}'
+            if st.button('📈 일별 종가 차트 조회', key=f'v73_chart_btn_{ticker}'):
+                with st.spinner('일별 종가 조회 중...'):
+                    try:
+                        _hist = yf.Ticker(ticker).history(period=_chart_period, interval='1d', timeout=8)
+                        st.session_state[_chart_key] = prepare_close_chart(_hist)
+                    except Exception as _chart_exc:
+                        st.session_state[_chart_key] = (pd.DataFrame(), '시세 공급원 조회에 실패했습니다. 잠시 후 다시 시도하세요.')
+            if _chart_key in st.session_state:
+                _chart_data, _chart_error = st.session_state[_chart_key]
+                if _chart_error:
+                    st.warning(_chart_error)
+                else:
+                    _delta = change_percent(_chart_data)
+                    _cc1, _cc2, _cc3 = st.columns(3)
+                    _cc1.metric('차트 첫 종가', f"{_chart_data['종가'].iloc[0]:,.2f}")
+                    _cc2.metric('차트 마지막 종가', f"{_chart_data['종가'].iloc[-1]:,.2f}")
+                    _cc3.metric('조회 구간 수익률', f'{_delta:+.2f}%' if _delta is not None else '계산 불가')
+                    st.line_chart(_chart_data.set_index('거래일')['종가'], use_container_width=True)
+                    st.caption(f"관측 구간: {_chart_data['거래일'].iloc[0]} ~ {_chart_data['거래일'].iloc[-1]} · 과거 수익률은 미래 수익률을 보장하지 않습니다.")
             st.markdown('#### 📌 확인 가능한 종가 기준 매매 계획')
             st.caption('시세 제공원 마지막 일별 종가를 기준으로 계산합니다. 장중 실시간 호가가 아니며, 목표가·손절가는 사용자가 조절하는 가정 시나리오입니다.')
             quote_key = f'v62_quote_{ticker}'
