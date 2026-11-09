@@ -16,14 +16,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install scanner dependencies
         run: pip install pandas numpy requests yfinance pykrx
       - name: Scan next batch
         env:
-          SCAN_BATCH_SIZE: '100'
+          SCAN_BATCH_SIZE: '250'
+          REVISIT_TOP_N: '25'
         run: python market_batch_v90.py
       - name: Save scan results
         run: |
