@@ -163,6 +163,8 @@ def process_single_stock(ticker, market, name_map, engine, macro):
         '티커': ticker,
         '종목명': stock_name,
         '차트링크': chart_link,
+        '기준종가': float(df['Close'].dropna().iloc[-1]),
+        '가격기준일': str(pd.Timestamp(df['Close'].dropna().index[-1]).date()),
         'news_score': news_score,
         'news_pos': pos_cnt,
         'news_neg': neg_cnt,
@@ -277,6 +279,10 @@ def execute_batch_update():
     Path('batch_status.json.tmp').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     Path('batch_status.json.tmp').replace('batch_status.json')
 
+    # v4.9: archive one observation per KST day after successful batch publication.
+    from audit_history import append_daily_observations
+    total, added = append_daily_observations(df_results)
+    print(f'Batch recommendation archive: {total} rows; {added} newly archived')
     print(f"[{now_str}] ✅ 성공적으로 {len(df_results)}개 종목 수집 및 Parquet 저장 완료!")
 
 
