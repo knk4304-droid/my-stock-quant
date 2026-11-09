@@ -10,6 +10,7 @@ from ranking_options import SORT_OPTIONS, rank_candidates
 from batch_universe_quality import inspect_batch, load_batch
 from individual_report import normalize_symbol, report_rows, overall_assessment, price_scenarios
 from trade_plan_v62 import build_trade_plan, get_reference_quote
+from technical_report_v63 import get_technical_report
 from stock_search import build_catalog, candidates
 
 try:
@@ -305,12 +306,12 @@ def run_quant_analysis():
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI 추천 주식 매매 (v6.2)", layout="wide")
+st.set_page_config(page_title="AI 추천 주식 매매 (v6.3)", layout="wide")
 if AUTOREFRESH_AVAILABLE:
     st_autorefresh(interval=30000, key="quant_loop")
 
-st.title("📈 AI 추천 주식 매매 (v6.2)")
-st.caption(f"v6.2: 개별 종목 시세 기준 전략·배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 AI 추천 주식 매매 (v6.3)")
+st.caption(f"v6.3: 기술적 지표 기반 전략·배치 종목 품질 진단·화면 분석 범위 비교·기존 추천 기능 유지 | {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 df, engine, macro_info = run_quant_analysis()
 st.info("안내: 예측수익률은 검증된 미래 수익률이 아닌 규칙 기반 추정치이며, 상승신호점수는 실제 통계적 확률이 아닌 점수 기반 신호 지표입니다. 성장성·ROE·재무건전성 등 일부 화면 항목은 실제 기업 공시자료가 아닌 가격 기반 대용 지표 또는 기본 점수입니다. ETF에 기업 재무점수를 그대로 적용한 값은 투자 판단 근거로 사용하지 마세요.")
@@ -428,6 +429,33 @@ with st.expander('🔎 종목 검색 · 종합 투자 리포트 (매수·매도 
                     st.info('현재가는 실시간 체결가가 아닙니다. 주문 전 증권사 호가, 공시, 거래량 및 수수료를 다시 확인하세요.')
             else:
                 st.info('버튼을 누르면 마지막 거래일 종가를 조회하고 가정 매매 가격을 표시합니다.')
+            st.markdown('#### 📈 기술적 지표 기반 투자 판단 (v6.3)')
+            st.caption('최근 일별 가격·거래량으로 이동평균선, RSI, MACD, ATR 및 과거 지지·저항 후보를 계산합니다. 장중 실시간 신호나 검증된 예측 확률이 아닙니다.')
+            tech_key = f'v63_technical_{ticker}'
+            if st.button('📈 기술적 분석 실행', key=f'v63_tech_btn_{ticker}'):
+                with st.spinner('최근 9개월 일별 시세 분석 중...'):
+                    st.session_state[tech_key] = get_technical_report(ticker)
+            technical = st.session_state.get(tech_key)
+            if technical:
+                if technical.get('error'):
+                    st.warning(technical['error'])
+                else:
+                    a,b,c=st.columns(3)
+                    a.metric('기술적 판단 점수 (확률 아님)',f"{technical['종합 점수(100)']}/100")
+                    b.metric('종합 의견',technical['종합 의견'])
+                    c.metric('기준 종가',f"{technical['기준 종가']:,.2f} {technical['통화']}")
+                    st.caption(f"기준일: {technical['기준일']} · {technical['데이터 공급원']} · {technical['조회 티커']}")
+                    score_keys=['추세 점수(30)','진입 시점 점수(25)','거래량 점수(20)','위험 관리 점수(25)']
+                    st.dataframe(pd.DataFrame([{'판단 항목':k,'점수':technical[k]} for k in score_keys]),hide_index=True,use_container_width=True)
+                    indicator_keys=['5일선','20일선','60일선','RSI(14)','MACD 히스토그램','거래량/20일 평균','ATR(14)','최근 20일 지지 후보','최근 20일 저항 후보']
+                    with st.expander('기술 지표와 점수 산정 기준'):
+                        st.dataframe(pd.DataFrame([{'지표':k,'값':technical[k]} for k in indicator_keys]),hide_index=True,use_container_width=True)
+                        st.markdown('**추세 30점:** 종가가 5·20일선 위인지, 20일선이 60일선 위인지 각각 10점. **진입 시점 25점:** RSI 구간(최대 10점), MACD 양의 신호(10점), MACD 개선(5점). **거래량 20점:** 당일 거래량의 20일 평균 대비 수준(최대 10점)과 전일 대비 상승 여부(10점). **위험 관리 25점:** 지지 후보 유지(10점), ATR 변동성(최대 10점), 과열 여부(5점).')
+                    price_keys=['1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
+                    st.dataframe(pd.DataFrame([{'가격 관찰 항목':k,'참고 가격':f"{technical[k]:,.2f} {technical['통화']}"} for k in price_keys]),hide_index=True,use_container_width=True)
+                    st.warning('관찰 가격은 과거 20일 고저점·20일 평균·ATR로 만든 규칙 기반 시나리오입니다. 목표 수익이나 손실 제한을 보장하지 않습니다. 실제 주문 전 최신 시세, 호가, 기업 공시 및 수수료를 확인하세요.')
+            else:
+                st.info('기술적 분석 실행 버튼을 누르면 가격·거래량 기반 판단과 관찰 가격을 표시합니다.')
             st.markdown('**종합의견:** 기간별 점수가 일치하면 방향성이 비교적 일관적이며, 상충하면 매매보다 관찰과 위험 관리가 우선입니다.')
             st.markdown('**매수 전략:** 거래량·추세·지지 구간을 확인하고 분할 진입 여부를 판단하세요. **매도 전략:** 진입 전에 손실한도와 목표 시나리오를 설정하고, 추세 이탈 시 재평가하세요.')
             with st.expander('🎯 내 기준가로 목표·손실 시나리오 계산 (예측값 아님)'):
