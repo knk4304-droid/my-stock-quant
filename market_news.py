@@ -2,6 +2,7 @@
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 import email.utils
 import xml.etree.ElementTree as ET
 import re
@@ -285,8 +286,67 @@ def _sec_recent(st, ticker):
             out.append({'form':form,'date':date,'url':f'https://www.sec.gov/Archives/edgar/data/{cik}/{accession_clean}/{quote(doc)}'})
             if len(out)>=3: break
         return out,None
-    except (OSError,ValueError,KeyError,TypeError):
-        return None,'SEC 데이터 연결에 실패했습니다. 잠시 후 다시 확인하세요.'
+    except HTTPError as exc:
+        if exc.code in (403,429):
+            return None, f'SEC 요청 제한(HTTP {exc.code})입니다. User-Agent 연락처, 호출 빈도, SEC 서버 접근 정책을 확인하고 잠시 후 다시 시도하세요.'
+        return None, f'SEC 서버 응답 오류(HTTP {exc.code})입니다. 잠시 후 다시 시도하세요.'
+    except (OSError,ValueError,KeyError,TypeError) as exc:
+        return None, f'SEC 연결 또는 응답 해석에 실패했습니다({type(exc).__name__}). 잠시 후 다시 확인하세요.'
+
+
+def _sec_companyfacts(st, ticker):
+    """Verified US-GAAP figures from SEC XBRL companyfacts; no estimated values."""
+    symbol=(ticker or '').upper().strip()
+    try: agent=str(st.secrets.get('SEC_USER_AGENT','')).strip()
+    except Exception: agent=''
+    if '@' not in agent: return [], 'SEC_USER_AGENT 설정이 필요합니다.'
+    @st.cache_data(ttl=86400, show_spinner=False)
+    def lookup(ua):
+        import json
+        req=Request('https://www.sec.gov/files/company_tickers.json',headers={'User-Agent':ua,'Accept':'application/json','Accept-Encoding':'identity'})
+        with urlopen(req,timeout=15) as r: return json.loads(r.read(3_000_000))
+    @st.cache_data(ttl=21600, show_spinner=False)
+    def facts(ua,cik):
+        import json
+        req=Request(f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json',headers={'User-Agent':ua,'Accept':'application/json','Accept-Encoding':'identity'})
+        with urlopen(req,timeout=15) as r: return json.loads(r.read(10_000_000))
+    try:
+        company=next((v for v in lookup(agent).values() if str(v.get('ticker','')).upper()==symbol.replace('.','-')),None)
+        if not company: return [], 'SEC에서 종목코드에 대응하는 기업을 찾지 못했습니다.'
+        data=facts(agent,int(company['cik_str']))
+        usgaap=data.get('facts',{}).get('us-gaap',{})
+        fields=[('매출액','RevenueFromContractWithCustomerExcludingAssessedTax'),('매출액','Revenues'),('순이익','NetIncomeLoss'),('영업현금흐름','NetCashProvidedByUsedInOperatingActivities')]
+        result=[]; used=set()
+        for label,tag in fields:
+            if label in used: continue
+            units=usgaap.get(tag,{}).get('units',{}).get('USD',[])
+            # Only audited/reported filings, not projections. Avoid mixed-duration frames.
+            valid=[]
+            for item in units:
+                if item.get('form') not in ('10-Q','10-K') or item.get('val') is None: continue
+                if item.get('fp') not in ('Q1','Q2','Q3','FY'): continue
+                if not (item.get('start') and item.get('end') and item.get('filed')): continue
+                try:
+                    duration=(datetime.fromisoformat(item['end'])-datetime.fromisoformat(item['start'])).days
+                except ValueError: continue
+                if not 65 <= duration <= 105 and not 330 <= duration <= 380: continue
+                valid.append({**item,'duration':duration})
+            if not valid: continue
+            valid.sort(key=lambda x:(x['end'],x['filed']),reverse=True)
+            newest=valid[0]
+            # Latest filing may restate old periods; only show latest reported period.
+            result.append({'label':label,'value':newest['val'],'end':newest['end'],'start':newest['start'],'filed':newest['filed'],'form':newest['form'],'duration':newest['duration']})
+            used.add(label)
+        return result,None
+    except HTTPError as exc:
+        return [], f'SEC 재무 데이터 요청 제한 또는 오류(HTTP {exc.code}). 설정·호출 빈도를 확인하세요.'
+    except (OSError,ValueError,TypeError,KeyError) as exc:
+        return [], f'SEC 재무 데이터를 확인하지 못했습니다({type(exc).__name__}).'
+
+
+def _format_usd_amount(value):
+    n=value/1_000_000_000
+    return f'{n:,.2f}십억 달러' if abs(n)>=1 else f'{value/1_000_000:,.1f}백만 달러'
 
 
 def _sec_form_explanation(form):
@@ -316,6 +376,17 @@ def display_company_brief(st,name,ticker,key):
                     st.write('**서식의 의미:** '+_sec_form_explanation(item['form']))
                     st.caption('SEC에서 확인한 것은 서식 종류와 제출일입니다. 원문 본문 요약이나 호재·악재 판정이 아닙니다.')
                     st.markdown(f"[SEC 공식 제출문서 확인]({item['url']})")
+            st.markdown('**SEC 보고 재무 수치 (확인 가능한 경우)**')
+            with st.expander('📊 공식 재무 수치 확인 · 기간과 단위 포함', expanded=False):
+                figures,fig_error=_sec_companyfacts(st,ticker)
+                if fig_error: st.info(fig_error)
+                elif not figures: st.info('SEC에서 비교 가능한 주요 재무 항목을 확인하지 못했습니다. 해당 기업의 회계 분류·보고 형식에 따라 값이 없을 수 있습니다.')
+                else:
+                    for f in figures:
+                        term='약 3개월' if f['duration']<110 else '약 1년'
+                        st.markdown(f"**{f['label']}**: {_format_usd_amount(f['value'])} · {term} ({f['start']}~{f['end']})")
+                        st.caption(f"SEC {f['form']} 보고 · 제출일 {f['filed']} · USD 기준")
+                    st.caption('위 수치는 SEC XBRL 보고값입니다. 항목별 최신 보고기간이 다를 수 있으며, 전년 동기 비교·주가 영향은 자동 판정하지 않습니다. 마이너스 값은 손실 또는 순유출을 뜻할 수 있습니다.')
             st.markdown('**관련 뉴스 핵심 흐름**')
             display_briefing(st,ticker_query(name,ticker),key,limit=12,company=True)
             st.caption('SEC·뉴스 정보는 기존 기술점수와 매수·목표·손절 가격에 자동 반영되지 않습니다.')
