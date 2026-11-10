@@ -135,7 +135,7 @@ def _dart_recent(st, ticker):
         return {e.findtext('stock_code','').strip():e.findtext('corp_code','').strip() for e in root.findall('list') if e.findtext('stock_code','').strip()}
     @st.cache_data(ttl=3600,show_spinner=False)
     def recent(key,code):
-        today=date.today(); start=(today-timedelta(days=45)).strftime('%Y%m%d')
+        today=datetime.now(timezone(timedelta(hours=9))).date(); start=(today-timedelta(days=45)).strftime('%Y%m%d')
         url=f'https://opendart.fss.or.kr/api/list.json?crtfc_key={quote(key)}&corp_code={code}&bgn_de={start}&end_de={today:%Y%m%d}&page_count=50'
         with urlopen(Request(url,headers={'User-Agent':'AIStockMaster/1.0'}),timeout=10) as r: return json.loads(r.read(400000))
     try:
@@ -152,6 +152,88 @@ def _dart_recent(st, ticker):
         return None,'공시 데이터 제공처 연결에 실패했습니다.'
 
 
+# OpenDART document.xml is a ZIP containing the original filing text.
+# We quote short, source-grounded passages rather than inventing a numeric summary.
+FILING_KEYWORDS = (
+    '계약금액', '계약상대방', '계약기간', '매출액 대비', '매출액대비',
+    '영업이익', '당기순이익', '매출액', '증자금액', '발행주식',
+    '발행가액', '신주발행', '자금조달', '취득금액', '처분금액',
+    '감사의견', '거래정지', '합병비율', '소송금액', '자기주식',
+)
+
+
+def _extract_filing_passages(raw, limit=3):
+    """Short excerpts from actual filing document, never inferred facts."""
+    import html as html_lib
+    raw = re.sub(r'(?is)<(script|style)\b[^>]*>.*?</\1>', ' ', raw)
+    raw = re.sub(r'(?i)</(?:tr|p|div|table|section|title|td|th)>', '\n', raw)
+    raw = re.sub(r'(?s)<[^>]*>', ' ', raw)
+    raw = html_lib.unescape(raw)
+    passages=[]; seen=set()
+    for line in raw.splitlines():
+        line=re.sub(r'\s+', ' ', line).strip()
+        if not (12 <= len(line) <= 600): continue
+        if not any(k in line for k in FILING_KEYWORDS): continue
+        # Prevent header-only matches and table-of-contents from being called facts.
+        if not (re.search(r'\d', line) or ('감사의견' in line and len(line)>25)): continue
+        norm=re.sub(r'\s+', '', line[:140])
+        if norm in seen: continue
+        seen.add(norm)
+        passages.append(line[:210] + ('…' if len(line)>210 else ''))
+        if len(passages)>=limit: break
+    return passages
+
+
+def _parse_dart_document_zip(blob):
+    import io,zipfile
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        names=[n for n in archive.namelist() if n.lower().endswith(('.xml','.html','.htm'))]
+        if not names: return []
+        # Guard against large compressed documents and binary payloads.
+        texts=[]
+        for name in names[:6]:
+            if archive.getinfo(name).file_size > 4_000_000: continue
+            data=archive.read(name)
+            try: decoded=data.decode('utf-8')
+            except UnicodeDecodeError: decoded=data.decode('euc-kr',errors='replace')
+            texts.append(decoded)
+        return _extract_filing_passages('\n'.join(texts))
+
+
+def _dart_document_passages(st, rcept_no):
+    """Retrieve actual DART document; no summary if content cannot be verified."""
+    try: api_key=st.secrets.get('DART_API_KEY','')
+    except Exception: api_key=''
+    if not api_key or not re.fullmatch(r'\d{14}',str(rcept_no or '')):
+        return [],'공시 본문을 확인할 수 없습니다.'
+    @st.cache_data(ttl=21600,show_spinner=False)
+    def load(key,receipt):
+        url='https://opendart.fss.or.kr/api/document.xml?crtfc_key='+quote(key)+'&rcept_no='+receipt
+        with urlopen(Request(url,headers={'User-Agent':'AIStockMaster/1.0'}),timeout=12) as resp:
+            data=resp.read(8_000_000)
+        if not data.startswith(b'PK'):
+            return [],'공시 원문 API가 문서를 제공하지 않았습니다.'
+        return _parse_dart_document_zip(data),None
+    try: return load(api_key,str(rcept_no))
+    except Exception: return [],'공시 원문 연결 또는 문서 해석에 실패했습니다.'
+
+
+def _filing_impact_hint(report_name):
+    """Conditional watchpoints, not asserted price forecasts."""
+    title=(report_name or '').replace(' ','')
+    if '유상증자' in title or '전환사채' in title:
+        return '확인할 영향: 발행 규모·조건과 기존 주주 지분 희석 가능성. 호재·악재 단정 불가.'
+    if '공급계약' in title or '단일판매' in title:
+        return '확인할 영향: 계약금액의 매출 대비 비중, 계약기간 및 실제 이익 기여 가능성.'
+    if '실적' in title or '손익구조' in title:
+        return '확인할 영향: 전년 대비 실적 변화와 시장 예상치 차이. 실적 개선만으로 주가 상승을 단정할 수 없음.'
+    if '자기주식' in title:
+        return '확인할 영향: 취득·처분 목적, 규모, 일정 및 주주가치 변화 가능성.'
+    if '감사의견' in title or '영업정지' in title:
+        return '확인할 영향: 재무·상장 관련 위험과 거래 제한 가능성을 우선 점검.'
+    return '확인할 영향: 재무구조·실적·주식 수 변화 여부를 원문과 함께 점검.'
+
+
 def display_company_brief(st,name,ticker,key):
     with st.expander('📰 최근 이슈 · 중요 공시 요약',expanded=False):
         filings,error=_dart_recent(st,ticker)
@@ -162,9 +244,19 @@ def display_company_brief(st,name,ticker,key):
             for row in filings:
                 label=row.get('report_nm','공시 제목 확인 필요')
                 day=row.get('rcept_dt','')
+                receipt=str(row.get('rcept_no',''))
                 st.markdown(f"**{label}** · {day[:4]}-{day[4:6]}-{day[6:]}" )
-                st.caption('공식 공시 제목만 확인됨. 금액·실적 변화·실제 주가 영향은 본문을 확인하지 않아 판단 보류.')
-                st.caption('이 공시가 실적·주식 수·재무위험에 영향을 줄 수 있는지 원문 검증이 필요합니다.')
+                passages,document_error=_dart_document_passages(st,receipt)
+                if passages:
+                    st.caption('공식 공시 원문에서 확인한 주요 문장 (자동 발췌 · 최대 3줄)')
+                    for passage in passages: st.write('• '+passage)
+                else:
+                    st.info('공시 제목은 확인됐으나 핵심 본문은 확인하지 못했습니다. 숫자나 내용을 추측하지 않습니다.')
+                st.caption(_filing_impact_hint(label))
+                if receipt and re.fullmatch(r'\d{14}',receipt):
+                    st.markdown(f'[이 공시의 공식 원문 확인](https://dart.fss.or.kr/dsaf001/main.do?rcpNo={receipt})')
+                if document_error: st.caption(document_error)
+        st.caption('공시 원문 문장은 자동 발췌이므로 표의 항목·단위·정정공시 여부를 원문에서 확인해야 합니다. 미국 기업의 공시 자동 요약은 아직 지원하지 않습니다.')
         st.markdown('**관련 뉴스 핵심 흐름**')
         display_briefing(st,ticker_query(name,ticker),key,limit=12,company=True)
         st.caption('확인하지 않은 공시 내용을 사실처럼 생성하지 않습니다. 뉴스와 공시 정보는 기존 기술점수에 반영되지 않습니다.')
