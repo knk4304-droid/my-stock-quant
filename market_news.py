@@ -350,8 +350,24 @@ def _sec_companyfacts(st, ticker):
             if not valid: continue
             valid.sort(key=lambda x:(x['end'],x['filed']),reverse=True)
             newest=valid[0]
-            # Latest filing may restate old periods; only show latest reported period.
-            result.append({'label':label,'value':newest['val'],'end':newest['end'],'start':newest['start'],'filed':newest['filed'],'form':newest['form'],'duration':newest['duration']})
+            # Compare like-for-like durations and calendar periods, never a quarter with a year.
+            # Use the latest-filed version of a historical period if it was restated.
+            target_year=int(newest['end'][:4])-1
+            target_month_day=newest['end'][5:]
+            peers=[x for x in valid if int(x['end'][:4])==target_year
+                   and x['end'][5:]==target_month_day
+                   and abs(x['duration']-newest['duration'])<=7]
+            prior=max(peers,key=lambda x:x['filed']) if peers else None
+            # A missing or zero baseline cannot support a percentage change.
+            comparison=None
+            if prior and isinstance(prior.get('val'),(int,float)) and prior['val']!=0:
+                comparison=(newest['val']-prior['val'])/abs(prior['val'])*100
+            result.append({'label':label,'value':newest['val'],'end':newest['end'],
+                           'start':newest['start'],'filed':newest['filed'],
+                           'form':newest['form'],'duration':newest['duration'],
+                           'prior_value':prior['val'] if prior else None,
+                           'prior_end':prior['end'] if prior else None,
+                           'yoy_pct':comparison})
             used.add(label)
         return result,None
     except HTTPError as exc:
@@ -402,7 +418,22 @@ def display_company_brief(st,name,ticker,key):
                         term='약 3개월' if f['duration']<110 else '약 1년'
                         st.markdown(f"**{f['label']}**: {_format_usd_amount(f['value'])} · {term} ({f['start']}~{f['end']})")
                         st.caption(f"SEC {f['form']} 보고 · 제출일 {f['filed']} · USD 기준")
-                    st.caption('위 수치는 SEC XBRL 보고값입니다. 항목별 최신 보고기간이 다를 수 있으며, 전년 동기 비교·주가 영향은 자동 판정하지 않습니다. 마이너스 값은 손실 또는 순유출을 뜻할 수 있습니다.')
+                        if f.get('prior_value') is not None:
+                            st.write(f"전년 동기 ({f['prior_end']} 종료): {_format_usd_amount(f['prior_value'])}")
+                            if f.get('yoy_pct') is not None:
+                                change=f['yoy_pct']
+                                st.write(f"전년 동기 대비 변화: {change:+.1f}%")
+                                if f['label']=='매출액':
+                                    st.caption('매출 증가가 반드시 이익 증가를 의미하지는 않습니다. 영업이익률과 회사 전망을 함께 확인하세요.')
+                                elif f['label']=='순이익':
+                                    st.caption('일회성 이익·손실로 수치가 변할 수 있습니다. 영업실적과 함께 판단하세요.')
+                                else:
+                                    st.caption('영업현금흐름은 실제 영업활동의 현금 유입·유출입니다. 계절성과 운전자본 변화를 확인하세요.')
+                            else:
+                                st.caption('전년 동기 값이 0이어서 증감률을 계산하지 않았습니다.')
+                        else:
+                            st.caption('동일 기간의 전년 동기 값을 찾지 못해 증감률을 표시하지 않았습니다.')
+                    st.caption('SEC XBRL에 실제 보고된 값만 표시합니다. 항목별 최신 보고기간이 다를 수 있고, 전년 동기 비교는 같은 길이의 기간끼리만 수행합니다. 매출·이익 증가가 주가 상승을 보장하지 않습니다.')
             st.markdown('**관련 뉴스 핵심 흐름**')
             display_briefing(st,ticker_query(name,ticker),key,limit=12,company=True)
             st.caption('SEC·뉴스 정보는 기존 기술점수와 매수·목표·손절 가격에 자동 반영되지 않습니다.')
