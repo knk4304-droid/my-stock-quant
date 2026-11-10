@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import pandas as pd
 from technical_report_v63 import get_technical_report
+from market_news import display_news, display_company_context, MACRO_QUERY
 
 DATA = Path(__file__).resolve().parent / 'market_scan_data'
 PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (1년 이상)']
@@ -77,6 +78,21 @@ def valid_scenario(buy, target, stop):
         return False
     return stop < buy < target
 
+
+def indicator_explanations():
+    """Shared plain-language guide for both recommendation and watchlist reports."""
+    return [
+        ('5일선','최근 5거래일 종가의 평균입니다. 예: 5일 평균 10만원인데 현재가 10만5천원이면 단기 평균보다 5% 높습니다. 위에 있다고 무조건 상승하는 것은 아닙니다.'),
+        ('20일선','최근 20거래일 평균 종가로 약 한 달의 흐름을 봅니다. 예: 5일선이 20일선 위로 올라오면 단기 흐름이 개선됐을 가능성을 살펴봅니다. 거짓 신호도 있습니다.'),
+        ('60일선','최근 60거래일 평균 종가로 약 3개월의 큰 흐름을 봅니다. 예: 현재가가 60일선보다 계속 낮다면 중기 하락 추세일 수 있습니다.'),
+        ('RSI(14)','최근 14거래일의 상승·하락 강도를 0~100으로 나타냅니다. 예: 78은 최근 상승이 강해 과열 가능성을 점검할 구간, 25는 약세가 강해 반등 가능성과 추가 하락 위험을 함께 볼 구간입니다. 70 이상이 곧 매도, 30 이하가 곧 매수는 아닙니다.'),
+        ('MACD 히스토그램','단기와 장기 이동평균의 차이로 추세의 변화 속도를 살펴봅니다. 예: 음수 -2000에서 -500으로 오르면 하락 압력이 줄어드는 모습일 수 있지만, 아직 상승 전환이 확정된 것은 아닙니다. 값의 크기는 종목 가격 수준에 따라 달라집니다.'),
+        ('거래량/20일 평균','오늘 거래량을 최근 20거래일 평균 거래량으로 나눈 배수입니다. 예: 0.42는 평소의 42% 수준, 2.0은 평소의 2배입니다. 거래량 증가만으로 매수·매도를 결정하지 않습니다.'),
+        ('추세 점수(30)','이 프로그램이 이동평균 등 가격 흐름을 규칙으로 평가한 30점 만점 점수입니다. 예: 0점은 현재 규칙에서 추세 조건이 좋지 않다는 뜻이며 향후 상승 확률 0%가 아닙니다.'),
+        ('진입 시점 점수(25)','현재 가격이 기술적 매수 관찰 조건에 얼마나 부합하는지 평가한 25점 만점 점수입니다. 예: 10점은 일부 조건만 충족한 상태로, 지금 사야 한다는 의미가 아닙니다.'),
+        ('거래량 점수(20)','거래량이 가격 움직임을 얼마나 뒷받침하는지 정해진 규칙으로 평가한 20점 만점 점수입니다. 예: 거래량이 평소보다 적으면 신호 확신이 낮아질 수 있습니다.'),
+        ('위험 관리 점수(25)','가격 변동성·손실 위험 조건을 규칙으로 평가한 25점 만점 점수입니다. 예: 15점은 위험이 없다는 뜻이 아니라 일부 위험 조건을 충족했다는 뜻입니다.'),
+    ]
 
 def show(st):
     st.markdown('''<style>
@@ -165,7 +181,7 @@ def show(st):
     b.metric('최근 7일 분석',f'{len(fresh):,}개',help=glossary['최근 7일 분석'])
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=glossary['최근 실행 성공'])
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
-    recommendation_tab, watchlist_tab = st.tabs(['📈 테마별 종목 추천', '🔎 관심종목 검색'])
+    recommendation_tab, watchlist_tab, news_tab = st.tabs(['📈 테마별 종목 추천', '🔎 관심종목 검색', '📰 시장 뉴스·공시'])
     with recommendation_tab:
         st.subheader('테마별 종목 추천')
         st.caption('기간별 가격 흐름으로 정렬한 **관찰 후보**입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
@@ -293,20 +309,10 @@ def show(st):
                                 f"\n\n**목표 가격** {fmt_price('1차 목표 관찰가')} / {fmt_price('2차 목표 관찰가')}  "
                                 f"\n\n**손절 참고** {fmt_price('손실 제한 참고가')}"
                             )
+                            display_company_context(st, name, ticker, f'batch_news_{i}')
                             with st.expander('전문 기술 지표 보기 · RSI / MACD 등'):
                                 st.caption('RSI·MACD 등 지표별 설명은 표의 오른쪽 열에서 확인할 수 있습니다.')
-                                indicators=[
-                                    ('5일선','최근 5거래일 평균 주가'),
-                                    ('20일선','최근 20거래일 평균 주가'),
-                                    ('60일선','최근 60거래일 평균 주가'),
-                                    ('RSI(14)','최근 상승·하락 강도. 일반적으로 70 이상 과열 가능성, 30 이하 침체 가능성'),
-                                    ('MACD 히스토그램','주가 추세의 상승·하락 모멘텀을 참고하는 지표'),
-                                    ('거래량/20일 평균','평소 20일 평균 거래량 대비 몇 배인지'),
-                                    ('추세 점수(30)','가격 추세의 방향과 강도: 30점 만점'),
-                                    ('진입 시점 점수(25)','매수 진입 시점의 기술적 조건: 25점 만점'),
-                                    ('거래량 점수(20)','거래량으로 확인한 신호의 강도: 20점 만점'),
-                                    ('위험 관리 점수(25)','가격 변동과 손실 위험 조건: 25점 만점'),
-                                ]
+                                indicators=indicator_explanations()
                                 st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),
                                              hide_index=True,use_container_width=True,height=390,
                                              column_config={'지표':st.column_config.TextColumn(width='medium'),
@@ -489,17 +495,35 @@ def show(st):
                 else:
                     st.warning('손절가 < 1차 매수가 < 1차 목표가 조건이 맞지 않거나 가격이 없어 손익비를 계산하지 않았습니다.')
                 with st.expander('📘 기술 지표 및 점수의 쉬운 설명',expanded=False):
-                    indicators=[
-                        ('5일선','최근 5거래일 평균 주가'),('20일선','최근 20거래일 평균 주가'),
-                        ('60일선','최근 60거래일 평균 주가'),('RSI(14)',glossary['RSI(14)']),
-                        ('MACD 히스토그램',glossary['MACD 히스토그램']),
-                        ('거래량/20일 평균',glossary['거래량/20일 평균']),
-                        ('추세 점수(30)','추세 방향과 강도에 대한 30점 만점 평가'),
-                        ('진입 시점 점수(25)','매수 시점의 기술적 조건에 대한 25점 만점 평가'),
-                        ('거래량 점수(20)','거래량에 기반한 20점 만점 평가'),
-                        ('위험 관리 점수(25)','변동성·손실 위험 조건에 대한 25점 만점 평가')]
+                    indicators=indicator_explanations()
                     st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),hide_index=True,use_container_width=True)
+                display_company_context(st, symbol.strip(), ticker, 'watchlist_news')
                 st.warning('점수는 미래 상승 확률이 아니며, 매수·목표·손절 가격은 참고 시나리오입니다. 주문 전에 실제 시세와 거래 위험을 확인하세요.')
+    with news_tab:
+        st.subheader('시장 뉴스 · 기업 공시')
+        st.caption('뉴스를 읽고 원문을 확인하는 참고 공간입니다. 뉴스가 매수 신호나 검증된 예측 결과를 뜻하지 않습니다.')
+        news_scope=st.radio('보고 싶은 정보', ['시장 전체 이슈','관심종목 관련 뉴스'],horizontal=True,key='news_scope')
+        if news_scope=='시장 전체 이슈':
+            st.markdown('**국내외 시장 주요 기사**')
+            display_news(st,MACRO_QUERY,'macro_news',limit=8)
+        else:
+            news_symbol=st.text_input('종목명 또는 코드',placeholder='삼성전자 / 005930.KS / NVDA',key='news_ticker')
+            if news_symbol.strip():
+                display_news(st,__import__('market_news').ticker_query(news_symbol,resolve_symbol(news_symbol)),'market_news_ticker',limit=8)
+            else:
+                st.info('관심 있는 종목명이나 코드를 입력하면 관련 뉴스 제목을 보여줍니다.')
+        st.divider()
+        st.markdown('**중요 기업 공시 원문 확인**')
+        st.markdown('🇰🇷 [금융감독원 DART](https://dart.fss.or.kr/)  ·  🇺🇸 [미국 SEC EDGAR](https://www.sec.gov/edgar/search/)')
+        st.info('공식 공시는 위 사이트에서 직접 검색하세요. 현재 버전은 공시 자동 수집이나 호재·악재 자동 판정을 제공하지 않습니다.')
+        with st.expander('❓ 뉴스·공시를 어떻게 투자 판단에 활용하나요?'):
+            st.markdown('''**뉴스:** 언론이 보도한 사실과 전망을 구분하세요. 같은 뉴스가 여러 매체에 실려도 독립적인 호재 여러 개는 아닙니다.
+
+**공시:** 기업이 공식적으로 제출한 문서입니다. 실적·유상증자·대규모 계약 등은 원문과 발표일을 확인하세요.
+
+**예시:** '대규모 계약 체결' 기사가 있어도 매출액 대비 계약 규모와 계약 기간이 작으면 실제 영향은 제한적일 수 있습니다.
+
+**주의:** 뉴스가 긍정적이어도 이미 주가에 반영됐을 수 있습니다. 기술지표, 손절 위험, 실제 시세와 함께 판단하세요.''')
     with st.expander('⚙️ 운영 상태 · 분석 범위와 점수 설명'):
         st.write(f"마지막 자동 분석 (한국시간): {format_kst(state.get('updated_utc'))}")
         st.caption('UTC는 세계 표준시이며 한국시간은 UTC보다 9시간 빠릅니다. 예: 00:00 UTC → 같은 날 오전 9시 (한국시간). 이 시각은 자동 분석 결과 저장 시각으로, 주식시장의 실시간 가격 갱신 시각은 아닙니다.')
