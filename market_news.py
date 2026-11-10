@@ -105,6 +105,14 @@ def group_headlines(articles, max_groups=5):
         groups[matched].append(article)
     return sorted(groups.items(),key=lambda x:-len(x[1]))[:max_groups]
 
+BRIEF_GUIDE = {
+ '시장 급등·급락': ('단기에는 지수 급등락과 함께 개별 종목의 변동성이 커질 수 있습니다. 상승 뉴스라도 거래량이 약하거나 일부 대형주에만 매수가 집중되면 상승세가 지속되지 않을 수 있습니다.', '중기에는 기업 실적과 경기 전망이 실제로 개선되는지가 중요합니다. 지수 반등이 기업 이익 개선 없이 진행되면 되돌림 위험이 있습니다.', '코스피·코스닥의 상승 종목 수, 거래대금, 외국인·기관 수급을 함께 확인하세요. 지수는 오르는데 보유 종목이 하락한다면 업종별 차이를 점검하세요.'),
+ '금리·통화정책': ('예상보다 완화적인 금리 신호는 성장주에 유리할 수 있지만, 물가 재상승 우려가 커지면 반대로 작용할 수 있습니다. 금리 결정 자체보다 시장 예상과의 차이가 중요합니다.', '중기에는 기업의 자금조달 비용, 소비·투자, 채권금리 추세가 실제 이익 전망에 반영되는지 확인해야 합니다.', '기준금리뿐 아니라 국채금리, 물가 지표, 연준 발언, 시장의 금리 전망 변화를 확인하세요. 발표 직후 급등락만으로 추격 매수하지 마세요.'),
+ '환율·해외시장': ('원화 약세는 일부 수출기업의 원화 환산 실적에 도움이 될 수 있으나 원자재 수입기업에는 부담이 될 수 있습니다. 미국 기술주 하락은 국내 반도체 투자심리에 영향을 줄 수 있습니다.', '중기에는 환율이 지속되는 이유와 실제 수출 단가·물량, 외국인 수급을 살펴야 합니다.', '원·달러 환율, 미국 주요 지수, 업종별 해외 매출 비중과 환헤지 여부를 확인하세요. 환율 변화만으로 모든 수출주에 같은 판단을 적용하지 마세요.'),
+ '기업 실적·산업': ('실적 호조나 수주 뉴스는 해당 기업의 기대 이익을 높일 수 있습니다. 그러나 이미 주가에 반영되었거나 기대에 못 미치면 좋은 뉴스에도 하락할 수 있습니다.', '중기에는 매출보다 영업이익률, 현금흐름, 신규 수주의 실제 매출 전환 여부가 중요합니다.', '공식 공시에서 실적의 전년 동기 대비 변화, 시장 예상치와의 차이, 계약 규모·기간·취소 조건을 확인하세요. 동종 업계와 비교해 일회성 효과인지 구분하세요.'),
+ '기업 자금·지배구조': ('증자·전환사채는 자금 조달에 도움이 될 수 있지만 주식 수 증가에 따른 희석 우려가 있습니다. 자사주 매입·소각은 주주환원 기대를 높일 수 있으나 실행 여부가 중요합니다.', '중기에는 조달한 자금의 사용 성과, 재무 건전성, 실제 발행·소각 규모에 따라 영향이 달라집니다.', '공시의 발행 규모, 발행가, 전환 가능 시점, 자금 사용 목적, 최대주주 변경 여부를 확인하세요. 제목만 보고 호재·악재를 단정하지 마세요.'),
+}
+
 def display_briefing(st, query, key, limit=25, company=False):
     @st.cache_data(ttl=1800,show_spinner=False)
     def cached(q,n): return fetch_news(q,n)
@@ -114,22 +122,30 @@ def display_briefing(st, query, key, limit=25, company=False):
     if not articles:
         st.info('확인된 최근 기사가 없습니다. 관련 사건이 없다는 뜻은 아닙니다.'); return
     groups=group_headlines(articles)
-    st.caption(f'최근 수집 기사 {len(articles)}건을 주제별로 정리했습니다. 기사 제목 기반 잠정 분석이며 본문·사실관계 검증 전입니다. 약 30분간 갱신되지 않을 수 있습니다.')
+    st.caption(f'수집 기사 {len(articles)}건을 유사 주제별로 정리했습니다. 기사 제목만으로 판단한 잠정 해석이며, 본문·공식 공시 검증 전입니다. 약 30분 동안 갱신되지 않을 수 있습니다.')
     for name,items in groups:
         definition=next((entry for entry in ISSUES if entry[0]==name),None)
-        impact=definition[2] if definition else '기업과 업종별로 영향이 달라 추가 확인이 필요합니다.'
-        check=definition[3] if definition else '원문과 공식 발표 자료를 확인하세요.'
-        st.markdown(f'**{name}** · 관련 기사 {len(items)}건')
-        st.write('**핵심 흐름(기사 제목 기준):** '+ ' / '.join(_headline_core(a['title'])[:90] for a in items[:2]))
-        st.write('**예상 영향(가능성):** '+impact)
-        st.write('**투자 시 확인할 점:** '+check)
-        with st.expander(f'근거 기사 {len(items)}건 · 출처와 발표 시각'):
+        short_impact=definition[2] if definition else '기업과 업종별로 영향이 달라 추가 확인이 필요합니다.'
+        short_check=definition[3] if definition else '원문과 공식 발표 자료를 확인하세요.'
+        short_core=' / '.join(_headline_core(a['title'])[:90] for a in items[:2])
+        st.subheader(name)
+        st.caption(f'서로 다른 기사 {len(items)}건 · 아래 내용은 확정된 투자 신호가 아닙니다.')
+        st.write('핵심 내용 (제목 기준)')
+        st.write(short_core)
+        guide=BRIEF_GUIDE.get(name)
+        st.write('예상 영향 — 단기')
+        st.write(guide[0] if guide else short_impact + ' 실제 기업별 영향은 확인된 자료가 부족해 판단을 보류합니다.')
+        st.write('예상 영향 — 중기 및 반대 시나리오')
+        st.write(guide[1] if guide else '향후 실적·정책·수급으로 영향이 확인되는지 관찰해야 합니다. 초기 시장 반응과 실제 결과가 달라질 수 있습니다.')
+        st.write('투자 시 확인할 점')
+        st.write(guide[2] if guide else short_check + ' 발표 날짜와 공식 자료, 가격·거래량 반응을 함께 살펴보세요.')
+        st.caption('판단 기준: 공식 사실 확인 → 예상과 실제의 차이 → 가격·거래량 반응 → 보유 기간과 손절 기준 검토')
+        with st.expander(f'근거 기사 보기 ({len(items)}건)'):
             for a in items[:6]:
                 st.markdown(f"[{a['title']}]({a['url']})")
                 st.caption(f"{a['source']} · {a['date']}")
         st.divider()
-    st.caption('뉴스의 긍정·부정 효과는 확정적이지 않으며, 추천점수·매수가·손절가에는 자동 반영되지 않습니다.')
-
+    st.caption('뉴스 분석은 참고용이며 추천점수·매수가·목표가·손절가에 자동 반영되지 않습니다.')
 
 def _dart_recent(st, ticker):
     """Return verified OpenDART filing summaries for Korean tickers when configured."""
