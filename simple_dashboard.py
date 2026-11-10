@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import pandas as pd
 from technical_report_v63 import get_technical_report
-from market_news import display_news, display_company_context, MACRO_QUERY
+from market_news import display_briefing, display_company_brief, MACRO_QUERY, ticker_query
 
 DATA = Path(__file__).resolve().parent / 'market_scan_data'
 PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (1년 이상)']
@@ -309,7 +309,7 @@ def show(st):
                                 f"\n\n**목표 가격** {fmt_price('1차 목표 관찰가')} / {fmt_price('2차 목표 관찰가')}  "
                                 f"\n\n**손절 참고** {fmt_price('손실 제한 참고가')}"
                             )
-                            display_company_context(st, name, ticker, f'batch_news_{i}')
+                            display_company_brief(st, name, ticker, f'batch_news_{i}')
                             with st.expander('전문 기술 지표 보기 · RSI / MACD 등'):
                                 st.caption('RSI·MACD 등 지표별 설명은 표의 오른쪽 열에서 확인할 수 있습니다.')
                                 indicators=indicator_explanations()
@@ -497,25 +497,21 @@ def show(st):
                 with st.expander('📘 기술 지표 및 점수의 쉬운 설명',expanded=False):
                     indicators=indicator_explanations()
                     st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),hide_index=True,use_container_width=True)
-                display_company_context(st, symbol.strip(), ticker, 'watchlist_news')
+                display_company_brief(st, symbol.strip(), ticker, 'watchlist_news')
                 st.warning('점수는 미래 상승 확률이 아니며, 매수·목표·손절 가격은 참고 시나리오입니다. 주문 전에 실제 시세와 거래 위험을 확인하세요.')
     with news_tab:
-        st.subheader('시장 뉴스 · 기업 공시')
-        st.caption('뉴스를 읽고 원문을 확인하는 참고 공간입니다. 뉴스가 매수 신호나 검증된 예측 결과를 뜻하지 않습니다.')
+        st.subheader('오늘의 증시 핵심 브리핑')
+        st.caption('반복 기사를 주제별로 묶어 핵심 흐름·가능한 시장 영향·확인할 점을 정리합니다. 기사 제목을 근거로 한 잠정 분석이며 투자 신호가 아닙니다.')
         news_scope=st.radio('보고 싶은 정보', ['시장 전체 이슈','관심종목 관련 뉴스'],horizontal=True,key='news_scope')
         if news_scope=='시장 전체 이슈':
-            st.markdown('**국내외 시장 주요 기사**')
-            display_news(st,MACRO_QUERY,'macro_news',limit=8)
+            display_briefing(st,MACRO_QUERY,'macro_news',limit=25)
         else:
             news_symbol=st.text_input('종목명 또는 코드',placeholder='삼성전자 / 005930.KS / NVDA',key='news_ticker')
             if news_symbol.strip():
-                display_news(st,__import__('market_news').ticker_query(news_symbol,resolve_symbol(news_symbol)),'market_news_ticker',limit=8)
+                display_company_brief(st,news_symbol,resolve_symbol(news_symbol),'market_news_ticker')
             else:
-                st.info('관심 있는 종목명이나 코드를 입력하면 관련 뉴스 제목을 보여줍니다.')
-        st.divider()
-        st.markdown('**중요 기업 공시 원문 확인**')
-        st.markdown('🇰🇷 [금융감독원 DART](https://dart.fss.or.kr/)  ·  🇺🇸 [미국 SEC EDGAR](https://www.sec.gov/edgar/search/)')
-        st.info('공식 공시는 위 사이트에서 직접 검색하세요. 현재 버전은 공시 자동 수집이나 호재·악재 자동 판정을 제공하지 않습니다.')
+                st.info('관심 종목을 입력하면 중요 공시 조회 가능 여부와 관련 뉴스의 핵심 흐름을 보여줍니다.')
+        st.caption('국내 공식 공시는 Streamlit Secrets에 DART_API_KEY가 설정된 경우에만 제목·발표일을 조회합니다. 공시 본문 자동 요약은 아직 제공하지 않습니다.')
         with st.expander('❓ 뉴스·공시를 어떻게 투자 판단에 활용하나요?'):
             st.markdown('''**뉴스:** 언론이 보도한 사실과 전망을 구분하세요. 같은 뉴스가 여러 매체에 실려도 독립적인 호재 여러 개는 아닙니다.
 

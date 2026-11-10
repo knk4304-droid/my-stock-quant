@@ -66,3 +66,105 @@ def display_company_context(st, name, ticker, key):
         display_news(st,ticker_query(name,ticker),key)
         st.markdown('[국내 공식 공시 확인 — DART](https://dart.fss.or.kr/) · [미국 공식 공시 확인 — SEC EDGAR](https://www.sec.gov/edgar/search/)')
         st.caption('공시 원문은 공식 사이트에서 종목명 또는 회사명으로 직접 검색하세요. 현재 화면은 공식 공시를 자동 조회·판정하지 않습니다.')
+
+# Briefing layer: title-based signals are explicitly hypotheses, not article-body facts.
+from collections import defaultdict
+
+ISSUES = [
+ ('시장 급등·급락', ('코스피','코스닥','증시','주가','지수','사이드카','급등','급락'), '시장 전반의 위험 선호와 변동성에 영향을 줄 수 있습니다.', '지수 등락폭·거래대금·외국인 수급을 확인하세요.'),
+ ('금리·통화정책', ('금리','연준','fomc','fed','인하','인상','물가'), '할인율 변화로 성장주와 채권·환율에 영향을 줄 수 있습니다.', '발표 수치와 시장 예상치의 차이를 확인하세요.'),
+ ('환율·해외시장', ('환율','달러','원화','나스닥','미국 증시','뉴욕증시'), '수출 기업 실적 기대와 외국인 자금 흐름에 영향을 줄 수 있습니다.', '달러·원 환율과 미국 지수 선물 움직임을 확인하세요.'),
+ ('기업 실적·산업', ('실적','영업이익','반도체','hbm','ai','수주','계약','배당'), '해당 업종의 이익 전망과 투자심리를 바꿀 수 있습니다.', '실제 공시·실적과 시장 기대치의 차이를 확인하세요.'),
+ ('기업 자금·지배구조', ('유상증자','전환사채','자사주','합병','인수','감자','거래정지'), '주식 수 변화·재무 건전성·지배구조 위험을 점검할 필요가 있습니다.', '공시 원문과 자금 사용 목적을 확인하세요.'),
+]
+
+def group_headlines(articles, max_groups=5):
+    """Group headlines into a few topics; avoid counting syndicated headlines as independent facts."""
+    groups=defaultdict(list)
+    seen=set()
+    for article in articles:
+        title=article['title']
+        core=re.sub(r'\s*[-–|]\s*[^-–|]+$', '', title).strip()
+        norm=re.sub(r'[^가-힣a-z0-9]','',core.lower())
+        if norm in seen: continue
+        seen.add(norm)
+        low=title.lower()
+        matched=next((name for name,terms,*_ in ISSUES if any(term in low for term in terms)), '기타 종목·시장 소식')
+        groups[matched].append(article)
+    return sorted(groups.items(),key=lambda x:-len(x[1]))[:max_groups]
+
+def display_briefing(st, query, key, limit=25, company=False):
+    @st.cache_data(ttl=1800,show_spinner=False)
+    def cached(q,n): return fetch_news(q,n)
+    articles,error=cached(query,limit)
+    if error:
+        st.info(error); return
+    if not articles:
+        st.info('확인된 최근 기사가 없습니다. 관련 사건이 없다는 뜻은 아닙니다.'); return
+    groups=group_headlines(articles)
+    st.caption(f'최근 수집 기사 {len(articles)}건을 주제별로 정리했습니다. 기사 제목 기반 잠정 분석이며 본문·사실관계 검증 전입니다. 약 30분간 갱신되지 않을 수 있습니다.')
+    for name,items in groups:
+        definition=next((entry for entry in ISSUES if entry[0]==name),None)
+        impact=definition[2] if definition else '기업과 업종별로 영향이 달라 추가 확인이 필요합니다.'
+        check=definition[3] if definition else '원문과 공식 발표 자료를 확인하세요.'
+        st.markdown(f'**{name}** · 관련 기사 {len(items)}건')
+        st.write('**핵심 흐름(기사 제목 기준):** '+ ' / '.join(re.sub(r'\s*[-–|]\s*[^-–|]+$', '', a['title'])[:90] for a in items[:2]))
+        st.write('**예상 영향(가능성):** '+impact)
+        st.write('**투자 시 확인할 점:** '+check)
+        with st.expander(f'근거 기사 {len(items)}건 · 출처와 발표 시각'):
+            for a in items[:6]:
+                st.markdown(f"[{a['title']}]({a['url']})")
+                st.caption(f"{a['source']} · {a['date']}")
+        st.divider()
+    st.caption('뉴스의 긍정·부정 효과는 확정적이지 않으며, 추천점수·매수가·손절가에는 자동 반영되지 않습니다.')
+
+
+def _dart_recent(st, ticker):
+    """Return verified OpenDART filing summaries for Korean tickers when configured."""
+    if not (ticker.endswith('.KS') or ticker.endswith('.KQ')): return None, '미국 공시 자동 조회는 현재 지원하지 않습니다.'
+    try: api_key=st.secrets.get('DART_API_KEY','')
+    except Exception: api_key=''
+    if not api_key: return None, '공식 공시 자동 조회가 설정되지 않았습니다(DART_API_KEY 필요).'
+    import io,zipfile,json
+    from datetime import date
+    @st.cache_data(ttl=86400,show_spinner=False)
+    def corp_map(key):
+        req=Request('https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key='+quote(key),headers={'User-Agent':'AIStockMaster/1.0'})
+        with urlopen(req,timeout=12) as r: blob=r.read(16000000)
+        with zipfile.ZipFile(io.BytesIO(blob)) as z: root=ET.fromstring(z.read('CORPCODE.xml'))
+        return {e.findtext('stock_code','').strip():e.findtext('corp_code','').strip() for e in root.findall('list') if e.findtext('stock_code','').strip()}
+    @st.cache_data(ttl=3600,show_spinner=False)
+    def recent(key,code):
+        today=date.today(); start=(today-timedelta(days=45)).strftime('%Y%m%d')
+        url=f'https://opendart.fss.or.kr/api/list.json?crtfc_key={quote(key)}&corp_code={code}&bgn_de={start}&end_de={today:%Y%m%d}&page_count=50'
+        with urlopen(Request(url,headers={'User-Agent':'AIStockMaster/1.0'}),timeout=10) as r: return json.loads(r.read(400000))
+    try:
+        code=corp_map(api_key).get(ticker.split('.')[0]);
+        if not code: return None,'종목에 대응하는 DART 기업코드를 찾지 못했습니다.'
+        result=recent(api_key,code)
+        if result.get('status')=='013': return [],None
+        if result.get('status')!='000': return None,'공식 공시 조회에 실패했습니다.'
+        rows=result.get('list',[])
+        priorities=('영업(잠정)실적','매출액또는손익구조','단일판매','공급계약','유상증자','무상증자','전환사채','자기주식','감사의견','최대주주','합병','영업정지','소송','주요사항보고서')
+        selected=[r for r in rows if any(p in r.get('report_nm','') for p in priorities)][:3]
+        return selected,None
+    except (OSError,ValueError,KeyError,ET.ParseError,zipfile.BadZipFile):
+        return None,'공시 데이터 제공처 연결에 실패했습니다.'
+
+
+def display_company_brief(st,name,ticker,key):
+    with st.expander('📰 최근 이슈 · 중요 공시 요약',expanded=False):
+        filings,error=_dart_recent(st,ticker)
+        st.markdown('**공식 중요 공시 (최근 45일)**')
+        if error: st.info(error)
+        elif not filings: st.info('설정된 기간에 주요 유형 공시가 조회되지 않았습니다. 모든 공시가 없다는 의미는 아닙니다.')
+        else:
+            for row in filings:
+                label=row.get('report_nm','공시 제목 확인 필요')
+                day=row.get('rcept_dt','')
+                st.markdown(f"**{label}** · {day[:4]}-{day[4:6]}-{day[6:]}" )
+                st.caption('공식 공시 제목만 확인됨. 금액·실적 변화·실제 주가 영향은 본문을 확인하지 않아 판단 보류.')
+                st.caption('이 공시가 실적·주식 수·재무위험에 영향을 줄 수 있는지 원문 검증이 필요합니다.')
+        st.markdown('**관련 뉴스 핵심 흐름**')
+        display_briefing(st,ticker_query(name,ticker),key,limit=12,company=True)
+        st.caption('확인하지 않은 공시 내용을 사실처럼 생성하지 않습니다. 뉴스와 공시 정보는 기존 기술점수에 반영되지 않습니다.')
