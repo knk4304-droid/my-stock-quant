@@ -511,7 +511,7 @@ def show(st):
                 display_company_brief(st,news_symbol,resolve_symbol(news_symbol),'market_news_ticker')
             else:
                 st.info('관심 종목을 입력하면 중요 공시 조회 가능 여부와 관련 뉴스의 핵심 흐름을 보여줍니다.')
-        st.caption('국내 공식 공시는 Streamlit Secrets에 DART_API_KEY가 설정된 경우에만 제목·발표일을 조회합니다. 공시 본문 자동 요약은 아직 제공하지 않습니다.')
+        st.caption('국내 공시는 DART_API_KEY로 원문 주요 문장을 발췌하고, 미국 공시는 SEC_USER_AGENT 설정 시 제출 서식·날짜를 조회합니다. 원문을 검증한 투자 결론이나 실시간 매매 신호는 아닙니다.')
         with st.expander('❓ 뉴스·공시를 어떻게 투자 판단에 활용하나요?'):
             st.markdown('''**뉴스:** 언론이 보도한 사실과 전망을 구분하세요. 같은 뉴스가 여러 매체에 실려도 독립적인 호재 여러 개는 아닙니다.
 

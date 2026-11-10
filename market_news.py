@@ -78,16 +78,27 @@ ISSUES = [
  ('기업 자금·지배구조', ('유상증자','전환사채','자사주','합병','인수','감자','거래정지'), '주식 수 변화·재무 건전성·지배구조 위험을 점검할 필요가 있습니다.', '공시 원문과 자금 사용 목적을 확인하세요.'),
 ]
 
+def _headline_core(title):
+    return re.sub(r'\s*[-–|]\s*[^-–|]+$', '', title or '').strip()
+
+
+def _headline_tokens(title):
+    # Similar titles from syndicated outlets should not count as independent events.
+    stop={'오늘','증시','주식','시장','관련','속보','뉴스','기자','대한','이후','이번','국내','미국','기업'}
+    return {x for x in re.findall(r'[가-힣]{2,}|[a-zA-Z]{3,}|\d+(?:\.\d+)?%', _headline_core(title).lower()) if x not in stop}
+
+
 def group_headlines(articles, max_groups=5):
-    """Group headlines into a few topics; avoid counting syndicated headlines as independent facts."""
+    """Group topic and near-duplicate headlines without claiming article-body verification."""
     groups=defaultdict(list)
-    seen=set()
+    tokens_seen=[]
     for article in articles:
-        title=article['title']
-        core=re.sub(r'\s*[-–|]\s*[^-–|]+$', '', title).strip()
-        norm=re.sub(r'[^가-힣a-z0-9]','',core.lower())
-        if norm in seen: continue
-        seen.add(norm)
+        title=article.get('title','')
+        tokens=_headline_tokens(title)
+        if not tokens: continue
+        duplicate=any(len(tokens & prev)/max(1,min(len(tokens),len(prev)))>=0.78 and len(tokens & prev)>=3 for prev in tokens_seen)
+        if duplicate: continue
+        tokens_seen.append(tokens)
         low=title.lower()
         matched=next((name for name,terms,*_ in ISSUES if any(term in low for term in terms)), '기타 종목·시장 소식')
         groups[matched].append(article)
@@ -108,7 +119,7 @@ def display_briefing(st, query, key, limit=25, company=False):
         impact=definition[2] if definition else '기업과 업종별로 영향이 달라 추가 확인이 필요합니다.'
         check=definition[3] if definition else '원문과 공식 발표 자료를 확인하세요.'
         st.markdown(f'**{name}** · 관련 기사 {len(items)}건')
-        st.write('**핵심 흐름(기사 제목 기준):** '+ ' / '.join(re.sub(r'\s*[-–|]\s*[^-–|]+$', '', a['title'])[:90] for a in items[:2]))
+        st.write('**핵심 흐름(기사 제목 기준):** '+ ' / '.join(_headline_core(a['title'])[:90] for a in items[:2]))
         st.write('**예상 영향(가능성):** '+impact)
         st.write('**투자 시 확인할 점:** '+check)
         with st.expander(f'근거 기사 {len(items)}건 · 출처와 발표 시각'):
@@ -234,10 +245,81 @@ def _filing_impact_hint(report_name):
     return '확인할 영향: 재무구조·실적·주식 수 변화 여부를 원문과 함께 점검.'
 
 
+SEC_MATERIAL_FORMS = {'8-K','10-Q','10-K','6-K','20-F','S-3','424B5','DEF 14A'}
+
+def _sec_recent(st, ticker):
+    """SEC official submission metadata only. No claims about filing body or market direction."""
+    symbol=(ticker or '').upper().strip()
+    if symbol.endswith(('.KS','.KQ')): return None, None
+    if not re.fullmatch(r'[A-Z][A-Z0-9.\-]{0,12}',symbol):
+        return None,'미국 종목코드를 정확하게 입력해야 SEC 공시를 조회할 수 있습니다.'
+    try: agent=str(st.secrets.get('SEC_USER_AGENT','')).strip()
+    except Exception: agent=''
+    if not agent or '@' not in agent:
+        return None,'SEC 공식 조회를 사용하려면 Secrets에 SEC_USER_AGENT를 등록하세요. 예: AIStockMaster contact@example.com (본인이 관리하는 연락처 사용)'
+    @st.cache_data(ttl=86400,show_spinner=False)
+    def tickers(ua):
+        req=Request('https://www.sec.gov/files/company_tickers.json',headers={'User-Agent':ua,'Accept-Encoding':'identity'})
+        with urlopen(req,timeout=12) as r:
+            import json
+            return json.loads(r.read(3_000_000))
+    @st.cache_data(ttl=3600,show_spinner=False)
+    def submissions(ua,cik):
+        import json
+        req=Request(f'https://data.sec.gov/submissions/CIK{cik:010d}.json',headers={'User-Agent':ua,'Accept-Encoding':'identity'})
+        with urlopen(req,timeout=12) as r: return json.loads(r.read(3_000_000))
+    try:
+        mapping=tickers(agent)
+        match=next((v for v in mapping.values() if str(v.get('ticker','')).upper()==symbol.replace('.','-')),None)
+        if not match: return None,'SEC 등록 종목코드를 찾지 못했습니다. 상장지와 종목코드를 확인하세요.'
+        cik=int(match['cik_str']); obj=submissions(agent,cik)
+        rec=obj.get('filings',{}).get('recent',{})
+        forms=rec.get('form',[]); dates=rec.get('filingDate',[]); acc=rec.get('accessionNumber',[]); docs=rec.get('primaryDocument',[])
+        today=datetime.now(timezone.utc).date(); out=[]
+        for form,date,accession,doc in zip(forms,dates,acc,docs):
+            try: age=(today-datetime.strptime(date,'%Y-%m-%d').date()).days
+            except ValueError: continue
+            if age<0 or age>90: continue
+            if form not in SEC_MATERIAL_FORMS: continue
+            accession_clean=accession.replace('-','')
+            out.append({'form':form,'date':date,'url':f'https://www.sec.gov/Archives/edgar/data/{cik}/{accession_clean}/{quote(doc)}'})
+            if len(out)>=3: break
+        return out,None
+    except (OSError,ValueError,KeyError,TypeError):
+        return None,'SEC 데이터 연결에 실패했습니다. 잠시 후 다시 확인하세요.'
+
+
+def _sec_form_explanation(form):
+    return {
+      '8-K':'미국 기업이 주요 사건을 수시로 보고하는 공시입니다. 구체적 내용과 영향은 원문 확인이 필요합니다.',
+      '6-K':'미국에 상장된 해외 기업의 수시 보고 자료입니다. 원문 내용 확인이 필요합니다.',
+      '10-Q':'분기 실적·재무상태를 보고하는 문서입니다. 매출·이익·현금흐름과 전분기 비교가 중요합니다.',
+      '10-K':'연간 사업·실적·위험 요인을 종합 보고하는 문서입니다.',
+      '20-F':'미국에 상장된 해외 기업의 연간 보고서입니다.',
+      'S-3':'증권 발행 등록 관련 문서입니다. 실제 발행 여부·규모는 추가 확인이 필요합니다.',
+      '424B5':'증권 발행 조건 관련 투자설명서입니다. 발행 규모·가격을 확인하세요.',
+      'DEF 14A':'주주총회 의결 안건과 경영진 보수 등 관련 문서입니다.'
+    }.get(form,'공식 문서의 세부 내용은 원문 확인이 필요합니다.')
+
 def display_company_brief(st,name,ticker,key):
     with st.expander('📰 최근 이슈 · 중요 공시 요약',expanded=False):
-        filings,error=_dart_recent(st,ticker)
-        st.markdown('**공식 중요 공시 (최근 45일)**')
+        is_korean=(ticker or '').upper().endswith(('.KS','.KQ'))
+        filings,error=_dart_recent(st,ticker) if is_korean else (None,None)
+        st.markdown('**국내 공식 중요 공시 (최근 45일)**' if is_korean else '**미국 SEC 공식 공시 (최근 90일)**')
+        if not is_korean:
+            sec_rows,sec_error=_sec_recent(st,ticker)
+            if sec_error: st.info(sec_error)
+            elif not sec_rows: st.info('선택 기간에 조회된 주요 SEC 서식이 없습니다. 공시가 전혀 없다는 뜻은 아닙니다.')
+            else:
+                for item in sec_rows:
+                    st.markdown(f"**{item['form']}** · 제출일 {item['date']}")
+                    st.write('**서식의 의미:** '+_sec_form_explanation(item['form']))
+                    st.caption('SEC에서 확인한 것은 서식 종류와 제출일입니다. 원문 본문 요약이나 호재·악재 판정이 아닙니다.')
+                    st.markdown(f"[SEC 공식 제출문서 확인]({item['url']})")
+            st.markdown('**관련 뉴스 핵심 흐름**')
+            display_briefing(st,ticker_query(name,ticker),key,limit=12,company=True)
+            st.caption('SEC·뉴스 정보는 기존 기술점수와 매수·목표·손절 가격에 자동 반영되지 않습니다.')
+            return
         if error: st.info(error)
         elif not filings: st.info('설정된 기간에 주요 유형 공시가 조회되지 않았습니다. 모든 공시가 없다는 의미는 아닙니다.')
         else:
@@ -246,6 +328,7 @@ def display_company_brief(st,name,ticker,key):
                 day=row.get('rcept_dt','')
                 receipt=str(row.get('rcept_no',''))
                 st.markdown(f"**{label}** · {day[:4]}-{day[4:6]}-{day[6:]}" )
+                if '정정' in label: st.warning('정정 공시입니다. 이전 공시와 변경된 항목을 원문에서 비교하세요.')
                 passages,document_error=_dart_document_passages(st,receipt)
                 if passages:
                     st.caption('공식 공시 원문에서 확인한 주요 문장 (자동 발췌 · 최대 3줄)')
@@ -256,7 +339,7 @@ def display_company_brief(st,name,ticker,key):
                 if receipt and re.fullmatch(r'\d{14}',receipt):
                     st.markdown(f'[이 공시의 공식 원문 확인](https://dart.fss.or.kr/dsaf001/main.do?rcpNo={receipt})')
                 if document_error: st.caption(document_error)
-        st.caption('공시 원문 문장은 자동 발췌이므로 표의 항목·단위·정정공시 여부를 원문에서 확인해야 합니다. 미국 기업의 공시 자동 요약은 아직 지원하지 않습니다.')
+        st.caption('표시된 공시 제목과 원문 발췌는 동일한 공시 접수번호를 기준으로 합니다. 본문 문장은 자동 발췌이므로 표의 항목·단위·정정공시 여부를 원문에서 확인해야 합니다. 미국 기업의 공시 자동 요약은 아직 지원하지 않습니다.')
         st.markdown('**관련 뉴스 핵심 흐름**')
         display_briefing(st,ticker_query(name,ticker),key,limit=12,company=True)
         st.caption('확인하지 않은 공시 내용을 사실처럼 생성하지 않습니다. 뉴스와 공시 정보는 기존 기술점수에 반영되지 않습니다.')
