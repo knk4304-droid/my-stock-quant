@@ -29,6 +29,28 @@ def rank(frame, period):
     d['추천 참고점수']=score.round(1)
     return d.sort_values('추천 참고점수',ascending=False)
 
+def score_guide(period):
+    """Plain-language explanation of the actual rank() formula; no invented score cutoffs."""
+    if period.startswith('단기'):
+        formula = '기술 점수 × 0.50 + 최근 5일 수익률(%, -25~25로 제한) × 0.80 - 연율 변동성(0~3으로 제한) × 12'
+    elif period.startswith('스윙'):
+        formula = '기술 점수 × 0.60 + 최근 5일 수익률(%, -25~25로 제한) × 0.35 + 최근 20일 수익률(%, -40~40으로 제한) × 0.25 - 연율 변동성(0~3으로 제한) × 10'
+    elif period.startswith('중기'):
+        formula = '기술 점수 × 0.70 + 최근 20일 수익률(%, -40~40으로 제한) × 0.35 - 연율 변동성(0~3으로 제한) × 10'
+    else:
+        formula = '기술 점수 × 0.80 + 최근 20일 수익률(%, -40~40으로 제한) × 0.15 - 연율 변동성(0~3으로 제한) × 18'
+    return formula
+
+
+def show_score_guide(st, period):
+    with st.expander('ⓘ 추천 참고점수 읽는 법 · 점수 범위와 예시', expanded=False):
+        st.markdown('**점수의 범위:** 기술 점수는 0~100점이지만, 추천 참고점수는 수익률 가산·변동성 감점을 거친 **순위용 계산값**이어서 0~100으로 제한되지 않습니다. 음수도 가능하며, 80점이 상승 확률 80%를 뜻하지 않습니다.')
+        st.markdown('**높고 낮음의 의미:** 같은 투자 기간·같은 조회 조건에서 점수가 높은 종목이 계산상 우선순위에 있습니다. 70점 이상이면 무조건 매수, 50점 미만이면 무조건 매도 같은 검증된 절대 기준은 없습니다.')
+        st.caption(f'현재 선택 기간의 계산식: {score_guide(period)}')
+        st.markdown('**예시(스윙):** 기술 점수 80점, 최근 5일 수익률 +4%, 최근 20일 수익률 +8%, 연율 변동성 0.4라면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = **47.4점**입니다. 점수가 47.4점이라고 나쁜 종목이라는 뜻은 아니며, 같은 기준으로 계산한 다른 후보와 비교해야 합니다.')
+        st.caption('주의: 수익률·변동성 값이 누락된 경우 현재 계산식에서는 기본값을 사용합니다. 따라서 누락 데이터가 있는 종목의 점수는 신뢰도가 떨어질 수 있습니다. 점수만으로 매수하지 말고 시세 기준일·공시·손절 위험을 함께 확인하세요.')
+
+
 def resolve_symbol(raw):
     """Resolve exact company name/code against saved catalog without a network call."""
     raw=raw.strip()
@@ -108,7 +130,7 @@ def show(st):
         '저장된 분석 종목':'과거 자동 분석에서 저장된 결과 행 수입니다. 전체 상장종목 수나 오늘 분석한 수와 다릅니다.',
         '최근 7일 분석':'최근 7일 안에 분석한 서로 다른 종목 수입니다. 분석이 성공했다고 수익성이 검증된 것은 아닙니다.',
         '최근 실행 성공':'가장 최근 자동 실행에서 조회에 성공한 종목 수 / 조회를 시도한 종목 수입니다.',
-        '추천 참고점수':'선택한 투자 기간의 가격 흐름 등을 기준으로 순위를 정하는 참고 점수입니다. 상승 확률이나 실제 수익률이 아닙니다.',
+        '추천 참고점수':'기간별 순위를 정하는 상대 비교용 점수입니다. 기술 점수(0~100)에 최근 수익률을 더하고 변동성에 따른 감점을 적용하므로 0~100점으로 제한되지 않으며 음수도 가능합니다. 높을수록 현재 계산 규칙상 상위에 있지만 상승 확률·예상 수익률은 아닙니다.',
         '기술 점수':'이동평균·추세·거래량·위험 등의 규칙 기반 평가 점수입니다. 추천 참고점수와 산식 및 목적이 다릅니다.',
         '매매 판단':'과거 기술 지표에 따른 관찰 의견으로 매수·매도 주문 지시가 아닙니다.',
         '손익비':'1차 매수가를 기준으로 예상 상승폭을 예상 하락폭으로 나눈 값입니다. 수익 실현 가능성은 반영하지 않습니다.',
@@ -217,6 +239,7 @@ def show(st):
             st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
         else:
             st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
+        show_score_guide(st, period)
         with st.expander('🔎 추천 종목 분석', expanded=False):
             st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
             top = ranked.head(10) if not ranked.empty else pd.DataFrame()
@@ -467,6 +490,7 @@ def show(st):
                     ranked_one=rank(matching,search_period).iloc[0]
                     st.markdown('**① 저장된 자동 분석 결과와 추천 참고점수**')
                     m1,m2,m3=st.columns(3)
+                    show_score_guide(st, period)
                     m1.metric('추천 참고점수',f"{ranked_one['추천 참고점수']:.1f}",help=glossary['추천 참고점수'])
                     m2.metric('저장된 기술 점수',f"{float(latest['score']):.1f}" if pd.notna(latest.get('score')) else '미확인',help='자동 배치가 저장한 기술 점수입니다. 아래 실시간 요청 기술 점수와 기준 시점·산식이 달라질 수 있습니다.')
                     m3.metric('가격 기준일',str(latest.get('asof_price','-')))
