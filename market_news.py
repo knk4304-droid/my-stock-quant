@@ -264,6 +264,46 @@ def _filing_impact_hint(report_name):
 
 SEC_MATERIAL_FORMS = {'8-K','10-Q','10-K','6-K','20-F','S-3','424B5','DEF 14A'}
 
+# SEC data endpoints are subject to IP-based access policies. Cache successful
+# responses across Streamlit sessions and use a short-lived negative cache for
+# 403/429 responses to avoid repeatedly hitting a blocked endpoint.
+_SEC_BLOCKED = {}
+
+def _sec_get_json(st, url, agent, ttl=21600, max_bytes=12_000_000):
+    import time
+    from urllib.error import HTTPError
+    host='data.sec.gov' if 'data.sec.gov' in url else 'www.sec.gov'
+    until=_SEC_BLOCKED.get(host,0)
+    if until>time.monotonic():
+        raise RuntimeError('SEC_ACCESS_RESTRICTED')
+    @st.cache_data(ttl=ttl, show_spinner=False)
+    def _fetch(endpoint, user_agent, size_limit):
+        req=Request(endpoint, headers={
+            'User-Agent':user_agent, 'Accept':'application/json',
+            'Accept-Encoding':'identity', 'Host':host})
+        with urlopen(req,timeout=15) as response:
+            return json.loads(response.read(size_limit))
+    try:
+        return _fetch(url,agent,max_bytes)
+    except HTTPError as exc:
+        if exc.code in (403,429):
+            _SEC_BLOCKED[host]=time.monotonic()+300
+        raise
+
+def _sec_lookup_company(st, symbol, agent):
+    mapping=_sec_get_json(st,'https://www.sec.gov/files/company_tickers.json',agent,ttl=86400,max_bytes=3_000_000)
+    normalized=symbol.replace('.','-')
+    return next((v for v in mapping.values() if str(v.get('ticker','')).upper()==normalized),None)
+
+def _sec_failure_message(exc):
+    if isinstance(exc,HTTPError) and exc.code in (403,429):
+        return 'SEC 서버가 조회를 제한하고 있습니다. 현재 공시·재무정보를 확인할 수 없습니다. 잠시 후 다시 시도하세요.'
+    if isinstance(exc,RuntimeError) and str(exc)=='SEC_ACCESS_RESTRICTED':
+        return 'SEC 서버 접근 제한이 감지되어 반복 요청을 잠시 중단했습니다. 약 5분 후 다시 시도하세요.'
+    if isinstance(exc,HTTPError):
+        return f'SEC 조회 실패(HTTP {exc.code}). 공시가 없다는 의미는 아닙니다.'
+    return 'SEC 연결 또는 응답을 확인하지 못했습니다. 공시가 없다는 의미는 아닙니다.'
+
 def _sec_recent(st, ticker):
     """SEC official submission metadata only. No claims about filing body or market direction."""
     symbol=(ticker or '').upper().strip()
@@ -274,22 +314,11 @@ def _sec_recent(st, ticker):
     except Exception: agent=''
     if not agent or '@' not in agent:
         return None,'SEC 공식 조회를 사용하려면 Secrets에 SEC_USER_AGENT를 등록하세요. 예: AIStockMaster contact@example.com (본인이 관리하는 연락처 사용)'
-    @st.cache_data(ttl=86400,show_spinner=False)
-    def tickers(ua):
-        req=Request('https://www.sec.gov/files/company_tickers.json',headers={'User-Agent':ua,'Accept-Encoding':'identity'})
-        with urlopen(req,timeout=12) as r:
-            import json
-            return json.loads(r.read(3_000_000))
-    @st.cache_data(ttl=3600,show_spinner=False)
-    def submissions(ua,cik):
-        import json
-        req=Request(f'https://data.sec.gov/submissions/CIK{cik:010d}.json',headers={'User-Agent':ua,'Accept-Encoding':'identity'})
-        with urlopen(req,timeout=12) as r: return json.loads(r.read(3_000_000))
     try:
-        mapping=tickers(agent)
-        match=next((v for v in mapping.values() if str(v.get('ticker','')).upper()==symbol.replace('.','-')),None)
+        match=_sec_lookup_company(st,symbol,agent)
         if not match: return None,'SEC 등록 종목코드를 찾지 못했습니다. 상장지와 종목코드를 확인하세요.'
-        cik=int(match['cik_str']); obj=submissions(agent,cik)
+        cik=int(match['cik_str'])
+        obj=_sec_get_json(st,f'https://data.sec.gov/submissions/CIK{cik:010d}.json',agent,ttl=3600,max_bytes=3_000_000)
         rec=obj.get('filings',{}).get('recent',{})
         forms=rec.get('form',[]); dates=rec.get('filingDate',[]); acc=rec.get('accessionNumber',[]); docs=rec.get('primaryDocument',[])
         today=datetime.now(timezone.utc).date(); out=[]
@@ -302,12 +331,8 @@ def _sec_recent(st, ticker):
             out.append({'form':form,'date':date,'url':f'https://www.sec.gov/Archives/edgar/data/{cik}/{accession_clean}/{quote(doc)}'})
             if len(out)>=3: break
         return out,None
-    except HTTPError as exc:
-        if exc.code in (403,429):
-            return None, f'SEC 요청 제한(HTTP {exc.code})입니다. User-Agent 연락처, 호출 빈도, SEC 서버 접근 정책을 확인하고 잠시 후 다시 시도하세요.'
-        return None, f'SEC 서버 응답 오류(HTTP {exc.code})입니다. 잠시 후 다시 시도하세요.'
-    except (OSError,ValueError,KeyError,TypeError) as exc:
-        return None, f'SEC 연결 또는 응답 해석에 실패했습니다({type(exc).__name__}). 잠시 후 다시 확인하세요.'
+    except (HTTPError,RuntimeError,OSError,ValueError,KeyError,TypeError) as exc:
+        return None,_sec_failure_message(exc)
 
 
 def _sec_companyfacts(st, ticker):
@@ -316,20 +341,11 @@ def _sec_companyfacts(st, ticker):
     try: agent=str(st.secrets.get('SEC_USER_AGENT','')).strip()
     except Exception: agent=''
     if '@' not in agent: return [], 'SEC_USER_AGENT 설정이 필요합니다.'
-    @st.cache_data(ttl=86400, show_spinner=False)
-    def lookup(ua):
-        import json
-        req=Request('https://www.sec.gov/files/company_tickers.json',headers={'User-Agent':ua,'Accept':'application/json','Accept-Encoding':'identity'})
-        with urlopen(req,timeout=15) as r: return json.loads(r.read(3_000_000))
-    @st.cache_data(ttl=21600, show_spinner=False)
-    def facts(ua,cik):
-        import json
-        req=Request(f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json',headers={'User-Agent':ua,'Accept':'application/json','Accept-Encoding':'identity'})
-        with urlopen(req,timeout=15) as r: return json.loads(r.read(10_000_000))
     try:
-        company=next((v for v in lookup(agent).values() if str(v.get('ticker','')).upper()==symbol.replace('.','-')),None)
+        company=_sec_lookup_company(st,symbol,agent)
         if not company: return [], 'SEC에서 종목코드에 대응하는 기업을 찾지 못했습니다.'
-        data=facts(agent,int(company['cik_str']))
+        cik=int(company['cik_str'])
+        data=_sec_get_json(st,f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json',agent,ttl=21600)
         usgaap=data.get('facts',{}).get('us-gaap',{})
         fields=[('매출액','RevenueFromContractWithCustomerExcludingAssessedTax'),('매출액','Revenues'),('순이익','NetIncomeLoss'),('영업현금흐름','NetCashProvidedByUsedInOperatingActivities')]
         result=[]; used=set()
@@ -370,10 +386,8 @@ def _sec_companyfacts(st, ticker):
                            'yoy_pct':comparison})
             used.add(label)
         return result,None
-    except HTTPError as exc:
-        return [], f'SEC 재무 데이터 요청 제한 또는 오류(HTTP {exc.code}). 설정·호출 빈도를 확인하세요.'
-    except (OSError,ValueError,TypeError,KeyError) as exc:
-        return [], f'SEC 재무 데이터를 확인하지 못했습니다({type(exc).__name__}).'
+    except (HTTPError,RuntimeError,OSError,ValueError,TypeError,KeyError) as exc:
+        return [],_sec_failure_message(exc)
 
 
 def _format_usd_amount(value):
