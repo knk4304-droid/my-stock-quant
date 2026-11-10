@@ -1,9 +1,9 @@
 {
   "market_cursors": {
-    "KOSDAQ": 378,
-    "KOSPI": 378,
-    "NASDAQ": 372,
-    "NYSE/OTHER": 372
+    "KOSDAQ": 441,
+    "KOSPI": 441,
+    "NASDAQ": 434,
+    "NYSE/OTHER": 434
   },
   "catalog_by_market": {
     "NYSE/OTHER": 7648,
@@ -14,14 +14,14 @@
   "scanned_by_market": {
     "KOSPI": 63,
     "KOSDAQ": 62,
-    "NYSE/OTHER": 59,
-    "NASDAQ": 55
+    "NYSE/OTHER": 55,
+    "NASDAQ": 54
   },
   "catalog_size": 15875,
   "attempted": 250,
   "rotation_count": 250,
   "revisit_count": 0,
-  "succeeded": 239,
-  "failed": 11,
-  "updated_utc": "2026-11-09T11:39:18.622777+00:00"
+  "succeeded": 234,
+  "failed": 16,
+  "updated_utc": "2026-11-10T00:00:57.003700+00:00"
 }
