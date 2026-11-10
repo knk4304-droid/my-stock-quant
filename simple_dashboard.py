@@ -44,7 +44,25 @@ def resolve_symbol(raw):
     return raw.upper()
 
 from functools import lru_cache
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+KST = timezone(timedelta(hours=9))
+
+def format_kst(value):
+    """Convert stored ISO-8601 UTC timestamps to readable Korea local time."""
+    if value is None or pd.isna(value) or not str(value).strip():
+        return "확인 불가"
+    try:
+        dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local = dt.astimezone(KST)
+        ampm = "오전" if local.hour < 12 else "오후"
+        hour = local.hour % 12 or 12
+        return f"{local.year}년 {local.month}월 {local.day}일 {ampm} {hour}시 {local.minute:02d}분 {local.second:02d}초"
+    except (TypeError, ValueError, OverflowError):
+        return "확인 불가"
+
 
 @lru_cache(maxsize=512)
 def _cached_report_by_day(ticker, day):
@@ -101,6 +119,23 @@ def show(st):
         'MACD 히스토그램':'추세 모멘텀 변화를 나타내는 지표입니다. 단독으로 매매를 결정하면 안 됩니다.',
         '거래량/20일 평균':'최근 거래량을 20거래일 평균 거래량으로 나눈 배수입니다.',
         '슬리피지':'주문 당시 예상한 가격과 실제 체결 가격 사이의 차이입니다.',
+        '추천 기록 시각':'프로그램이 추천 내용을 저장한 시각입니다. 한국시간으로 표시하며, 실제로 주식을 산 시간은 아닙니다.',
+        '투자 기간':'단기·스윙·중기·장기 등 분석 목적에 따라 나눈 구분입니다. 그 기간에 반드시 매도해야 한다는 뜻은 아닙니다.',
+        '종목명':'주식이나 ETF의 이름입니다. 같은 종목도 여러 번 추천 기록에 등장할 수 있습니다.',
+        '종목코드':'종목을 구별하는 고유 기호입니다. 예: 삼성전자 005930.KS, 엔비디아 NVDA.',
+        '이후 관측일':'추천 기준일 이후 가격을 다시 확인한 거래일입니다. 달력 날짜와 거래일은 다릅니다.',
+        '이후 종가':'이후 관측일의 장 마감 가격입니다. 실제 매도 체결 가격이 아닙니다.',
+        '기간':'추천 이후 1·5·20거래일 중 어느 시점의 성과를 확인하는지 나타냅니다. 휴장일은 거래일에 포함하지 않습니다.',
+        '평균 수익률(%)':'관측된 추천들의 기준 종가 대비 이후 종가 변화율을 평균한 값입니다. 실제 계좌 수익률이 아닙니다.',
+        '95% 하한':'탐색적 95% 구간의 아래쪽 경계입니다. 관측 표본이 충분해야 계산되며, 최악의 손실을 뜻하지 않습니다.',
+        '95% 상한':'탐색적 95% 구간의 위쪽 경계입니다. 미래 최대 수익을 뜻하지 않습니다.',
+        '추천 기록':'해당 투자 기간으로 저장된 추천 건수입니다. 같은 종목이 여러 날짜에 중복될 수 있습니다.',
+        '1일 확인':'추천 후 1거래일 가격을 확보한 기록 수입니다. 달력상 다음 날과 다를 수 있습니다.',
+        '5일 확인':'추천 후 5거래일 가격을 확보한 기록 수입니다. 아직 5거래일이 지나지 않았다면 0건일 수 있습니다.',
+        '20일 확인':'추천 후 20거래일 가격을 확보한 기록 수입니다. 아직 20거래일이 지나지 않았다면 0건일 수 있습니다.',
+        '1일 평균(%)':'1거래일 후 가격이 확인된 추천들의 평균 가격 변화율입니다. 실제 매매 수익률이 아닙니다.',
+        '5일 평균(%)':'5거래일 후 가격이 확인된 추천들의 평균 가격 변화율입니다. 실제 매매 수익률이 아닙니다.',
+        '20일 평균(%)':'20거래일 후 가격이 확인된 추천들의 평균 가격 변화율입니다. 실제 매매 수익률이 아닙니다.',
     }
     def explained_column(label, *, numeric=False, fmt=None, width=None, key=None):
         title = label + (' ⓘ' if label in glossary else '')
@@ -303,15 +338,36 @@ def show(st):
                         b.metric('이후 가격 확인',f'{len(done):,}건',help=glossary['이후 가격 확인'])
                         c.metric('관측 결과 평균',f"{done.observed_return_pct.mean():+.2f}%" if len(done) else '자료 없음',help=glossary['관측 결과 평균'])
                         st.caption('같은 종목이 여러 날짜·투자 기간에 중복 기록될 수 있습니다. 평균은 투자 수익률이나 전략 적중률이 아닙니다.')
-                        st.dataframe(hist.sort_values('recorded_at_utc',ascending=False).head(100).rename(columns={
-                            'recorded_at_utc':'추천 기록 시각','period':'투자 기간','ticker':'종목코드',
+                        with st.expander('❓ 위의 추천 건수·가격 확인·평균 수익률은 무엇을 뜻하나요? (쉬운 설명)', expanded=False):
+                            st.markdown('''**① 누적 추천 기록:** 프로그램이 추천을 저장한 전체 횟수입니다. 같은 종목이 다른 날 또는 다른 투자 기간에 추천되면 각각 1건으로 셉니다.
+
+**② 이후 가격 확인:** 일반 관측일·경과일·관측 수익률이 모두 저장되어 계산 가능한 기록 수입니다. 아래의 **1·5·20거래일별 확인 건수와는 다른 집계**입니다.
+
+**③ 관측 결과 평균:** 위 ②의 기록들만 평균한 가격 변화율입니다. 2건만 확인됐다면 그 2건의 평균일 뿐이며 전체 추천 성과가 아닙니다.
+
+**④ 1·5·20거래일 평균:** 추천 기준 종가와 각 거래일 뒤 종가를 비교합니다. 1거래일은 다음 *거래일*이고, 주말·휴장일은 건너뜁니다.
+
+**⑤ 통계적 신뢰성 표:** 중복·이상 기록을 별도 기준으로 검토한 **유효 추천**만 사용합니다. 따라서 위의 96건이나 2건과 표의 숫자가 달라질 수 있습니다.
+
+**주의:** 어느 수치도 실제 주문 체결, 거래비용, 손절 실행을 반영한 계좌 수익률이 아닙니다.''')
+                        st.info('💡 보는 순서: 전체 추천 건수 → 1·5·20거래일 확인 건수 → 통계적 신뢰성 판정. 자료 부족이면 추천 전략이 검증됐다고 해석하지 마세요.')
+                        display_hist = hist.sort_values('recorded_at_utc',ascending=False).head(100).copy()
+                        display_hist['recorded_at_utc'] = display_hist['recorded_at_utc'].map(format_kst)
+                        st.dataframe(display_hist.rename(columns={
+                            'recorded_at_utc':'추천 기록 시각(한국시간)','period':'투자 기간','ticker':'종목코드',
                             'name':'종목명','entry_date':'추천 기준일','entry_close':'기준 종가',
                             'observed_date':'이후 관측일','observed_close':'이후 종가',
                             'elapsed_days':'경과 일수','observed_return_pct':'관측 수익률(%)'
-                        })[['추천 기록 시각','투자 기간','종목명','종목코드','추천 기준일','기준 종가',
+                        })[['추천 기록 시각(한국시간)','투자 기간','종목명','종목코드','추천 기준일','기준 종가',
                              '이후 관측일','이후 종가','경과 일수','관측 수익률(%)']],
-                            hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['추천 기준일','기준 종가','경과 일수','관측 수익률(%)']})
+                            hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['투자 기간','종목명','종목코드','추천 기준일','기준 종가','이후 관측일','이후 종가','경과 일수','관측 수익률(%)']} | {'추천 기록 시각(한국시간)':st.column_config.TextColumn('추천 기록 시각(한국시간) ⓘ',help=glossary['추천 기록 시각'])})
                         st.markdown('**추천 이후 1·5·20거래일 성과 (확인된 자료만)**')
+                        with st.expander('❓ 1·5·20거래일 성과는 어떻게 읽나요?', expanded=False):
+                            st.markdown('''**예시:** 월요일 종가 10,000원에 추천된 종목이 화요일 종가 10,200원이라면 1거래일 가격 변화율은 +2%입니다. 그 다음 5번째 거래일 종가가 10,500원이면 5거래일 가격 변화율은 +5%입니다.
+
+**예: 확인 70/96건:** 전체 추천 기록 96건 중 1거래일 뒤 종가를 확인한 기록이 70건이라는 뜻입니다. **미확인**은 실패나 손실을 뜻하지 않습니다.
+
+**주의:** 아래의 1거래일 평균은 상단 '관측 결과 평균'과 집계에 사용하는 칸이 다르므로 숫자가 다를 수 있습니다.''')
                         for h in (1, 5, 20):
                             col=f'return_{h}d_pct'
                             if col not in hist.columns: hist[col]=float('nan')
@@ -325,6 +381,24 @@ def show(st):
                         from statistical_validation import report as statistical_report
                         stats=statistical_report(history_file)
                         st.markdown('**통계적 신뢰성 점검**')
+                        with st.expander('❓ 통계적 신뢰성 표의 숫자와 자료 부족 판정을 쉽게 이해하기', expanded=False):
+                            st.markdown('''**유효 추천:** 중복·오류 등 검증 기준을 적용한 뒤 통계 계산에 사용할 수 있는 추천 건수입니다.
+
+**관측 완료:** 유효 추천 중 해당 거래일의 이후 종가가 확보된 건수입니다.
+
+**관측률:** 관측 완료 ÷ 유효 추천 × 100입니다. 예: 44 ÷ 64 = 68.75%, 화면에는 약 68.8%로 표시됩니다.
+
+**서로 다른 추천일:** 추천한 날짜의 가짓수입니다. 같은 날 50종목을 추천해도 추천일은 1일입니다.
+
+**서로 다른 종목:** 실제로 몇 종류의 종목을 평가했는지 보여줍니다.
+
+**중앙값:** 결과를 작은 순서대로 정렬했을 때 가운데 값입니다. 극단적인 수익률의 영향을 평균보다 덜 받습니다.
+
+**상승 비율:** 관측 종가가 추천 기준 종가보다 높았던 기록의 비율입니다. 실제 매매 승률이 아닙니다.
+
+**95% 탐색구간:** 데이터가 충분할 때 평균의 불확실성을 살펴보는 통계 구간입니다. 미래 수익이 이 안에 들어간다는 보장이 아닙니다.
+
+**자료 부족:** 현재 표본이나 날짜·종목의 다양성, 관측률이 검증 기준에 미달한 상태입니다. 수익성이 없다는 판정도, 수익성이 입증됐다는 판정도 아닙니다.''')
                         if stats['issues']:
                             st.error('데이터 검증 문제: ' + '; '.join(stats['issues'][:5]))
                         stat_rows=[]
@@ -336,7 +410,7 @@ def show(st):
                                 '중앙값(%)':info.get('median_pct'),'상승 비율(%)':info.get('win_rate_pct'),
                                 '95% 탐색구간 하한(%)':info.get('ci_low_pct'),
                                 '95% 탐색구간 상한(%)':info.get('ci_high_pct')})
-                        st.dataframe(pd.DataFrame(stat_rows),hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['판정','유효 추천','관측 완료','관측률(%)','서로 다른 추천일','서로 다른 종목','중앙값(%)','상승 비율(%)']} | {'95% 탐색구간 하한(%)':st.column_config.NumberColumn('95% 하한 ⓘ',help=glossary['95% 탐색구간']),'95% 탐색구간 상한(%)':st.column_config.NumberColumn('95% 상한 ⓘ',help=glossary['95% 탐색구간'])})
+                        st.dataframe(pd.DataFrame(stat_rows),hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['기간','판정','유효 추천','관측 완료','관측률(%)','서로 다른 추천일','서로 다른 종목','평균 수익률(%)','중앙값(%)','상승 비율(%)']} | {'95% 탐색구간 하한(%)':st.column_config.NumberColumn('95% 하한 ⓘ',help=glossary['95% 하한']),'95% 탐색구간 상한(%)':st.column_config.NumberColumn('95% 상한 ⓘ',help=glossary['95% 상한'])})
                         st.caption('30건 이상·추천일 10일 이상·서로 다른 종목 10개 이상·관측률 70% 이상인 경우에만 날짜 단위 재표집으로 탐색적 95% 구간을 계산합니다. 추천 간 상관, 시장 국면, 거래비용, 데이터 누락 때문에 통계적 우위의 증명은 아닙니다.')
                         periods=[]
                         for period_name, group in hist.groupby('period',dropna=False):
@@ -346,7 +420,15 @@ def show(st):
                                 item[f'{h}일 확인']=len(vals)
                                 item[f'{h}일 평균(%)']=round(vals.mean(),2) if len(vals) else None
                             periods.append(item)
-                        st.dataframe(pd.DataFrame(periods),hide_index=True,use_container_width=True, column_config={'추천 기록':explained_column('누적 추천 기록',numeric=True)})
+                        with st.expander('❓ 단기·스윙·중기·장기별 성과 표 읽는 법', expanded=False):
+                            st.markdown('''**추천 기록:** 해당 기간으로 저장된 전체 추천 횟수입니다.
+
+**1일·5일·20일 확인:** 각 거래일 뒤 종가를 확인한 기록 수입니다.
+
+**1일·5일·20일 평균:** 해당 기간으로 추천된 종목의 각 관측 시점 평균 가격 변화율입니다.
+
+**가상 예시:** 스윙 추천 22건 중 1일 확인 16건, 1일 평균 +1.26%라면, 16건의 다음 거래일 종가가 추천 기준 종가 대비 평균 1.26% 높았다는 뜻입니다. 22건 모두 수익을 냈다는 뜻은 아닙니다.''')
+                        st.dataframe(pd.DataFrame(periods),hide_index=True,use_container_width=True, column_config={k:explained_column(k,numeric=k=='추천 기록') for k in ['투자 기간','추천 기록','1일 확인','1일 평균(%)','5일 확인','5일 평균(%)','20일 확인','20일 평균(%)']})
                         st.caption('거래일은 해당 종목 거래소의 실제 거래 세션 기준입니다. 거래 수수료·세금·슬리피지는 제외되며, 추천 기준 종가에 실제로 매수했다고 가정할 수 없습니다.')
                         st.warning('관측 가능한 추천만 평균에 포함되어 선택 편향이 있을 수 있습니다. 장중·장마감 시차, 데이터 누락 및 자동 수집 한계가 있으며, 미래 수익을 보장하거나 매매 적중률을 뜻하지 않습니다.')
                 except (OSError,ValueError,KeyError) as exc:
@@ -367,7 +449,8 @@ def show(st):
                         keys=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
                         st.dataframe(pd.DataFrame([{'항목':k,'가격':result[k]} for k in keys]),hide_index=True,use_container_width=True)
     with st.expander('⚙️ 운영 상태 · 분석 범위와 점수 설명'):
-        st.write(f"마지막 자동 분석(UTC): {state.get('updated_utc','확인 불가')}")
+        st.write(f"마지막 자동 분석 (한국시간): {format_kst(state.get('updated_utc'))}")
+        st.caption('UTC는 세계 표준시이며 한국시간은 UTC보다 9시간 빠릅니다. 예: 00:00 UTC → 같은 날 오전 9시 (한국시간). 이 시각은 자동 분석 결과 저장 시각으로, 주식시장의 실시간 가격 갱신 시각은 아닙니다.')
         st.write(f"검색 가능한 종목 목록: {state.get('catalog_size',0):,}개 · 최근 조회 시도: {state.get('attempted',0):,}개")
         st.write(f"최근 조회 실패: {state.get('failed',0):,}개 · 누적 저장 결과: {len(scores):,}개")
         st.caption('목록 등록, 분석 성공, 최근 데이터 확보는 서로 다른 개념입니다. 현재 점수는 과거 가격 지표의 규칙 기반 평가이며 성과 검증과 별도입니다.')
