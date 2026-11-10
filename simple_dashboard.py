@@ -173,7 +173,6 @@ def show(st):
         with c1: period=st.selectbox('투자 기간',PERIODS,index=1,help='단기·스윙·중기 등 추천 순위를 계산할 기간입니다. 투자 기간별 추천 참고점수가 달라질 수 있습니다.')
         with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
         with c3: theme=st.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
-        query=st.text_input('종목 찾기 (선택)',placeholder='삼성전자 / 005930 / NVDA')
         view=fresh.copy()
         if market=='한국 주식': view=view[view.market.isin(['KOSPI','KOSDAQ']) & view.asset_type.eq('STOCK')]
         elif market=='미국 주식': view=view[view.market.isin(['NASDAQ','NYSE/OTHER']) & view.asset_type.eq('STOCK')]
@@ -195,9 +194,6 @@ def show(st):
         if theme!='전체':
             view=view[view['name'].fillna('').astype(str).str.contains(keywords[theme],case=False,regex=True)]
             st.caption('테마는 현재 종목명 키워드로 임시 분류합니다. 정확한 업종·테마 분류는 추후 별도 데이터로 보강해야 합니다.')
-        if query.strip():
-            mask=view['name'].fillna('').astype(str).str.contains(query.strip(),case=False,regex=False) | view['ticker'].fillna('').astype(str).str.contains(query.strip(),case=False,regex=False)
-            view=view[mask]
         ranked=rank(view,period) if not view.empty else view
         st.caption(f'최근 7일 데이터에서 조건에 맞는 종목 {len(ranked):,}개 · 상위 10개 표시')
         cols={'name':'종목명','ticker':'종목코드','market':'시장','score':'기술 점수','return_5d_pct':'최근 5일(%)','return_20d_pct':'최근 20일(%)','asof_price':'가격 기준일'}
@@ -434,20 +430,76 @@ def show(st):
                 except (OSError,ValueError,KeyError) as exc:
                     st.warning(f'추천 기록 파일을 읽지 못했습니다: {exc}')
     with watchlist_tab:
-        with st.expander('관심종목 분석'):
-            st.caption('상위 10종목 외의 종목도 조회할 수 있습니다. 예: 삼성전자, 005930.KS, NVDA')
-            symbol=st.text_input('종목명 또는 코드',placeholder='삼성전자 / 005930.KS / NVDA',key='simple_ticker')
-            if st.button('선택 종목 분석'):
-                if not symbol.strip():
-                    st.warning('종목명을 입력해 주세요.')
+        st.subheader('관심종목 통합 분석')
+        st.caption('종목명 또는 종목코드로 검색하면 추천 참고점수와 기술 분석·매수/목표/손절 가격을 한 화면에서 확인할 수 있습니다.')
+        st.info('💡 테마별 추천은 후보를 찾는 메뉴이고, 이곳은 특정 종목을 자세히 살펴보는 메뉴입니다. 추천 참고점수와 기술 점수는 계산 목적과 산식이 서로 다릅니다.')
+        search_period=st.selectbox('분석할 투자 기간', PERIODS, index=1, key='unified_search_period',
+            help='추천 참고점수는 선택한 투자 기간에 따라 달라집니다. 기술 점수는 가격 차트의 별도 규칙 기반 점수입니다.')
+        symbol=st.text_input('종목명 또는 코드',placeholder='삼성전자 / 005930.KS / NVDA',key='simple_ticker')
+        if st.button('🔎 선택 종목 통합 분석', type='primary', key='unified_analyze'):
+            if not symbol.strip():
+                st.warning('종목명이나 코드를 입력해 주세요.')
+            else:
+                ticker=resolve_symbol(symbol)
+                # A single technical-report function is used for both recommendation details
+                # and individual analysis, preventing duplicate or divergent price scenarios.
+                result=cached_report(ticker)
+                st.session_state['unified_report']={'ticker':ticker,'report':result,'period':search_period}
+        stored=st.session_state.get('unified_report',{})
+        if stored and symbol.strip() and stored.get('ticker')==resolve_symbol(symbol):
+            result=stored.get('report',{})
+            ticker=stored['ticker']
+            if not isinstance(result,dict) or result.get('error'):
+                st.warning(result.get('error','분석 결과를 불러오지 못했습니다.') if isinstance(result,dict) else '분석 결과 형식이 올바르지 않습니다.')
+            else:
+                if stored.get('period')!=search_period:
+                    st.caption('투자 기간이 변경되었습니다. 추천 참고점수는 새 기간으로 계산되며 기술 분석 가격은 기존 조회 결과를 사용합니다.')
+                st.success(f"{result.get('조회 티커',ticker)} · {result.get('종합 의견','관찰')} · 기술 분석 점수 {result.get('종합 점수(100)','-')}점/100점")
+                matching=fresh[fresh['ticker'].fillna('').astype(str).str.upper().eq(ticker.upper())]
+                if not matching.empty:
+                    latest=matching.sort_values('scanned_at_utc').iloc[-1]
+                    ranked_one=rank(matching,search_period).iloc[0]
+                    st.markdown('**① 저장된 자동 분석 결과와 추천 참고점수**')
+                    m1,m2,m3=st.columns(3)
+                    m1.metric('추천 참고점수',f"{ranked_one['추천 참고점수']:.1f}",help=glossary['추천 참고점수'])
+                    m2.metric('저장된 기술 점수',f"{float(latest['score']):.1f}" if pd.notna(latest.get('score')) else '미확인',help='자동 배치가 저장한 기술 점수입니다. 아래 실시간 요청 기술 점수와 기준 시점·산식이 달라질 수 있습니다.')
+                    m3.metric('가격 기준일',str(latest.get('asof_price','-')))
+                    st.caption('추천 참고점수는 저장된 자동 분석의 기간별 순위용 점수입니다. 아래 상세 기술 점수와 동일한 숫자가 아닙니다. 기준일·계산식이 다를 수 있습니다.')
                 else:
-                    result=cached_report(resolve_symbol(symbol))
-                    if 'error' in result:
-                        st.warning(result['error'])
-                    else:
-                        st.success(f"{result['조회 티커']} · {result['종합 의견']} · 기술 점수 {result['종합 점수(100)']}점")
-                        keys=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
-                        st.dataframe(pd.DataFrame([{'항목':k,'가격':result[k]} for k in keys]),hide_index=True,use_container_width=True)
+                    st.info('최근 7일 저장된 자동 분석 결과에 이 종목이 없어 추천 참고점수는 표시하지 않습니다. 아래 개별 기술 분석은 계속 확인할 수 있습니다.')
+                st.markdown('**② 종목별 기술 분석과 매매 판단**')
+                st.write(f"기술 분석 점수 **{result.get('종합 점수(100)','-')}점 / 100점** · 분석 기준일 **{result.get('기준일','-')}** · 통화 **{result.get('통화','-')}**")
+                keys=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
+                descriptions=['분석에 사용한 마지막 종가(실시간 시세 아님)','첫 번째 매수 검토 가격','두 번째 매수 검토 가격','첫 번째 목표 검토 가격','두 번째 목표 검토 가격','손실을 제한하기 위해 참고할 가격']
+                st.dataframe(pd.DataFrame([{'항목':k,'가격':result.get(k),'쉬운 설명':d} for k,d in zip(keys,descriptions)]),hide_index=True,use_container_width=True)
+                def number(key):
+                    try:
+                        v=float(result.get(key))
+                        return v if pd.notna(v) else None
+                    except (TypeError,ValueError): return None
+                buy,target,stop=number('1차 매수 관찰가'),number('1차 목표 관찰가'),number('손실 제한 참고가')
+                st.markdown('**③ 매수 가격 기준 예상 손익 비교**')
+                if valid_scenario(buy,target,stop):
+                    up=(target/buy-1)*100
+                    down=(1-stop/buy)*100
+                    a,b,c=st.columns(3)
+                    a.metric('예상 상승폭',f'+{up:.1f}%',help=glossary['예상 상승폭'])
+                    b.metric('예상 하락폭',f'-{down:.1f}%',help=glossary['예상 하락폭'])
+                    c.metric('손익비',f'{up/down:.2f}:1',help=glossary['손익비'])
+                else:
+                    st.warning('손절가 < 1차 매수가 < 1차 목표가 조건이 맞지 않거나 가격이 없어 손익비를 계산하지 않았습니다.')
+                with st.expander('📘 기술 지표 및 점수의 쉬운 설명',expanded=False):
+                    indicators=[
+                        ('5일선','최근 5거래일 평균 주가'),('20일선','최근 20거래일 평균 주가'),
+                        ('60일선','최근 60거래일 평균 주가'),('RSI(14)',glossary['RSI(14)']),
+                        ('MACD 히스토그램',glossary['MACD 히스토그램']),
+                        ('거래량/20일 평균',glossary['거래량/20일 평균']),
+                        ('추세 점수(30)','추세 방향과 강도에 대한 30점 만점 평가'),
+                        ('진입 시점 점수(25)','매수 시점의 기술적 조건에 대한 25점 만점 평가'),
+                        ('거래량 점수(20)','거래량에 기반한 20점 만점 평가'),
+                        ('위험 관리 점수(25)','변동성·손실 위험 조건에 대한 25점 만점 평가')]
+                    st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),hide_index=True,use_container_width=True)
+                st.warning('점수는 미래 상승 확률이 아니며, 매수·목표·손절 가격은 참고 시나리오입니다. 주문 전에 실제 시세와 거래 위험을 확인하세요.')
     with st.expander('⚙️ 운영 상태 · 분석 범위와 점수 설명'):
         st.write(f"마지막 자동 분석 (한국시간): {format_kst(state.get('updated_utc'))}")
         st.caption('UTC는 세계 표준시이며 한국시간은 UTC보다 9시간 빠릅니다. 예: 00:00 UTC → 같은 날 오전 9시 (한국시간). 이 시각은 자동 분석 결과 저장 시각으로, 주식시장의 실시간 가격 갱신 시각은 아닙니다.')
