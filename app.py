@@ -21,6 +21,7 @@ from stock_chart_v73 import prepare_close_chart, change_percent
 from chart_insights_v74 import build_chart_indicators, trend_summary
 from performance_readiness_v75 import readiness_summary
 from dashboard_quality_v80 import dashboard_coverage, ranking_safety
+from admin_access import authorized
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -328,8 +329,8 @@ st.set_page_config(page_title="AI STOCK MASTER · 간편 추천", layout="wide")
 from simple_dashboard import show as show_simple_dashboard
 show_simple_dashboard(st)
 st.divider()
-advanced = st.toggle('기존 상세 분석 · 관리자 메뉴 열기', value=False, help='이전 버전의 상세 기능을 유지합니다. 평소에는 간편 추천 화면만 사용하세요.')
-if advanced:
+advanced = st.toggle('기존 상세 분석 · 관리자 메뉴 열기', value=False, help='관리자 인증 후에만 이전 버전의 상세 기능을 사용할 수 있습니다.')
+if advanced and authorized(st):
     df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
     show_market_scan(st)
 
