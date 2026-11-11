@@ -1,5 +1,6 @@
 """Simple, read-only recommendation workspace based on persisted market scans."""
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 import json
 import pandas as pd
 from technical_report_v63 import get_technical_report
@@ -83,6 +84,12 @@ def show_integrated_opinion(st, report_rows, ranked, period):
     st.write(f'**{period} 기준 최종 검토 후보 {len(selected)}종목** · 최대 3종목 · 손익비 1.5 이상 · 손절가 < 매수가 < 목표가')
     st.caption('선정 기준: 가격 조건 정상, 기술 점수 존재, 손익비 1.5 이상, 손절 위험 유효. 기술 점수 → 손익비 → 기간별 추천 참고점수 순으로 정렬합니다. 이 기준은 과거 수익률로 최적화된 전략이 아닙니다.')
     st.warning('뉴스·공시·실적 검증 전에는 확정 매수 대상이 아닙니다. 실제 주문 전에는 최근 가격, 거래량, 시장 급변, 기업별 악재를 다시 확인하세요.')
+    st.markdown('**이번 주 투자 실행 전 확인표**')
+    st.text('1. 국내 종목: 월요일 10시 이후 새로 분석한 결과인지 확인합니다. 미국 종목은 직전 미국 거래일 종가 기준입니다.')
+    st.text('2. 각 후보의 공시·실적·뉴스 발표 시각과 원문을 확인합니다. 검증되지 않은 호재는 매수 근거에서 제외합니다.')
+    st.text('3. 지정한 매수가를 벗어나 급등하면 추격하지 않고, 손절 기준과 거래량을 재확인합니다.')
+    st.text('4. 매수 후에는 1차 목표가·손절가와 투자 기간을 기록하고, 1주 뒤 실제 성과를 비교합니다.')
+    st.caption('다음 항목은 가격 기반 기술 조건을 만족한 후보입니다. 뉴스 중요도를 수치화한 종합 순위는 아닙니다.')
     budget=10_000_000
     risk_cap=100_000
     for i,r in enumerate(selected,1):
@@ -95,11 +102,14 @@ def show_integrated_opinion(st, report_rows, ranked, period):
         st.text(f"매수 관찰가 {buy:,.2f} | 1차 목표 {target:,.2f} | 손절 참고 {stop:,.2f} | 가정 손실폭 {r['예상 하락폭']:.1f}%")
         st.text((f'예시 최대 {qty:,}주 (총 투자금 1,000만원, 종목별 균등 배분, 1회 최대 손실 10만원 가정)' if qty is not None else '미국 종목: 달러 환산 예산·환율을 입력하기 전에는 주문 수량 계산 보류'))
         st.text('매매 방침: 매수가 부근에서 지지·거래량을 재확인한 뒤 분할 진입 검토. 손절가 이탈 시 손실 제한, 목표가 도달 시 분할 매도 검토.')
+        if risk_per_share > 0:
+            st.text(f'가격 시나리오: 매수가 대비 목표 상승 {(target / buy - 1) * 100:.1f}%, 손절 하락 {(1 - stop / buy) * 100:.1f}%. 수수료·환율·갭 변동 미반영.')
+        st.text('보류 조건: 공시 원문 확인 실패, 예상보다 큰 악재, 시세 급등에 따른 추격매수, 손절 기준 이탈 또는 분석 데이터 노후화.')
         st.text('뉴스·공시: 자동 호재·악재 검증 미완료 — 아래 해당 종목의 뉴스와 공식 공시 확인 필요.')
         with st.expander(f'📰 {r["종목명"]} 뉴스·공시와 투자 위험 확인', expanded=False):
             display_company_brief(st, str(r['종목명']), str(r['코드']), f'opinion_news_{i}')
             st.caption('기사 제목만으로 호재·악재를 확정하지 마세요. 공시 원문·발표일·실적 수치와 주가 선반영 여부를 확인한 뒤 최종 판단해야 합니다.')
-    st.caption('수량은 국내 상장 종목의 원화 가격을 가정한 참고치입니다. 수수료·슬리피지·갭 하락으로 실제 손실은 더 커질 수 있습니다.')
+    st.caption('수량은 국내 상장 종목의 원화 가격을 가정한 참고치입니다. 수수료·슬리피지·갭 하락으로 실제 손실은 더 커질 수 있습니다. 종목당 10만원 손실 제한을 모두 채우면 3종목 합산 계획 손실은 최대 30만원이므로, 하루 최대 손실 3% 제한과 별도로 관리해야 합니다.')
 
 
 def resolve_symbol(raw):
