@@ -12,7 +12,7 @@ def verify(root):
         try: ast.parse((root/f).read_text(encoding='utf-8'))
         except Exception as e: failures.append(f'{f}: {e}')
     app=(root/'simple_dashboard.py').read_text(encoding='utf-8')
-    for label in ('테마별 종목 추천','관심종목 분석','추천 종목 분석'):
+    for label in ('종목추천순위','관심종목 분석','추천 종목 분석'):
         if label not in app: failures.append(f'UI label missing: {label}')
     sample=pd.DataFrame([{'ticker':'AAA','period':'스윙','entry_date':'2026-01-02','entry_close':100,
                           'date_1d':'2026-01-05','close_1d':102,'return_1d_pct':2.0},
