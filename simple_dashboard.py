@@ -5,7 +5,7 @@ import json
 import pandas as pd
 from technical_report_v63 import get_technical_report
 from market_news import display_briefing, display_company_brief, MACRO_QUERY, ticker_query, fetch_news
-from weekly_review import issue_flags, allocate_krw, csv_bytes
+from weekly_review import allocate_krw, csv_bytes, summarize_issue_checks
 
 DATA = Path(__file__).resolve().parent / 'market_scan_data'
 PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (1년 이상)']
@@ -117,14 +117,17 @@ def show_integrated_opinion(st, report_rows, ranked, period):
             elif not articles:
                 st.info('최근 뉴스 검색 결과가 없습니다. 뉴스가 없다는 의미는 아닙니다.')
             else:
-                flags = issue_flags(articles)
-                st.caption(f'최근 기사 {len(articles)}건 검색 · 제목 기반 점검 항목 {len(flags)}건 (중복 기사·사실관계 미검증)')
-                if flags:
-                    for flag in flags[:3]:
-                        st.text(f"검토 항목: {flag['분류']} | {flag['발행 시각']}")
-                        st.markdown(f"[{flag['기사 제목']}]({flag['원문']})")
+                brief = summarize_issue_checks(articles)
+                st.caption(f"검색 {brief['raw_count']}건 · 중복 제거 후 {brief['unique_count']}건 · {brief['status']}")
+                if brief['checks']:
+                    st.text('핵심 점검 브리핑: 제목에서 발견한 주제를 통합했습니다. 아래 내용은 사실 검증이나 호재·악재 판정이 아닙니다.')
+                    for item in brief['checks']:
+                        st.text(f"{item['category']} · 관련 기사 {item['count']}건")
+                        st.text(f"확인할 점: {item['check']}")
+                        if str(item['source_url']).startswith(('https://','http://')):
+                            st.link_button('근거 기사 열기', item['source_url'], key=f"issue_source_{i}_{item['category']}")
                 else:
-                    st.info('사전 정의된 중요 이슈 키워드는 발견되지 않았습니다. 긍정·부정 판단이나 이슈 부재를 뜻하지 않습니다.')
+                    st.info('확인된 기사 제목에서 분류 가능한 핵심 주제가 없습니다. 이슈가 없다는 뜻은 아닙니다.')
             display_company_brief(st, str(r['종목명']), str(r['코드']), f'opinion_news_{i}')
             st.caption('기사 제목만으로 호재·악재를 확정하지 마세요. 공시 원문·발표일·실적 수치와 주가 선반영 여부를 확인한 뒤 최종 판단해야 합니다.')
     st.markdown('**주간 투자 계획 · 위험 한도 시뮬레이션**')
