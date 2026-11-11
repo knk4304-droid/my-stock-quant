@@ -12,6 +12,17 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / 'market_scan_data'
 COLS = ['ticker','name','market','asset_type']
 
+# Minimal verified Korean-listed ETF seed universe. The scheduled scanner
+# expands this list when pykrx becomes available; seeds are not scan results.
+KR_ETF_SEEDS = [
+    ('069500.KS', 'KODEX 200', 'KR ETF', 'ETF'),
+    ('102110.KS', 'TIGER 200', 'KR ETF', 'ETF'),
+    ('360750.KS', 'TIGER 미국S&P500', 'KR ETF', 'ETF'),
+    ('133690.KS', 'TIGER 미국나스닥100', 'KR ETF', 'ETF'),
+    ('114800.KS', 'KODEX 인버스', 'KR ETF', 'ETF'),
+    ('122630.KS', 'KODEX 레버리지', 'KR ETF', 'ETF'),
+]
+
 def clean_catalog(frame):
     if frame is None or frame.empty: return pd.DataFrame(columns=COLS)
     f=frame.copy()
@@ -75,8 +86,10 @@ def kr_listings():
         except Exception as exc:
             print('KR FDR WARNING',type(exc).__name__,str(exc)[:150])
     if not out:
-        print('KR LIST WARNING: no Korean symbols obtained; scanner cannot claim Korean coverage')
-    return pd.DataFrame(out,columns=COLS)
+        print('KR LIST WARNING: no Korean stocks obtained; using Korean ETF seed candidates')
+    # Keep ETF coverage even when pykrx/FDR fails or returns only equities.
+    out.extend(KR_ETF_SEEDS)
+    return clean_catalog(pd.DataFrame(out,columns=COLS))
 
 
 def choose_balanced_batch(catalog, state, batch_size):
@@ -110,6 +123,8 @@ def load_catalog():
     # preserve previously discovered symbols when a provider is temporarily unavailable
     for part in parts:
         if not part.empty: prior=pd.concat([prior,part],ignore_index=True)
+    # Seeds also recover older catalogs created before Korean ETF support.
+    prior=pd.concat([prior,pd.DataFrame(KR_ETF_SEEDS,columns=COLS)],ignore_index=True)
     catalog=clean_catalog(prior)
     if catalog.empty: raise RuntimeError('No catalog available: check market providers or seed catalog.csv')
     catalog.to_csv(p,index=False,encoding='utf-8-sig')
@@ -137,6 +152,8 @@ def run(batch_size=250):
     existing=pd.read_csv(results_path,dtype={'ticker':str}) if results_path.exists() else pd.DataFrame()
     state=json.loads(state_path.read_text()) if state_path.exists() else {}
     chosen, next_cursors=choose_balanced_batch(catalog,state,batch_size)
+    print('KR ETF CATALOG', int(catalog.market.eq('KR ETF').sum()),
+          'KR ETF BATCH', int(chosen.market.eq('KR ETF').sum()))
     # Keep cursor progress for temporarily missing market groups.
     next_cursors={**state.get('market_cursors',{}),**next_cursors}
     n=len(chosen)

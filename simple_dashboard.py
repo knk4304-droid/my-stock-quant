@@ -46,12 +46,15 @@ def score_guide(period):
 
 
 def show_score_guide(st, period):
+    """Use plain text: Markdown's emphasis/strikethrough parser must not alter score explanations."""
     with st.expander('ⓘ 추천 참고점수 읽는 법 · 점수 범위와 예시', expanded=False):
-        st.markdown('**점수의 범위:** 기술 점수는 0~100점이지만, 추천 참고점수는 수익률 가산·변동성 감점을 거친 **순위용 계산값**이어서 0~100으로 제한되지 않습니다. 음수도 가능하며, 80점이 상승 확률 80%를 뜻하지 않습니다.')
-        st.markdown('**높고 낮음의 의미:** 같은 투자 기간·같은 조회 조건에서 점수가 높은 종목이 계산상 우선순위에 있습니다. 70점 이상이면 무조건 매수, 50점 미만이면 무조건 매도 같은 검증된 절대 기준은 없습니다.')
-        st.caption(f'현재 선택 기간의 계산식: {score_guide(period)}')
-        st.markdown('**예시(스윙):** 기술 점수 80점, 최근 5일 수익률 +4%, 최근 20일 수익률 +8%, 연율 변동성 0.4라면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = **47.4점**입니다. 점수가 47.4점이라고 나쁜 종목이라는 뜻은 아니며, 같은 기준으로 계산한 다른 후보와 비교해야 합니다.')
-        st.caption('주의: 수익률·변동성 값이 누락된 경우 현재 계산식에서는 기본값을 사용합니다. 따라서 누락 데이터가 있는 종목의 점수는 신뢰도가 떨어질 수 있습니다. 점수만으로 매수하지 말고 시세 기준일·공시·손절 위험을 함께 확인하세요.')
+        st.write('점수의 범위: 기술 점수는 0~100점입니다. 추천 참고점수는 수익률을 더하고 변동성을 빼는 순위용 계산값이므로 0~100점으로 제한되지 않으며 음수도 가능합니다.')
+        st.write('점수 해석: 같은 투자 기간과 같은 조건에서 상대적으로 높은 점수가 우선 관찰 대상이라는 뜻입니다. 80점이 상승 확률 80%라는 의미는 아닙니다.')
+        st.write('절대 매수 기준은 없습니다. 예를 들어 70점 이상은 매수, 50점 미만은 매도라는 규칙은 검증되지 않았습니다.')
+        st.write('선택 기간의 계산식: ' + score_guide(period))
+        st.write('스윙 예시: 기술 점수 80점, 최근 5일 수익률 +4%, 최근 20일 수익률 +8%, 연율 변동성 0.4이면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = 47.4점입니다.')
+        st.write('47.4점 자체가 좋거나 나쁘다는 뜻이 아니라 같은 기준으로 계산한 후보와 비교해야 합니다.')
+        st.info('입력값이 누락되면 계산용 기본값이 적용되어 점수 신뢰도가 낮아질 수 있습니다. 시세 기준일·공시·손절 위험도 확인하세요.')
 
 
 def resolve_symbol(raw):
@@ -221,7 +224,7 @@ def show(st):
             # ETF country is based on listing market, not underlying holdings.
             # Korean tickers may carry .KS/.KQ suffixes even if market metadata is missing.
             is_korean_listing = (
-                view['market'].fillna('').astype(str).str.upper().isin(['KOSPI','KOSDAQ','KRX'])
+                view['market'].fillna('').astype(str).str.upper().isin(['KOSPI','KOSDAQ','KRX','KR ETF'])
                 | view['ticker'].fillna('').astype(str).str.upper().str.endswith(('.KS','.KQ'))
             )
             is_etf = view['asset_type'].fillna('').astype(str).str.upper().eq('ETF')
@@ -244,7 +247,10 @@ def show(st):
 
         cols={'name':'종목명','ticker':'종목코드','market':'시장','score':'기술 점수','return_5d_pct':'최근 5일(%)','return_20d_pct':'최근 20일(%)','asof_price':'가격 기준일'}
         if ranked.empty:
-            st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
+            if market=='국내 ETF':
+                st.warning('국내 ETF 분석 결과가 아직 없습니다. 자동 분석 작업(Market scan v9)을 실행하면 국내 ETF 후보를 순차 분석합니다. 분석 성공 전에는 추천 점수를 표시하지 않습니다.')
+            else:
+                st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
         else:
             st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
         show_score_guide(st, period)
