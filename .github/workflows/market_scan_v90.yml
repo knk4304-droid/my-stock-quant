@@ -2,7 +2,8 @@ name: Market scan v9
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 23 * * 1-5'
+    - cron: '30 23 * * 1-5'  # 평일 오전 8:30 KST
+    - cron: '0 1 * * 1'       # 월요일 오전 10:00 KST (UTC 01:00)
 permissions:
   contents: write
 concurrency:
