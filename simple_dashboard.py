@@ -86,6 +86,55 @@ def mobile_cards(st, rows, *, kind='rank'):
     st.markdown('<div class="qp-mobile">'+''.join(blocks)+'</div>', unsafe_allow_html=True)
 
 
+def show_ranking_history(st, period):
+    """Compact, read-only timeline of all persisted scan runs."""
+    st.subheader('📈 주간 추천순위 변화')
+    history_file = DATA / 'ranking_snapshots.json'
+    if not history_file.exists():
+        st.info('아직 저장된 순위 이력이 없습니다. 업데이트 후 GitHub Actions의 다음 시장 분석부터 검색 시각별 기록이 쌓입니다.')
+        return
+    try:
+        history = json.loads(history_file.read_text(encoding='utf-8'))
+    except (ValueError, OSError):
+        st.warning('순위 이력 파일을 읽지 못했습니다.')
+        return
+    if not history:
+        st.info('저장된 검색 기록이 없습니다.')
+        return
+    def kst_time(h):
+        return pd.to_datetime(h['at_utc'], utc=True).tz_convert(KST)
+    valid = [h for h in history if h.get('at_utc') and isinstance(h.get('periods', {}).get(period), list)]
+    if not valid:
+        st.info('선택한 투자 기간의 기록이 없습니다.')
+        return
+    weeks = sorted({str((kst_time(h)-pd.Timedelta(days=kst_time(h).weekday())).date()) for h in valid}, reverse=True)
+    week = st.selectbox('조회할 주 (월요일 시작)', weeks, key='qp_history_week')
+    runs = sorted([h for h in valid if str((kst_time(h)-pd.Timedelta(days=kst_time(h).weekday())).date()) == week], key=lambda h: h['at_utc'])
+    st.caption(f'해당 주 저장된 분석 {len(runs)}회 · 실행별 TOP 10 보존 · 저장된 순환 스캔 결과 기준')
+    labels = [kst_time(h).strftime('%m/%d %a %H:%M') for h in runs]
+    options = list(reversed(range(len(runs))))
+    chosen = st.selectbox('검색 시각별 결과', options, format_func=lambda i: labels[i], key='qp_history_run')
+    current = runs[chosen]['periods'][period]
+    if current:
+        st.dataframe(pd.DataFrame([{'순위': r['rank'], '종목명': r['name'], '코드': r['ticker'], '점수': r['score']} for r in current]), hide_index=True, use_container_width=True)
+    with st.expander('📊 순위 변화 그래프와 전체 검색 기록', expanded=True):
+        names = {}
+        for h in runs:
+            for r in h['periods'][period]:
+                names[r['ticker']] = r['name']
+        tracked = st.multiselect('그래프에 표시할 종목 (최대 5개)', list(names), default=[r['ticker'] for r in runs[-1]['periods'][period][:3]], format_func=lambda t: f'{names[t]} ({t})', max_selections=5, key='qp_history_tickers')
+        if tracked:
+            rows = []
+            for h in runs:
+                ranks = {r['ticker']: r['rank'] for r in h['periods'][period]}
+                rows.append({'검색 시각': kst_time(h), **{f'{names[t]} ({t})': ranks.get(t, float('nan')) for t in tracked}})
+            graph = pd.DataFrame(rows).set_index('검색 시각')
+            st.line_chart(graph, y_label='추천순위 (숫자가 작을수록 상위)', height=260)
+            st.caption('그래프에서 1위는 숫자 1입니다. TOP 10 이탈은 선이 끊깁니다. 순위가 높을수록 숫자가 작습니다.')
+        st.dataframe(pd.DataFrame([{'검색 완료': labels[i], '후보 수': h.get('candidate_count', 0), '1위': (h['periods'][period][0]['name'] if h['periods'][period] else '없음')} for i, h in enumerate(runs)]), hide_index=True, use_container_width=True)
+    st.caption('검색 시각은 기록 저장 시각이며 개별 종목의 시세 기준 시각과 다를 수 있습니다. 과거 매매전략 가격은 이 이력에 저장하지 않습니다.')
+
+
 def weekly_brief(st, state, scores, ranked, period):
     """Show verifiable weekly facts without equating successful execution with fresh quotes."""
     st.subheader('📋 최신 투자 종합보고서')
@@ -401,6 +450,7 @@ def show(st):
         if not ranked.empty:
             mobile_cards(st, ranked.head(10).rename(columns=cols).to_dict('records'))
         weekly_brief(st, state, scores, ranked, period)
+        show_ranking_history(st, period)
         st.subheader('🔄 최신 시장 분석 결과 갱신')
         st.caption('하나의 추천순위 화면을 사용합니다. GitHub 자동 스캔이 전체 시장 종목을 순환 분석하여 저장하면 다음 화면 갱신부터 새 후보·순위가 반영됩니다.')
         st.caption('아래 화면 갱신은 저장된 결과를 다시 읽는 동작입니다. 전체 시장 분석을 즉시 끝내는 기능은 아닙니다.')
