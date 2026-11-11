@@ -64,7 +64,7 @@ def show_score_guide(st, period):
 def show_integrated_opinion(st, report_rows, ranked, period):
     """Conservative shortlist based on verified technical data, without inventing news."""
     st.subheader('🎯 종합의견 · 최종 매매 검토 후보')
-    st.caption('상위 10종목의 실제 기술 분석값을 비교한 결과입니다. 뉴스·공시의 긍정/부정 여부는 이 표에서 자동 판정하지 않으며, 아래 개별 종목 뉴스에서 확인해야 합니다.')
+    st.caption('기술 조건을 충족한 최대 3종목을 우선 검토합니다. 종목별 뉴스·공시·실적 확인 전에는 확정 매수 후보가 아닙니다. 시장별 가격 기준일을 확인하세요.')
     candidates=[]
     score_by_ticker = dict(zip(ranked['ticker'].astype(str), ranked['추천 참고점수']))
     for r in report_rows:
@@ -81,6 +81,7 @@ def show_integrated_opinion(st, report_rows, ranked, period):
         st.warning('현재 상위 후보 중 기술 점수와 가격 조건, 손익비 1.5 이상을 함께 만족하는 종목이 없습니다. 신규 매수를 보류하고 다음 분석을 기다리는 편이 합리적입니다.')
         return
     st.write(f'**{period} 기준 최종 검토 후보 {len(selected)}종목** · 최대 3종목 · 손익비 1.5 이상 · 손절가 < 매수가 < 목표가')
+    st.caption('선정 기준: 가격 조건 정상, 기술 점수 존재, 손익비 1.5 이상, 손절 위험 유효. 기술 점수 → 손익비 → 기간별 추천 참고점수 순으로 정렬합니다. 이 기준은 과거 수익률로 최적화된 전략이 아닙니다.')
     st.warning('뉴스·공시·실적 검증 전에는 확정 매수 대상이 아닙니다. 실제 주문 전에는 최근 가격, 거래량, 시장 급변, 기업별 악재를 다시 확인하세요.')
     budget=10_000_000
     risk_cap=100_000
@@ -95,6 +96,9 @@ def show_integrated_opinion(st, report_rows, ranked, period):
         st.text((f'예시 최대 {qty:,}주 (총 투자금 1,000만원, 종목별 균등 배분, 1회 최대 손실 10만원 가정)' if qty is not None else '미국 종목: 달러 환산 예산·환율을 입력하기 전에는 주문 수량 계산 보류'))
         st.text('매매 방침: 매수가 부근에서 지지·거래량을 재확인한 뒤 분할 진입 검토. 손절가 이탈 시 손실 제한, 목표가 도달 시 분할 매도 검토.')
         st.text('뉴스·공시: 자동 호재·악재 검증 미완료 — 아래 해당 종목의 뉴스와 공식 공시 확인 필요.')
+        with st.expander(f'📰 {r["종목명"]} 뉴스·공시와 투자 위험 확인', expanded=False):
+            display_company_brief(st, str(r['종목명']), str(r['코드']), f'opinion_news_{i}')
+            st.caption('기사 제목만으로 호재·악재를 확정하지 마세요. 공시 원문·발표일·실적 수치와 주가 선반영 여부를 확인한 뒤 최종 판단해야 합니다.')
     st.caption('수량은 국내 상장 종목의 원화 가격을 가정한 참고치입니다. 수수료·슬리피지·갭 하락으로 실제 손실은 더 커질 수 있습니다.')
 
 
@@ -254,7 +258,7 @@ def show(st):
     with recommendation_tab:
         st.subheader('테마별 종목 추천')
         st.caption('기간별 가격 흐름으로 정렬한 관찰 후보입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
-        st.info('월요일 오전 10시 투자 점검: 자동 분석 결과의 기준일을 확인하고, 장중 가격·거래량과 최신 뉴스·공시를 재확인한 뒤 아래 종합의견을 검토하세요. 이 화면은 실시간 주문 신호가 아닙니다.')
+        st.info('월요일 오전 10시 투자 점검: 월요일 10시(한국시간) 추가 분석이 예약되어 있습니다. GitHub Actions는 시작 시간이 지연될 수 있으므로 최신 분석 시각을 먼저 확인하세요. 국내 장중 가격·거래량과 최신 공시를 확인한 뒤 종합의견을 검토하세요. 미국 종목은 직전 거래일 데이터입니다.')
         c1,c2,c3=st.columns([2,1,1])
         with c1: period=st.selectbox('투자 기간',PERIODS,index=1,help='단기·스윙·중기 등 추천 순위를 계산할 기간입니다. 투자 기간별 추천 참고점수가 달라질 수 있습니다.')
         with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
