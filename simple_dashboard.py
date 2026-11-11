@@ -410,6 +410,11 @@ def show(st):
         with c1: period=st.selectbox('투자 기간',PERIODS,index=1,help='단기·스윙·중기 등 추천 순위를 계산할 기간입니다. 투자 기간별 추천 참고점수가 달라질 수 있습니다.')
         with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
         with c3: theme=st.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
+        search_clicked = st.button('🔍 검색 · 추천종목 TOP10 보기', type='primary', use_container_width=True, key='qp_search_top10')
+        filters_key = (period, market, theme)
+        if search_clicked:
+            st.session_state['qp_search_filters'] = filters_key
+        show_top10 = st.session_state.get('qp_search_filters') == filters_key
         view=fresh.copy()
         if market=='한국 주식': view=view[view.market.isin(['KOSPI','KOSDAQ']) & view.asset_type.eq('STOCK')]
         elif market=='미국 주식': view=view[view.market.isin(['NASDAQ','NYSE/OTHER']) & view.asset_type.eq('STOCK')]
@@ -439,45 +444,40 @@ def show(st):
                 st.warning(f'점수 계산에 필요한 4개 입력값 중 일부가 없는 종목 {incomplete}개가 포함되어 있습니다. 누락값은 계산용 기본값으로 대체되므로 해당 종목의 순위는 특히 주의해서 보세요.')
 
         cols={'name':'종목명','ticker':'종목코드','market':'시장','score':'기술 점수','return_5d_pct':'최근 5일(%)','return_20d_pct':'최근 20일(%)','asof_price':'가격 기준일'}
-        if ranked.empty:
-            if market=='국내 ETF':
-                st.warning('국내 ETF 분석 결과가 아직 없습니다. 자동 분석 작업(Market scan v9)을 실행하면 국내 ETF 후보를 순차 분석합니다. 분석 성공 전에는 추천 점수를 표시하지 않습니다.')
+        if show_top10:
+            if ranked.empty:
+                st.info('조건에 맞는 최근 분석 종목이 없습니다. 다른 시장·테마를 선택해 검색하세요.')
             else:
-                st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
+                top10 = ranked.head(10).copy()
+                top10['추천순위'] = range(1, len(top10)+1)
+                top10['분석 완료 시각 (KST)'] = pd.to_datetime(top10['scanned_at_utc'], utc=True, errors='coerce').dt.tz_convert('Asia/Seoul').dt.strftime('%m-%d %H:%M').fillna('미확인')
+                top10 = top10.rename(columns=cols)
+                st.markdown('**🏆 추천종목 TOP10**')
+                st.dataframe(top10[['추천순위','종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일','분석 완료 시각 (KST)']], hide_index=True, use_container_width=True,
+                    column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True),
+                        '분석 완료 시각 (KST)':st.column_config.TextColumn('분석 완료 (KST)',help='해당 종목의 자동 분석 작업 완료 시각이며 시세가 체결된 시각은 아닙니다.')})
+                mobile_cards(st, top10.to_dict('records'))
+                st.caption('가격 기준일은 거래 날짜이며, 마지막 열은 해당 종목의 분석 완료 시각(KST)입니다. 두 시각은 다를 수 있습니다.')
         else:
-            with st.expander('전체 비교표 보기 (PC·가로 스크롤)', expanded=False):
-                st.dataframe(ranked.head(10).assign(추천순위=range(1, min(10, len(ranked))+1)).rename(columns=cols)[['추천순위','종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
-        if not ranked.empty:
-            mobile_cards(st, ranked.head(10).rename(columns=cols).to_dict('records'))
-        st.caption('가격 기준일은 시세 제공원이 전달한 거래 날짜입니다. 장중 시각이 제공되지 않아 시간을 임의로 표시하지 않습니다. 종목별 최종 분석 시각(KST)은 아래에서 확인할 수 있습니다.')
-        with st.expander('🕒 종목별 분석 시각 확인 (한국시간)', expanded=False):
-            if not ranked.empty:
-                timestamps = ranked.head(10)[['name','ticker','asof_price','scanned_at_utc']].copy()
-                timestamps['scanned_at_utc'] = pd.to_datetime(timestamps['scanned_at_utc'], utc=True, errors='coerce').dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M KST')
-                timestamps.columns = ['종목명','코드','가격 기준일 (시각 미제공)','분석 완료 시각 (KST)']
-                st.dataframe(timestamps, hide_index=True, use_container_width=True)
-            else:
-                st.info('표시할 분석 기록이 없습니다.')
+            st.caption('투자 기간·시장·관심 테마를 선택한 뒤 위 검색 버튼을 누르면 추천종목 TOP10이 표시됩니다.')
         with st.expander('📈 주간 추천순위 변화 · 검색 기록 보기', expanded=False):
             show_ranking_history(st, period)
-        with st.expander('🔎 추천종목 상세분석', expanded=False):
-            st.caption('하나의 추천순위 화면을 사용합니다. GitHub 자동 스캔이 전체 시장 종목을 순환 분석하여 저장하면 다음 화면 갱신부터 새 후보·순위가 반영됩니다.')
-            st.caption('아래 화면 갱신은 저장된 결과를 다시 읽는 동작입니다. 전체 시장 분석을 즉시 끝내는 기능은 아닙니다.')
-            if st.button('🔄 최신 저장 결과 불러오기', use_container_width=True, key='qp_reload_scan'):
-                st.rerun()
-            st.link_button('▶ 지금 전체 시장 순환 스캔 실행 (GitHub Actions)',
-                           'https://github.com/knk4304-droid/my-stock-quant/actions/workflows/market_scan_v90.yml',
-                           use_container_width=True)
-            st.caption('GitHub에서 Run workflow → Run workflow를 누르면 신규 순환 스캔이 시작됩니다. 완료 후 위 버튼으로 최신 결과를 확인하세요. GitHub 로그인 필요.')
-            st.caption('실시간 전 종목 동시 분석이 아니라 정해진 배치의 최신 분석 결과를 누적하는 방식이며, 실제 시세에는 공급원 지연이 있을 수 있습니다.')
-            show_score_guide(st, period)
-            with st.expander('🔎 상위 10종목 매매 전략 · 기술 분석', expanded=False):
+        detail_clicked = st.button('🔎 추천종목 상세분석 실행 (TOP10)', use_container_width=True, key='qp_detail_run')
+        if detail_clicked:
+            st.session_state['qp_detail_filters'] = filters_key
+        with st.container():
+            if detail_clicked or st.session_state.get('qp_detail_filters') == filters_key:
+                st.caption('현재 저장된 추천 상위 10종목의 최신 이용 가능 시세를 조회하여 기술 지표와 매매 전략을 계산합니다. 전체 시장 신규 순환 스캔은 별도 GitHub 자동 작업이며 이 버튼으로 즉시 실행되지 않습니다.')
+                with st.expander('🔄 저장된 추천 데이터 다시 불러오기', expanded=False):
+                    if st.button('저장된 결과 새로 읽기', key='qp_reload_scan'):
+                        st.rerun()
+            if detail_clicked or st.session_state.get('qp_detail_filters') == filters_key:
                 st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
                 top = ranked.head(10) if not ranked.empty else pd.DataFrame()
                 if not top.empty:
                     # Preserve reports across Streamlit reruns; avoid showing stale reports after filters change.
                     symbols = tuple(str(t) for t in top['ticker'].tolist())
-                    if st.button('상위 10종목 상세 분석 실행', type='primary', use_container_width=True):
+                    if detail_clicked:
                         progress = st.progress(0, text='상위 종목의 가격 데이터를 확인하고 있습니다.')
                         reports = []
                         for i, (_, r) in enumerate(top.iterrows()):
@@ -576,7 +576,7 @@ def show(st):
                         with st.expander('📊 실제 추천 성과 검증 상태'):
                             st.info('실제 추천 성과는 아래 ‘지난 추천 성과 확인’에서 1·5·20거래일 관측 수익률과 통계 점검 결과를 확인하세요. 충분한 표본이 쌓이기 전에는 검증 부족으로 표시됩니다.')
                     else:
-                        st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
+                        st.info('위 추천종목 상세분석 실행 버튼을 누르면 TOP10 상세 결과가 표시됩니다.')
             with st.expander('📊 지난 추천 성과 확인 (관측된 가격 기준)'):
                 history_file=DATA/'recommendation_history.csv'
                 if not history_file.exists():
