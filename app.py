@@ -325,7 +325,7 @@ def cached_chart_history(symbol, period):
 # ==========================================
 # 5. 대시보드 UI
 # ==========================================
-st.set_page_config(page_title="AI STOCK MASTER · 간편 추천", layout="wide")
+st.set_page_config(page_title="QUANTPILOT AI · 간편 추천", layout="wide")
 from simple_dashboard import show as show_simple_dashboard
 show_simple_dashboard(st)
 st.divider()

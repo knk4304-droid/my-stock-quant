@@ -270,7 +270,7 @@ def show(st):
         if numeric and fmt is not None: kwargs['format'] = fmt
         return (st.column_config.NumberColumn(title, **kwargs) if numeric
                 else st.column_config.TextColumn(title, **kwargs))
-    st.title('📈 AI STOCK MASTER')
+    st.title('📈 QUANTPILOT AI')
     st.caption('테마별 종목 추천과 관심종목 검색·분석을 구분한 투자 판단 참고 화면')
     state, scores=load_data()
     if scores.empty:
