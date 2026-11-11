@@ -6,6 +6,7 @@ import pandas as pd
 from technical_report_v63 import get_technical_report
 from market_news import display_briefing, display_company_brief, MACRO_QUERY, ticker_query, fetch_news
 from weekly_review import allocate_krw, csv_bytes, summarize_issue_checks
+from final_decision import screen_candidates, weekly_status
 
 DATA = Path(__file__).resolve().parent / 'market_scan_data'
 PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (1년 이상)']
@@ -54,7 +55,7 @@ def show_score_guide(st, period):
             '점수의 범위: 기술 점수는 0점부터 100점까지입니다. 추천 참고점수는 순위용 계산값으로 100점을 넘거나 음수가 될 수도 있습니다.',
             '점수 해석: 같은 투자 기간과 조건에서 높은 점수일수록 우선 검토 후보입니다. 80점이 상승 확률 80%라는 뜻은 아닙니다.',
             '고정 매수 기준은 없습니다. 70점 이상이면 매수, 50점 미만이면 매도라는 기준은 검증되지 않았습니다.',
-            '선택한 기간의 계산식: ' + score_guide(period).replace('~', '부터 ').replace('로 제한)', '까지 제한)'),
+            '선택한 기간의 계산식: ' + score_guide(period).replace('~', '에서 ').replace('로 제한)', '까지 제한)'),
             '스윙 예시: 기술 점수 80점, 5일 수익률 +4%, 20일 수익률 +8%, 연율 변동성 0.4라면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = 47.4점입니다.',
             '47.4점 자체에 매수·매도 의미는 없으며 같은 기준의 다른 후보와 비교해야 합니다.',
             '누락된 입력값은 기본값으로 대체되므로 점수 입력 완전성도 확인해야 합니다.',
@@ -67,22 +68,17 @@ def show_integrated_opinion(st, report_rows, ranked, period):
     """Conservative shortlist based on verified technical data, without inventing news."""
     st.subheader('🎯 종합의견 · 최종 매매 검토 후보')
     st.caption('기술 조건을 충족한 최대 3종목을 우선 검토합니다. 종목별 뉴스·공시·실적 확인 전에는 확정 매수 후보가 아닙니다. 시장별 가격 기준일을 확인하세요.')
-    candidates=[]
     score_by_ticker = dict(zip(ranked['ticker'].astype(str), ranked['추천 참고점수']))
-    for r in report_rows:
-        if r.get('가격 조건')!='정상' or r.get('손익비') is None or r.get('분석 점수') is None:
-            continue
-        if r['손익비'] < 1.5 or r['예상 하락폭'] is None or r['예상 하락폭'] <= 0:
-            continue
-        row=dict(r)
-        row['추천 참고점수']=score_by_ticker.get(str(r['코드']))
-        candidates.append(row)
-    candidates.sort(key=lambda x:(x['분석 점수'],x['손익비'],x['추천 참고점수'] or 0),reverse=True)
-    selected=candidates[:3]
+    selected, excluded = screen_candidates(report_rows, score_by_ticker)
+    st.caption(f'기술·가격 기준에서 제외된 후보 {len(excluded)}개 · 뉴스·공시 원문 확인 전 주문 보류')
+    if excluded:
+        with st.expander('선정 제외 이유 보기', expanded=False):
+            st.dataframe(pd.DataFrame(excluded), hide_index=True, use_container_width=True)
     if not selected:
         st.warning('현재 상위 후보 중 기술 점수와 가격 조건, 손익비 1.5 이상을 함께 만족하는 종목이 없습니다. 신규 매수를 보류하고 다음 분석을 기다리는 편이 합리적입니다.')
         return
-    st.write(f'**{period} 기준 최종 검토 후보 {len(selected)}종목** · 최대 3종목 · 손익비 1.5 이상 · 손절가 < 매수가 < 목표가')
+    st.subheader(f'{period} 기준 최종 검토 후보 {len(selected)}종목')
+    st.text('최대 3종목 / 손익비 1.5 이상 / 손절가 < 매수가 < 목표가')
     st.caption('선정 기준: 가격 조건 정상, 기술 점수 존재, 손익비 1.5 이상, 손절 위험 유효. 기술 점수 → 손익비 → 기간별 추천 참고점수 순으로 정렬합니다. 이 기준은 과거 수익률로 최적화된 전략이 아닙니다.')
     st.warning('뉴스·공시·실적 검증 전에는 확정 매수 대상이 아닙니다. 실제 주문 전에는 최근 가격, 거래량, 시장 급변, 기업별 악재를 다시 확인하세요.')
     st.markdown('**이번 주 투자 실행 전 확인표**')
@@ -99,7 +95,7 @@ def show_integrated_opinion(st, report_rows, ranked, period):
         is_krw=str(r['코드']).upper().endswith(('.KS','.KQ'))
         qty=int(min(budget/len(selected)/buy,risk_cap/risk_per_share)) if is_krw and risk_per_share>0 else None
         st.markdown(f"**{i}순위 · {r['종목명']} ({r['코드']})**")
-        st.text(f"기술 점수: {r['분석 점수']:.0f}/100 | 추천 참고점수: {r['추천 참고점수']} | 손익비: {r['손익비']:.2f}:1")
+        st.text(f"기술 점수: {r['분석 점수']:.0f}/100 | 추천 참고점수: {r['추천 참고점수'] if r['추천 참고점수'] is not None else '미확인'} | 손익비: {r['손익비']:.2f}:1")
         st.text(f"매수 관찰가 {buy:,.2f} | 1차 목표 {target:,.2f} | 손절 참고 {stop:,.2f} | 가정 손실폭 {r['예상 하락폭']:.1f}%")
         st.text((f'예시 최대 {qty:,}주 (총 투자금 1,000만원, 종목별 균등 배분, 1회 최대 손실 10만원 가정)' if qty is not None else '미국 종목: 달러 환산 예산·환율을 입력하기 전에는 주문 수량 계산 보류'))
         st.text('매매 방침: 매수가 부근에서 지지·거래량을 재확인한 뒤 분할 진입 검토. 손절가 이탈 시 손실 제한, 목표가 도달 시 분할 매도 검토.')
@@ -299,7 +295,12 @@ def show(st):
     with recommendation_tab:
         st.subheader('테마별 종목 추천')
         st.caption('기간별 가격 흐름으로 정렬한 관찰 후보입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
-        st.info('월요일 오전 10시 투자 점검: 월요일 10시(한국시간) 추가 분석이 예약되어 있습니다. GitHub Actions는 시작 시간이 지연될 수 있으므로 최신 분석 시각을 먼저 확인하세요. 국내 장중 가격·거래량과 최신 공시를 확인한 뒤 종합의견을 검토하세요. 미국 종목은 직전 거래일 데이터입니다.')
+        st.info('월요일 오전 10시(KST) 추가 분석이 예약되어 있습니다. 예약은 실행·완료 보장이 아닙니다. 최신 데이터 기준일을 확인하고 국내 장중 가격·거래량 및 최신 공시를 재확인하세요. 미국 종목은 직전 거래일 자료일 수 있습니다.')
+        try:
+            weekly = weekly_status(latest_scan=state.get('updated_utc'))
+            st.caption(f"주간 기준시각: {weekly['anchor']:%Y-%m-%d %H:%M} KST / 마지막 저장 분석: {weekly['scan'].strftime('%Y-%m-%d %H:%M') + ' KST' if weekly['scan'] else '확인 불가'} / {weekly['status']}")
+        except (ValueError, TypeError):
+            st.warning('분석 완료 시각을 해석할 수 없습니다. 최신 실행 로그를 확인하세요.')
         c1,c2,c3=st.columns([2,1,1])
         with c1: period=st.selectbox('투자 기간',PERIODS,index=1,help='단기·스윙·중기 등 추천 순위를 계산할 기간입니다. 투자 기간별 추천 참고점수가 달라질 수 있습니다.')
         with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
