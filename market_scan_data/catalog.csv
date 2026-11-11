@@ -10,6 +10,13 @@ TCBI-B,"Texas Capital Bancshares, Inc. Depositary Shares 5.75% Fixed Rate Non-Cu
 TLDR,The Laddered T-Bill ETF,NYSE/OTHER,ETF
 002785.KS,진흥기업우B,KOSPI,STOCK
 002787.KS,진흥기업2우B,KOSPI,STOCK
+ACHV,"Achieve Life Sciences, Inc.  - Common Shares",NASDAQ,STOCK
+EZRA,"Reliance Global Group, Inc. - Common Stock",NASDAQ,STOCK
+REAI,Intelligent Real Estate ETF,NASDAQ,ETF
+SWAGW,"Stran & Company, Inc. - Warrant",NASDAQ,STOCK
+HAUS,Residential REIT ETF,NYSE/OTHER,ETF
+PSQH,"PSQ Holdings, Inc. Class A Common Stock",NYSE/OTHER,STOCK
+PSQH.W,"PSQ Holdings, Inc. Warrants, each exercisable for one share of Class A common stock at an exercise price of $11.50 per share",NYSE/OTHER,STOCK
 AAAP,Pacer Barings CLO Market Flex ETF,NASDAQ,ETF
 AACG,"ATA Creativity Global - American Depositary Shares, each representing two common shares",NASDAQ,STOCK
 AACI,Armada Acquisition Corp. III - Class A Ordinary Share,NASDAQ,STOCK
@@ -77,7 +84,6 @@ ACGLN,"Arch Capital Group Ltd. - Depositary Shares, each Representing a 1/1,000t
 ACGLO,"Arch Capital Group Ltd. - Depositary Shares Each Representing 1/1,000th Interest in a Share of5.45% Non-Cumulative Preferred Shares, Series F",NASDAQ,STOCK
 ACHC,"Acadia Healthcare Company, Inc. - Common Stock",NASDAQ,STOCK
 ACHP,Global X Asia Semiconductor ETF,NASDAQ,ETF
-ACHV,"Achieve Life Sciences, Inc.  - Common Shares",NASDAQ,STOCK
 ACIC,American Coastal Insurance Corporation - Common Stock,NASDAQ,STOCK
 ACIU,AC Immune SA - Common Stock,NASDAQ,STOCK
 ACIW,"ACI Worldwide, Inc. - Common Stock",NASDAQ,STOCK
@@ -1718,7 +1724,6 @@ EYPT,"EyePoint, Inc. - Common Stock",NASDAQ,STOCK
 EZGO,EZGO Technologies Ltd. - Ordinary Shares,NASDAQ,STOCK
 EZMO,AlphaDroid Broad Markets Momentum ETF,NASDAQ,ETF
 EZPW,"EZCORP, Inc. - Class A Non-Voting Common Stock",NASDAQ,STOCK
-EZRA,"Reliance Global Group, Inc. - Common Stock",NASDAQ,STOCK
 EZRO,AlphaDroid Defensive Sector Rotation ETF,NASDAQ,ETF
 FA,First Advantage Corporation - Common Stock,NASDAQ,STOCK
 FAAA,Fidelity AAA CLO ETF,NASDAQ,ETF
@@ -2037,7 +2042,7 @@ GBDC,"Golub Capital BDC, Inc. - Closed End Fund",NASDAQ,STOCK
 GBFH,GBank Financial Holdings Inc. - Common Stock,NASDAQ,STOCK
 GBLI,"Global Indemnity Group, LLC - Class A Common Shares",NASDAQ,STOCK
 GBUG,Sprott Active Gold & Silver Miners ETF,NASDAQ,ETF
-GCBC,"Greene County Bancorp, Inc. - Common Stock",NASDAQ,STOCK
+GCBC,"Greene Bancorp, Inc. - Common Stock",NASDAQ,STOCK
 GCGR,General Catalyst Global Resilience Merger Corp. - Class A Ordinary Shares,NASDAQ,STOCK
 GCGRU,General Catalyst Global Resilience Merger Corp. - Units,NASDAQ,STOCK
 GCGRW,General Catalyst Global Resilience Merger Corp. - Warrants,NASDAQ,STOCK
@@ -4156,6 +4161,7 @@ QTUM,Defiance Quantum ETF,NASDAQ,ETF
 QUBT,Quantum Computing Inc. - Common Stock,NASDAQ,STOCK
 QUCY,Quantum Cyber N.V. - Ordinary Shares,NASDAQ,STOCK
 QUIK,QuickLogic Corporation - Common Stock,NASDAQ,STOCK
+QUIT,"Achieve Life Sciences, Inc.  - Common Shares",NASDAQ,STOCK
 QUMS,Quantumsphere Acquisition Corp. - Ordinary Shares,NASDAQ,STOCK
 QUMSR,Quantumsphere Acquisition Corp. - Rights,NASDAQ,STOCK
 QUMSU,Quantumsphere Acquisition Corp. - Units,NASDAQ,STOCK
@@ -4221,7 +4227,6 @@ RDVY,First Trust Rising Dividend Achievers ETF,NASDAQ,ETF
 RDWR,Radware Ltd. - Ordinary Shares,NASDAQ,STOCK
 RDZN,"Roadzen, Inc. - Ordinary Shares",NASDAQ,STOCK
 RDZNW,"Roadzen, Inc. - Warrants",NASDAQ,STOCK
-REAI,Intelligent Real Estate ETF,NASDAQ,ETF
 REAL,"The RealReal, Inc. - Common Stock",NASDAQ,STOCK
 REAX,Real REMAX Group Inc. - Common Stock,NASDAQ,STOCK
 REBN,"Reborn Coffee, Inc. - Common Stock",NASDAQ,STOCK
@@ -4443,7 +4448,10 @@ SCOR,"comScore, Inc. - Common Stock",NASDAQ,STOCK
 SCPQ,Social Commerce Partners Corporation - Class A Ordinary Shares,NASDAQ,STOCK
 SCPQU,Social Commerce Partners Corporation - Unit,NASDAQ,STOCK
 SCPQW,Social Commerce Partners Corporation - Warrant,NASDAQ,STOCK
+SCQC,SPACCircle Acquisition Corp. - Class A Ordinary Shares,NASDAQ,STOCK
+SCQCR,SPACCircle Acquisition Corp. - Rights,NASDAQ,STOCK
 SCQCU,SPACCircle Acquisition Corp. - Units,NASDAQ,STOCK
+SCQCW,SPACCircle Acquisition Corp. - Warrants,NASDAQ,STOCK
 SCSC,"ScanSource, Inc. - Common Stock",NASDAQ,STOCK
 SCTX,Scribe Therapeutics Inc. - Common Stock,NASDAQ,STOCK
 SCWO,374Water Inc. - common stock,NASDAQ,STOCK
@@ -4783,7 +4791,6 @@ SVRE,SaverOne 2014 Ltd. - American Depositary Shares,NASDAQ,STOCK
 SVREW,SaverOne 2014 Ltd. - Warrant,NASDAQ,STOCK
 SVRN,"SVRN, Inc. - Common Stock",NASDAQ,STOCK
 SWAG,"Stran & Company, Inc. - Common Stock",NASDAQ,STOCK
-SWAGW,"Stran & Company, Inc. - Warrant",NASDAQ,STOCK
 SWBI,"Smith & Wesson Brands, Inc. - Common Stock",NASDAQ,STOCK
 SWIM,"Latham Group, Inc. - Common Stock",NASDAQ,STOCK
 SWKS,"Skyworks Solutions, Inc. - Common Stock",NASDAQ,STOCK
@@ -5482,6 +5489,7 @@ XERS,"Xeris Biopharma Holdings, Inc. - Common Stock",NASDAQ,STOCK
 XEY,GraniteShares YieldBOOST Ether ETF,NASDAQ,ETF
 XFOR,"X4 Pharmaceuticals, Inc. - Common Stock",NASDAQ,STOCK
 XGN,Exagen Inc. - Common Stock,NASDAQ,STOCK
+XGPU,"Reliance Global Group, Inc. - Common Stock",NASDAQ,STOCK
 XHG,XChange TEC.INC - American Depositary Shares,NASDAQ,STOCK
 XHLD,"TEN Holdings, Inc. - Common Stock",NASDAQ,STOCK
 XIII,Churchill Capital Corp XIII - Class A Ordinary Shares,NASDAQ,STOCK
@@ -6346,6 +6354,7 @@ BGH,Barings Global Short Duration High Yield Fund Common Shares of Beneficial In
 BGIG,Bahl & Gaynor Income Growth ETF,NYSE/OTHER,ETF
 BGLD,FT Vest Gold Strategy Quarterly Buffer ETF,NYSE/OTHER,ETF
 BGR,BlackRock Energy and Resources Trust,NYSE/OTHER,STOCK
+BGRD,BNY Mellon Power Ecosystem ETF,NYSE/OTHER,ETF
 BGS,"B&G Foods, Inc. Common Stock",NYSE/OTHER,STOCK
 BGSF,"BGSF, Inc. Common Stock",NYSE/OTHER,STOCK
 BGSI,Boyd Group Services Inc. Common Shares,NYSE/OTHER,STOCK
@@ -7665,6 +7674,7 @@ EMC,Global X Emerging Markets Great Consumer ETF,NYSE/OTHER,ETF
 EMCR,Xtrackers Emerging Markets Carbon Reduction and Climate Improvers ETF,NYSE/OTHER,ETF
 EMCS,Xtrackers MSCI Emerging Markets Select ETF,NYSE/OTHER,ETF
 EMD,Western Asset Emerging Markets Debt Fund Inc Common Stock,NYSE/OTHER,STOCK
+EMDI,Principal Finisterre Emerging Markets Diversified Income ETF,NYSE/OTHER,ETF
 EMDM,First Trust Bloomberg Emerging Market Democracies ETF,NYSE/OTHER,ETF
 EMDV,ProShares MSCI Emerging Markets Dividend Growers ETF,NYSE/OTHER,ETF
 EME,"EMCOR Group, Inc. Common Stock",NYSE/OTHER,STOCK
@@ -8660,7 +8670,6 @@ HAPS,Harbor Human Capital Factor US Small Cap ETF,NYSE/OTHER,ETF
 HARD,Simplify Commodities Strategy No K-1 ETF,NYSE/OTHER,ETF
 HASI,"HA Sustainable Infrastructure Capital, Inc. Common Stock",NYSE/OTHER,STOCK
 HAUG,Corgi U.S. Equities 100% Structured Buffer ETF - August Series,NYSE/OTHER,ETF
-HAUS,Residential REIT ETF,NYSE/OTHER,ETF
 HAUZ,Xtrackers International Real Estate ETF,NYSE/OTHER,ETF
 HAWG,HCM Hedged Equity ETF,NYSE/OTHER,ETF
 HAWK,"HawkEye 360, Inc. Common Stock",NYSE/OTHER,STOCK
@@ -9734,6 +9743,7 @@ LSVD,LSV Disciplined Value ETF,NYSE/OTHER,ETF
 LTAX,Nomura Tax-Free USA ETF,NYSE/OTHER,ETF
 LTB,Corgi FTSE 20 Year U.S. Treasury Bond ETF,NYSE/OTHER,ETF
 LTC,"LTC Properties, Inc. Common Stock",NYSE/OTHER,STOCK
+LTEQ,Equity Partners ETF,NYSE/OTHER,ETF
 LTH,"Life Time Group Holdings, Inc. Common Stock",NYSE/OTHER,STOCK
 LTL,ProShares Ultra Communication Services,NYSE/OTHER,ETF
 LTM,"LATAM Airlines Group S.A. American Depositary Shares (each representing two thousand (2,000) shares of Common Stock)",NYSE/OTHER,STOCK
@@ -10776,6 +10786,7 @@ PGP,Pimco Global StocksPlus & Income Fund Common Shares of Beneficial Interest,N
 PGR,Progressive Corporation (The) Common Stock,NYSE/OTHER,STOCK
 PGRI,Putnam International Stock ETF,NYSE/OTHER,ETF
 PGRO,Putnam Focused Large Cap Growth ETF,NYSE/OTHER,ETF
+PGRW,Principal Growth ETF,NYSE/OTHER,ETF
 PGX,Invesco Preferred ETF,NYSE/OTHER,ETF
 PGZ,Principal Real Estate Income Fund Common Shares of Beneficial Interest,NYSE/OTHER,STOCK
 PH,Parker-Hannifin Corporation Common Stock,NYSE/OTHER,STOCK
@@ -10992,8 +11003,6 @@ PSOX,Tema MLCC & PowerSemi ETF,NYSE/OTHER,ETF
 PSP,Invesco Global Listed Private Equity ETF,NYSE/OTHER,ETF
 PSQ,ProShares Short QQQ,NYSE/OTHER,ETF
 PSQA,Palmer Square CLO Senior Debt ETF,NYSE/OTHER,ETF
-PSQH,"PSQ Holdings, Inc. Class A Common Stock",NYSE/OTHER,STOCK
-PSQH.W,"PSQ Holdings, Inc. Warrants, each exercisable for one share of Class A common stock at an exercise price of $11.50 per share",NYSE/OTHER,STOCK
 PSQO,Palmer Square Credit Opportunities ETF,NYSE/OTHER,ETF
 PSR,Invesco Active U.S. Real Estate Fund,NYSE/OTHER,ETF
 PST,ProShares UltraShort Lehman 7-10 Year Treasury,NYSE/OTHER,ETF
@@ -15874,3 +15883,9 @@ ZWS,Zurn Elkay Water Solutions Corporation Common Stock,NYSE/OTHER,STOCK
 003280.KS,흥아해운,KOSPI,STOCK
 037440.KQ,희림,KOSDAQ,STOCK
 238490.KQ,힘스,KOSDAQ,STOCK
+069500.KS,KODEX 200,KR ETF,ETF
+102110.KS,TIGER 200,KR ETF,ETF
+360750.KS,TIGER 미국S&P500,KR ETF,ETF
+133690.KS,TIGER 미국나스닥100,KR ETF,ETF
+114800.KS,KODEX 인버스,KR ETF,ETF
+122630.KS,KODEX 레버리지,KR ETF,ETF
