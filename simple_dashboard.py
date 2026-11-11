@@ -27,7 +27,10 @@ def rank(frame, period):
     elif period.startswith('중기'): score=base*.7+r20*.35-vol*10
     else: score=base*.8+r20*.15-vol*18
     d['추천 참고점수']=score.round(1)
+    # Missing inputs currently receive fallback values; disclose this beside rankings.
+    d['점수 입력 완전성'] = d[['score','return_5d_pct','return_20d_pct','volatility_annual']].notna().sum(axis=1).astype(str) + '/4'
     return d.sort_values('추천 참고점수',ascending=False)
+
 
 def score_guide(period):
     """Plain-language explanation of the actual rank() formula; no invented score cutoffs."""
@@ -234,11 +237,16 @@ def show(st):
             st.caption('테마는 현재 종목명 키워드로 임시 분류합니다. 정확한 업종·테마 분류는 추후 별도 데이터로 보강해야 합니다.')
         ranked=rank(view,period) if not view.empty else view
         st.caption(f'최근 7일 데이터에서 조건에 맞는 종목 {len(ranked):,}개 · 상위 10개 표시')
+        if not ranked.empty:
+            incomplete = int((ranked['점수 입력 완전성'] != '4/4').sum())
+            if incomplete:
+                st.warning(f'점수 계산에 필요한 4개 입력값 중 일부가 없는 종목 {incomplete}개가 포함되어 있습니다. 누락값은 계산용 기본값으로 대체되므로 해당 종목의 순위는 특히 주의해서 보세요.')
+
         cols={'name':'종목명','ticker':'종목코드','market':'시장','score':'기술 점수','return_5d_pct':'최근 5일(%)','return_20d_pct':'최근 20일(%)','asof_price':'가격 기준일'}
         if ranked.empty:
             st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
         else:
-            st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
+            st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
         show_score_guide(st, period)
         with st.expander('🔎 추천 종목 분석', expanded=False):
             st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
@@ -459,7 +467,7 @@ def show(st):
                 except (OSError,ValueError,KeyError) as exc:
                     st.warning(f'추천 기록 파일을 읽지 못했습니다: {exc}')
     with watchlist_tab:
-        st.subheader('관심종목 통합 분석')
+        st.subheader('관심종목 분석 · 통합 보고서')
         st.caption('종목명 또는 종목코드로 검색하면 추천 참고점수와 기술 분석·매수/목표/손절 가격을 한 화면에서 확인할 수 있습니다.')
         st.info('💡 테마별 추천은 후보를 찾는 메뉴이고, 이곳은 특정 종목을 자세히 살펴보는 메뉴입니다. 추천 참고점수와 기술 점수는 계산 목적과 산식이 서로 다릅니다.')
         search_period=st.selectbox('분석할 투자 기간', PERIODS, index=1, key='unified_search_period',
@@ -490,7 +498,8 @@ def show(st):
                     ranked_one=rank(matching,search_period).iloc[0]
                     st.markdown('**① 저장된 자동 분석 결과와 추천 참고점수**')
                     m1,m2,m3=st.columns(3)
-                    show_score_guide(st, period)
+                    show_score_guide(st, search_period)
+                    st.caption(f"점수 계산 입력값 확보: {ranked_one['점수 입력 완전성']} (기술점수·5일 수익률·20일 수익률·연율 변동성)")
                     m1.metric('추천 참고점수',f"{ranked_one['추천 참고점수']:.1f}",help=glossary['추천 참고점수'])
                     m2.metric('저장된 기술 점수',f"{float(latest['score']):.1f}" if pd.notna(latest.get('score')) else '미확인',help='자동 배치가 저장한 기술 점수입니다. 아래 실시간 요청 기술 점수와 기준 시점·산식이 달라질 수 있습니다.')
                     m3.metric('가격 기준일',str(latest.get('asof_price','-')))
