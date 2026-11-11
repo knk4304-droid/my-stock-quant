@@ -4,7 +4,8 @@ from datetime import datetime, timezone, timedelta
 import json
 import pandas as pd
 from technical_report_v63 import get_technical_report
-from market_news import display_briefing, display_company_brief, MACRO_QUERY, ticker_query
+from market_news import display_briefing, display_company_brief, MACRO_QUERY, ticker_query, fetch_news
+from weekly_review import issue_flags, allocate_krw, csv_bytes
 
 DATA = Path(__file__).resolve().parent / 'market_scan_data'
 PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (1년 이상)']
@@ -107,8 +108,35 @@ def show_integrated_opinion(st, report_rows, ranked, period):
         st.text('보류 조건: 공시 원문 확인 실패, 예상보다 큰 악재, 시세 급등에 따른 추격매수, 손절 기준 이탈 또는 분석 데이터 노후화.')
         st.text('뉴스·공시: 자동 호재·악재 검증 미완료 — 아래 해당 종목의 뉴스와 공식 공시 확인 필요.')
         with st.expander(f'📰 {r["종목명"]} 뉴스·공시와 투자 위험 확인', expanded=False):
+            @st.cache_data(ttl=1800, show_spinner=False)
+            def _weekly_news(q):
+                return fetch_news(q, limit=8)
+            articles, news_error = _weekly_news(ticker_query(str(r['종목명']), str(r['코드'])))
+            if news_error:
+                st.info('뉴스 수집 실패: 기사 근거를 확인할 수 없어 뉴스 판단을 보류합니다.')
+            elif not articles:
+                st.info('최근 뉴스 검색 결과가 없습니다. 뉴스가 없다는 의미는 아닙니다.')
+            else:
+                flags = issue_flags(articles)
+                st.caption(f'최근 기사 {len(articles)}건 검색 · 제목 기반 점검 항목 {len(flags)}건 (중복 기사·사실관계 미검증)')
+                if flags:
+                    for flag in flags[:3]:
+                        st.text(f"검토 항목: {flag['분류']} | {flag['발행 시각']}")
+                        st.markdown(f"[{flag['기사 제목']}]({flag['원문']})")
+                else:
+                    st.info('사전 정의된 중요 이슈 키워드는 발견되지 않았습니다. 긍정·부정 판단이나 이슈 부재를 뜻하지 않습니다.')
             display_company_brief(st, str(r['종목명']), str(r['코드']), f'opinion_news_{i}')
             st.caption('기사 제목만으로 호재·악재를 확정하지 마세요. 공시 원문·발표일·실적 수치와 주가 선반영 여부를 확인한 뒤 최종 판단해야 합니다.')
+    st.markdown('**주간 투자 계획 · 위험 한도 시뮬레이션**')
+    sizing = allocate_krw(selected)
+    st.dataframe(pd.DataFrame(sizing), hide_index=True, use_container_width=True)
+    st.download_button('주간 검토 후보·위험 계획 CSV 저장', csv_bytes([
+        {'기준 기간':period, '종목':r['종목명'], '코드':r['코드'], '기술 점수':r['분석 점수'],
+         '추천 참고점수':r['추천 참고점수'], '손익비':r['손익비'],
+         '매수 관찰가':r['1차 매수가'], '목표가':r['1차 목표가'], '손절 참고가':r['손절 기준가'],
+         '뉴스 검증 상태':'원문 검증 전'} for r in selected]),
+        file_name='ai_stock_master_weekly_review.csv', mime='text/csv')
+    st.caption('시뮬레이션은 총 투자금 1,000만원, 1회 계획손실 10만원, 일일 계획손실 30만원을 가정합니다. 미국 종목은 환율과 거래단위를 확인하기 전 수량을 계산하지 않습니다.')
     st.caption('수량은 국내 상장 종목의 원화 가격을 가정한 참고치입니다. 수수료·슬리피지·갭 하락으로 실제 손실은 더 커질 수 있습니다. 종목당 10만원 손실 제한을 모두 채우면 3종목 합산 계획 손실은 최대 30만원이므로, 하루 최대 손실 3% 제한과 별도로 관리해야 합니다.')
 
 
