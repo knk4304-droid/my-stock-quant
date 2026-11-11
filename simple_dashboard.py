@@ -88,7 +88,7 @@ def mobile_cards(st, rows, *, kind='rank'):
 
 def weekly_brief(st, state, scores, ranked, period):
     """Show verifiable weekly facts without equating successful execution with fresh quotes."""
-    st.subheader('📋 주간 투자 종합보고서')
+    st.subheader('📋 최신 투자 종합보고서')
     try:
         weekly=weekly_status(latest_scan=state.get('updated_utc'))
         anchor=weekly['anchor'].strftime('%Y-%m-%d %H:%M KST')
@@ -122,8 +122,8 @@ def show_integrated_opinion(st, report_rows, ranked, period):
     if not selected:
         st.warning('현재 상위 후보 중 기술 점수와 가격 조건, 손익비 1.5 이상을 함께 만족하는 종목이 없습니다. 신규 매수를 보류하고 다음 분석을 기다리는 편이 합리적입니다.')
         return
-    st.subheader(f'{period} 기준 최종 검토 후보 {len(selected)}종목')
-    st.caption('주간 보고서의 최종 검토 후보입니다. 주문 전에 최신 뉴스·공시와 가격을 확인하세요.')
+    st.subheader(f'{period} 기준 최종 검토 후보 {len(selected)}종목 (순위순)')
+    st.caption('최신 추천순위의 최종 검토 후보입니다. 주문 전에 최신 뉴스·공시와 가격을 확인하세요.')
     mobile_cards(st, selected, kind='trade')
     st.text('최대 3종목 / 손익비 1.5 이상 / 손절가 < 매수가 < 목표가')
     st.caption('선정 기준: 가격 조건 정상, 기술 점수 존재, 손익비 1.5 이상, 손절 위험 유효. 기술 점수 → 손익비 → 기간별 추천 참고점수 순으로 정렬합니다. 이 기준은 과거 수익률로 최적화된 전략이 아닙니다.')
@@ -327,7 +327,7 @@ def show(st):
 @media(max-width:700px){.qp-mobile{display:block}.qp-desktop{display:none!important}}
 </style>''',unsafe_allow_html=True)
     st.title('📈 QUANTPILOT AI')
-    st.caption('테마별 종목 추천과 관심종목 검색·분석을 구분한 투자 판단 참고 화면')
+    st.caption('월요일 10시를 주간 기준점으로 삼고, 이후 자동 스캔에서 갱신된 전체 시장 후보를 한 화면에 표시합니다.')
     state, scores=load_data()
     if scores.empty:
         st.warning('저장된 시장 분석 결과가 없습니다. GitHub Actions의 Market scan v9을 먼저 실행해 주세요.')
@@ -347,11 +347,11 @@ def show(st):
     b.metric('최근 7일 분석',f'{len(fresh):,}개',help=glossary['최근 7일 분석'])
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=glossary['최근 실행 성공'])
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
-    recommendation_tab, watchlist_tab, news_tab = st.tabs(['📈 테마별 종목 추천', '🔎 관심종목 검색', '📰 시장 뉴스·공시'])
+    recommendation_tab, watchlist_tab, news_tab = st.tabs(['🏆 종목추천순위', '🔎 관심종목 검색', '📰 시장 뉴스·공시'])
     with recommendation_tab:
-        st.subheader('테마별 종목 추천')
+        st.subheader('🏆 종목추천순위')
         st.caption('기간별 가격 흐름으로 정렬한 관찰 후보입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
-        st.info('월요일 오전 10시(KST) 추가 분석이 예약되어 있습니다. 예약은 실행·완료 보장이 아닙니다. 최신 데이터 기준일을 확인하고 국내 장중 가격·거래량 및 최신 공시를 재확인하세요. 미국 종목은 직전 거래일 자료일 수 있습니다.')
+        st.info('월요일 오전 10시(KST)를 주간 기준점으로 삼고 이후 자동 스캔이 저장한 최신 종목 결과를 계속 반영합니다. 분석은 시장 전체를 한 번에 처리하지 않고 순환 배치로 진행됩니다. 미국 종목은 직전 거래일 자료일 수 있습니다.')
         try:
             weekly = weekly_status(latest_scan=state.get('updated_utc'))
             st.caption(f"주간 기준시각: {weekly['anchor']:%Y-%m-%d %H:%M} KST / 마지막 저장 분석: {weekly['scan'].strftime('%Y-%m-%d %H:%M') + ' KST' if weekly['scan'] else '확인 불가'} / {weekly['status']}")
@@ -383,7 +383,7 @@ def show(st):
             view=view[view['name'].fillna('').astype(str).str.contains(keywords[theme],case=False,regex=True)]
             st.caption('테마는 현재 종목명 키워드로 임시 분류합니다. 정확한 업종·테마 분류는 추후 별도 데이터로 보강해야 합니다.')
         ranked=rank(view,period) if not view.empty else view
-        st.caption(f'최근 7일 데이터에서 조건에 맞는 종목 {len(ranked):,}개 · 상위 10개 표시')
+        st.caption(f'최근 7일 누적 순환 스캔에서 조건에 맞는 종목 {len(ranked):,}개 · 추천순위 상위 10개 표시 (전체 시장 동시 재평가 아님)')
         if not ranked.empty:
             incomplete = int((ranked['점수 입력 완전성'] != '4/4').sum())
             if incomplete:
@@ -397,68 +397,20 @@ def show(st):
                 st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
         else:
             with st.expander('전체 비교표 보기 (PC·가로 스크롤)', expanded=False):
-                st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
+                st.dataframe(ranked.head(10).assign(추천순위=range(1, min(10, len(ranked))+1)).rename(columns=cols)[['추천순위','종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
         if not ranked.empty:
             mobile_cards(st, ranked.head(10).rename(columns=cols).to_dict('records'))
         weekly_brief(st, state, scores, ranked, period)
-        # Explicit user-triggered, uncached price refresh; never mutate the saved weekly scan.
-        st.subheader('🔄 현재 시점 재분석')
-        st.caption('버튼을 누르면 현재 선택 조건의 상위 후보 최대 10종목에 대해 시세를 다시 요청합니다. 브라우저 새로고침은 이 작업을 실행하지 않습니다. 데이터 공급원은 지연된 일봉을 제공할 수 있습니다.')
-        current_symbols = tuple(str(t) for t in ranked.head(10)['ticker'].tolist()) if not ranked.empty else ()
-        current_key = (current_symbols, period, market, theme)
-        if st.button('🔄 지금 상위 후보 10종목 재분석', disabled=not current_symbols,
-                     use_container_width=True, key='qp_refresh_now'):
-            progress = st.progress(0, text='새 가격 자료를 조회하고 있습니다.')
-            checked = []
-            for idx, (_, candidate) in enumerate(ranked.head(10).iterrows()):
-                ticker = str(candidate['ticker'])
-                # Deliberately bypass daily memoization to force a new provider request.
-                report = get_technical_report(ticker)
-                checked.append({'종목명':str(candidate['name']), '종목코드':ticker,
-                                '시장':str(candidate.get('market','')), 'report':report})
-                progress.progress((idx+1)/len(current_symbols), text=f'{idx+1}/{len(current_symbols)} 종목 조회')
-            progress.empty()
-            st.session_state['qp_live_review'] = {
-                'key':current_key,
-                'requested_at':datetime.now(timezone.utc).isoformat(),
-                'rows':checked,
-            }
-        live = st.session_state.get('qp_live_review', {})
-        if live and live.get('key') != current_key:
-            st.info('선택 조건이 변경되었습니다. 현재 조건으로 다시 분석하려면 버튼을 눌러주세요.')
-        elif live:
-            st.caption('재조회 요청 시각: '+format_kst(live.get('requested_at'))+' · 실제 가격 기준일은 거래소·데이터 공급원에 따라 다릅니다.')
-            current_rows=[]
-            failed=[]
-            for item in live['rows']:
-                report=item['report']
-                if not isinstance(report,dict) or report.get('error'):
-                    failed.append(item['종목명']+' ('+(report.get('error','조회 실패') if isinstance(report,dict) else '조회 실패')+')')
-                    continue
-                current_rows.append({
-                    '종목명':item['종목명'],'종목코드':item['종목코드'],'시장':item['시장'],
-                    '기술 점수':report.get('종합 점수(100)'),
-                    '기준 종가':report.get('기준 종가'),
-                    '1차 매수가':report.get('1차 매수 관찰가'),
-                    '1차 목표가':report.get('1차 목표 관찰가'),
-                    '손절 기준가':report.get('손실 제한 참고가'),
-                    '기준일':report.get('기준일',report.get('가격 기준일','확인 필요')),
-                })
-            if current_rows:
-                # Reorder only successfully refreshed candidates; do not mislabel as the weekly ranking formula.
-                current_rows.sort(key=lambda r: pd.to_numeric(r['기술 점수'],errors='coerce') if pd.notna(pd.to_numeric(r['기술 점수'],errors='coerce')) else -1, reverse=True)
-                st.success(f'현재 조회 성공 {len(current_rows)}개 / 요청 {len(live["rows"])}개 · 기술 점수 기준 재정렬')
-                st.caption('이 결과는 조회 시점의 기술적 재평가이며, 주간 추천 참고점수의 전체 시장 재계산이 아닙니다. 저장된 주간 기록을 변경하지 않습니다.')
-                for item in current_rows[:3]:
-                    with st.container(border=True):
-                        st.markdown('**'+escape(item['종목명'])+' · '+escape(item['종목코드'])+'**')
-                        st.write('기술 점수:',item['기술 점수'],'| 기준 종가:',item['기준 종가'])
-                        st.write('매수 관찰가:',item['1차 매수가'],'| 목표 관찰가:',item['1차 목표가'],'| 손절 참고가:',item['손절 기준가'])
-                with st.expander('현재 시점 전체 재분석 비교표',expanded=False):
-                    st.dataframe(pd.DataFrame(current_rows),hide_index=True,use_container_width=True)
-            if failed:
-                st.warning('조회 실패 '+str(len(failed))+'개: '+'; '.join(failed[:4]))
-            st.caption('뉴스·공시와 전체 종목 스캔은 이 버튼으로 갱신하지 않습니다. 매매 전에 최신 공시와 현재 호가를 별도 확인하세요.')
+        st.subheader('🔄 최신 시장 분석 결과 갱신')
+        st.caption('하나의 추천순위 화면을 사용합니다. GitHub 자동 스캔이 전체 시장 종목을 순환 분석하여 저장하면 다음 화면 갱신부터 새 후보·순위가 반영됩니다.')
+        st.caption('아래 화면 갱신은 저장된 결과를 다시 읽는 동작입니다. 전체 시장 분석을 즉시 끝내는 기능은 아닙니다.')
+        if st.button('🔄 최신 저장 결과 불러오기', use_container_width=True, key='qp_reload_scan'):
+            st.rerun()
+        st.link_button('▶ 지금 전체 시장 순환 스캔 실행 (GitHub Actions)',
+                       'https://github.com/knk4304-droid/my-stock-quant/actions/workflows/market_scan_v90.yml',
+                       use_container_width=True)
+        st.caption('GitHub에서 Run workflow → Run workflow를 누르면 신규 순환 스캔이 시작됩니다. 완료 후 위 버튼으로 최신 결과를 확인하세요. GitHub 로그인 필요.')
+        st.caption('실시간 전 종목 동시 분석이 아니라 정해진 배치의 최신 분석 결과를 누적하는 방식이며, 실제 시세에는 공급원 지연이 있을 수 있습니다.')
         show_score_guide(st, period)
         with st.expander('🔎 추천 종목 분석', expanded=False):
             st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
