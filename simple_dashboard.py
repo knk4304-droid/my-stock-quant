@@ -88,7 +88,6 @@ def mobile_cards(st, rows, *, kind='rank'):
 
 def show_ranking_history(st, period):
     """Compact, read-only timeline of all persisted scan runs."""
-    st.subheader('📈 주간 추천순위 변화')
     history_file = DATA / 'ranking_snapshots.json'
     if not history_file.exists():
         st.info('아직 저장된 순위 이력이 없습니다. 업데이트 후 GitHub Actions의 다음 시장 분석부터 검색 시각별 기록이 쌓입니다.')
@@ -117,7 +116,7 @@ def show_ranking_history(st, period):
     current = runs[chosen]['periods'][period]
     if current:
         st.dataframe(pd.DataFrame([{'순위': r['rank'], '종목명': r['name'], '코드': r['ticker'], '점수': r['score']} for r in current]), hide_index=True, use_container_width=True)
-    with st.expander('📊 순위 변화 그래프와 전체 검색 기록', expanded=True):
+    with st.expander('📊 순위 변화 그래프와 전체 검색 기록', expanded=False):
         names = {}
         for h in runs:
             for r in h['periods'][period]:
@@ -450,242 +449,251 @@ def show(st):
                 st.dataframe(ranked.head(10).assign(추천순위=range(1, min(10, len(ranked))+1)).rename(columns=cols)[['추천순위','종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
         if not ranked.empty:
             mobile_cards(st, ranked.head(10).rename(columns=cols).to_dict('records'))
-        weekly_brief(st, state, scores, ranked, period)
-        show_ranking_history(st, period)
-        st.subheader('🔄 최신 시장 분석 결과 갱신')
-        st.caption('하나의 추천순위 화면을 사용합니다. GitHub 자동 스캔이 전체 시장 종목을 순환 분석하여 저장하면 다음 화면 갱신부터 새 후보·순위가 반영됩니다.')
-        st.caption('아래 화면 갱신은 저장된 결과를 다시 읽는 동작입니다. 전체 시장 분석을 즉시 끝내는 기능은 아닙니다.')
-        if st.button('🔄 최신 저장 결과 불러오기', use_container_width=True, key='qp_reload_scan'):
-            st.rerun()
-        st.link_button('▶ 지금 전체 시장 순환 스캔 실행 (GitHub Actions)',
-                       'https://github.com/knk4304-droid/my-stock-quant/actions/workflows/market_scan_v90.yml',
-                       use_container_width=True)
-        st.caption('GitHub에서 Run workflow → Run workflow를 누르면 신규 순환 스캔이 시작됩니다. 완료 후 위 버튼으로 최신 결과를 확인하세요. GitHub 로그인 필요.')
-        st.caption('실시간 전 종목 동시 분석이 아니라 정해진 배치의 최신 분석 결과를 누적하는 방식이며, 실제 시세에는 공급원 지연이 있을 수 있습니다.')
-        show_score_guide(st, period)
-        with st.expander('🔎 추천 종목 분석', expanded=False):
-            st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
-            top = ranked.head(10) if not ranked.empty else pd.DataFrame()
-            if not top.empty:
-                # Preserve reports across Streamlit reruns; avoid showing stale reports after filters change.
-                symbols = tuple(str(t) for t in top['ticker'].tolist())
-                if st.button('상위 10종목 상세 분석 실행', type='primary', use_container_width=True):
-                    progress = st.progress(0, text='상위 종목의 가격 데이터를 확인하고 있습니다.')
-                    reports = []
-                    for i, (_, r) in enumerate(top.iterrows()):
-                        ticker = str(r['ticker'])
-                        result = cached_report(ticker)
-                        reports.append((str(r['name']), ticker, result))
-                        progress.progress((i + 1) / len(top), text=f'{i+1}/{len(top)} 종목 분석 완료')
-                    st.session_state['simple_batch_reports'] = {'symbols': symbols, 'reports': reports}
-                    progress.empty()
-                stored = st.session_state.get('simple_batch_reports', {})
-                if stored.get('symbols') == symbols:
-                    report_rows = []
-                    for name, ticker, result in stored['reports']:
-                        if not isinstance(result, dict) or result.get('error'):
-                            report_rows.append({'종목명':name,'코드':ticker,'매매 판단':'분석 불가','분석 점수':None,
-                                                '현재가':None,'1차 매수가':None,'1차 목표가':None,'손절 기준가':None,
-                                                '예상 상승폭':None,'예상 하락폭':None,'손익비':None,'가격 조건':'확인 불가'})
-                            continue
-                        def numeric(key):
-                            try:
-                                v=float(result.get(key))
-                                return v if pd.notna(v) else None
-                            except (TypeError,ValueError): return None
-                        current=numeric('기준 종가')
-                        buy=numeric('1차 매수 관찰가')
-                        target=numeric('1차 목표 관찰가')
-                        stop=numeric('손실 제한 참고가')
-                        # Percentage comparisons are anchored to the proposed entry, not today's price.
-                        upside=round((target/buy-1)*100,1) if buy and target else None
-                        downside=round((1-stop/buy)*100,1) if buy and stop else None
-                        scenario_ok=valid_scenario(buy,target,stop)
-                        rr=round(upside/downside,2) if scenario_ok and upside is not None and downside and downside>0 else None
-                        report_rows.append({'종목명':name,'코드':ticker,'매매 판단':result.get('종합 의견'),
-                                            '분석 점수':numeric('종합 점수(100)'),'현재가':current,
-                                            '1차 매수가':buy,'1차 목표가':target,'손절 기준가':stop,
-                                            '예상 상승폭':upside if scenario_ok else None,'예상 하락폭':downside if scenario_ok else None,'손익비':rr,'가격 조건':'정상' if scenario_ok else '재검토 필요'})
-                    st.markdown('**추천 종목 한눈에 비교**')
-                    if any(r.get('가격 조건')=='재검토 필요' for r in report_rows):
-                        st.warning('일부 종목의 손절가·매수가·목표가 순서가 맞지 않아 수익·손실 비교를 생략했습니다. 해당 가격은 재검토가 필요합니다.')
-                    st.caption('상승폭·하락폭은 1차 매수가를 기준으로 계산한 시나리오입니다. 손익비는 예상 상승폭 ÷ 예상 하락폭이며, 실제 수익을 보장하지 않습니다.')
-                    st.dataframe(pd.DataFrame(report_rows), hide_index=True, use_container_width=True,
-                                 height=min(430, 40+len(report_rows)*35),
-                                 column_config={
-                                     '종목명':st.column_config.TextColumn('종목',width='medium'),
-                                     '코드':st.column_config.TextColumn('코드',width='small'),
-                                     '매매 판단':explained_column('매매 판단',width='medium'),
-                                     '분석 점수':st.column_config.NumberColumn('점수 /100 ⓘ',format='%.0f',help=glossary['기술 점수']),
-                                     '현재가':st.column_config.NumberColumn('현재가',format='%.2f'),
-                                     '1차 매수가':st.column_config.NumberColumn('매수 참고',format='%.2f'),
-                                     '1차 목표가':st.column_config.NumberColumn('목표 참고',format='%.2f'),
-                                     '손절 기준가':st.column_config.NumberColumn('손절 참고',format='%.2f'),
-                                     '예상 상승폭':explained_column('예상 상승폭',numeric=True,fmt='%+.1f%%'),
-                                     '예상 하락폭':explained_column('예상 하락폭',numeric=True,fmt='%.1f%%'),
-                                     '손익비':explained_column('손익비',numeric=True,fmt='%.2f'),
-                                     '가격 조건':explained_column('가격 조건',width='small'),
-                                 })
-                    with st.expander('📘 표에 나오는 용어 쉽게 이해하기'):
-                        st.markdown("""
-                        - **매매 판단**: 기술적 지표에 따른 관찰 의견입니다. 실제 매수 지시가 아닙니다.
-                        - **분석 점수**: 추세·매수 시점·거래량·위험 관리를 합산한 100점 만점의 규칙 기반 점수입니다. 상승 확률이 아닙니다.
-                        - **현재가**: 분석에 사용된 마지막 종가로, 실시간 가격과 다를 수 있습니다.
-                        - **매수 참고**: 1차 매수를 검토할 가격입니다.
-                        - **목표 참고**: 1차 매도 목표를 검토할 가격입니다.
-                        - **손절 참고**: 손실 제한을 검토할 가격입니다.
-                        - **상승 여지**: 1차 매수가에서 1차 목표가까지의 가격 차이를 백분율로 계산한 값입니다.
-                        - **손실 위험**: 1차 매수가에서 손절 참고가까지의 가격 차이를 백분율로 계산한 값입니다.
-                        - **손익비**: 상승 여지 ÷ 손실 위험입니다. 예를 들어 2라면 예상 이익 폭이 예상 손실 폭의 2배입니다.
-                        - **가격 조건**: 손절가 < 매수가 < 목표가 순서가 맞는지 확인합니다. 맞지 않으면 수익률과 손익비를 계산하지 않습니다.
-                        - **추천 검증**: 현재 화면의 점수는 과거 가격 기반 지표이며, 추천 이후 실제 수익률·적중률 검증과는 다릅니다.
-                        """)
-                    show_integrated_opinion(st, report_rows, ranked, period)
-                    st.markdown('**종목별 분석 결과**')
-                    for i,(name,ticker,result) in enumerate(stored['reports'],1):
-                        with st.expander(f'{i}. {name} ({ticker}) · {result.get("종합 의견", "분석 실패")}'):
-                            if not isinstance(result,dict) or result.get('error'):
-                                st.warning(result.get('error','분석 결과를 불러오지 못했습니다.') if isinstance(result,dict) else '분석 결과 형식이 올바르지 않습니다.')
-                                continue
-                            st.write(f"**기술 점수 {result.get('종합 점수(100)','-')}점 / 100점** · 가격 기준일 {result.get('기준일','-')} · 통화 {result.get('통화','-')}")
-                            def fmt_price(key):
-                                try: return f"{float(result[key]):,.2f}"
-                                except (TypeError,ValueError,KeyError): return '-'
-                            st.markdown(
-                                f"**매수 검토** {fmt_price('1차 매수 관찰가')} / {fmt_price('2차 매수 관찰가')}  "
-                                f"\n\n**목표 가격** {fmt_price('1차 목표 관찰가')} / {fmt_price('2차 목표 관찰가')}  "
-                                f"\n\n**손절 참고** {fmt_price('손실 제한 참고가')}"
-                            )
-                            display_company_brief(st, name, ticker, f'batch_news_{i}')
-                            with st.expander('전문 기술 지표 보기 · RSI / MACD 등'):
-                                st.caption('RSI·MACD 등 지표별 설명은 표의 오른쪽 열에서 확인할 수 있습니다.')
-                                indicators=indicator_explanations()
-                                st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),
-                                             hide_index=True,use_container_width=True,height=390,
-                                             column_config={'지표':st.column_config.TextColumn(width='medium'),
-                                                            '쉬운 설명':st.column_config.TextColumn(width='large')})
-                    st.warning('매수·목표·손절 가격은 과거 차트로 계산한 참고 구간입니다. 실제 수익률 검증이나 미래 가격 예측이 아닙니다.')
-                    with st.expander('📊 실제 추천 성과 검증 상태'):
-                        st.info('실제 추천 성과는 아래 ‘지난 추천 성과 확인’에서 1·5·20거래일 관측 수익률과 통계 점검 결과를 확인하세요. 충분한 표본이 쌓이기 전에는 검증 부족으로 표시됩니다.')
-                else:
-                    st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
-        with st.expander('📊 지난 추천 성과 확인 (관측된 가격 기준)'):
-            history_file=DATA/'recommendation_history.csv'
-            if not history_file.exists():
-                st.info('추천 기록이 아직 없습니다. 업데이트 후 GitHub Actions의 Market scan v9을 실행하면 기록이 시작됩니다.')
+        st.caption('가격 기준일은 시세 제공원이 전달한 거래 날짜입니다. 장중 시각이 제공되지 않아 시간을 임의로 표시하지 않습니다. 종목별 최종 분석 시각(KST)은 아래에서 확인할 수 있습니다.')
+        with st.expander('🕒 종목별 분석 시각 확인 (한국시간)', expanded=False):
+            if not ranked.empty:
+                timestamps = ranked.head(10)[['name','ticker','asof_price','scanned_at_utc']].copy()
+                timestamps['scanned_at_utc'] = pd.to_datetime(timestamps['scanned_at_utc'], utc=True, errors='coerce').dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M KST')
+                timestamps.columns = ['종목명','코드','가격 기준일 (시각 미제공)','분석 완료 시각 (KST)']
+                st.dataframe(timestamps, hide_index=True, use_container_width=True)
             else:
-                try:
-                    hist=pd.read_csv(history_file,dtype={'ticker':str})
-                    if hist.empty:
-                        st.info('기록된 추천이 없습니다.')
+                st.info('표시할 분석 기록이 없습니다.')
+        with st.expander('📈 주간 추천순위 변화 · 검색 기록 보기', expanded=False):
+            show_ranking_history(st, period)
+        with st.expander('🔎 추천종목 상세분석', expanded=False):
+            st.caption('하나의 추천순위 화면을 사용합니다. GitHub 자동 스캔이 전체 시장 종목을 순환 분석하여 저장하면 다음 화면 갱신부터 새 후보·순위가 반영됩니다.')
+            st.caption('아래 화면 갱신은 저장된 결과를 다시 읽는 동작입니다. 전체 시장 분석을 즉시 끝내는 기능은 아닙니다.')
+            if st.button('🔄 최신 저장 결과 불러오기', use_container_width=True, key='qp_reload_scan'):
+                st.rerun()
+            st.link_button('▶ 지금 전체 시장 순환 스캔 실행 (GitHub Actions)',
+                           'https://github.com/knk4304-droid/my-stock-quant/actions/workflows/market_scan_v90.yml',
+                           use_container_width=True)
+            st.caption('GitHub에서 Run workflow → Run workflow를 누르면 신규 순환 스캔이 시작됩니다. 완료 후 위 버튼으로 최신 결과를 확인하세요. GitHub 로그인 필요.')
+            st.caption('실시간 전 종목 동시 분석이 아니라 정해진 배치의 최신 분석 결과를 누적하는 방식이며, 실제 시세에는 공급원 지연이 있을 수 있습니다.')
+            show_score_guide(st, period)
+            with st.expander('🔎 상위 10종목 매매 전략 · 기술 분석', expanded=False):
+                st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
+                top = ranked.head(10) if not ranked.empty else pd.DataFrame()
+                if not top.empty:
+                    # Preserve reports across Streamlit reruns; avoid showing stale reports after filters change.
+                    symbols = tuple(str(t) for t in top['ticker'].tolist())
+                    if st.button('상위 10종목 상세 분석 실행', type='primary', use_container_width=True):
+                        progress = st.progress(0, text='상위 종목의 가격 데이터를 확인하고 있습니다.')
+                        reports = []
+                        for i, (_, r) in enumerate(top.iterrows()):
+                            ticker = str(r['ticker'])
+                            result = cached_report(ticker)
+                            reports.append((str(r['name']), ticker, result))
+                            progress.progress((i + 1) / len(top), text=f'{i+1}/{len(top)} 종목 분석 완료')
+                        st.session_state['simple_batch_reports'] = {'symbols': symbols, 'reports': reports}
+                        progress.empty()
+                    stored = st.session_state.get('simple_batch_reports', {})
+                    if stored.get('symbols') == symbols:
+                        report_rows = []
+                        for name, ticker, result in stored['reports']:
+                            if not isinstance(result, dict) or result.get('error'):
+                                report_rows.append({'종목명':name,'코드':ticker,'매매 판단':'분석 불가','분석 점수':None,
+                                                    '현재가':None,'1차 매수가':None,'1차 목표가':None,'손절 기준가':None,
+                                                    '예상 상승폭':None,'예상 하락폭':None,'손익비':None,'가격 조건':'확인 불가'})
+                                continue
+                            def numeric(key):
+                                try:
+                                    v=float(result.get(key))
+                                    return v if pd.notna(v) else None
+                                except (TypeError,ValueError): return None
+                            current=numeric('기준 종가')
+                            buy=numeric('1차 매수 관찰가')
+                            target=numeric('1차 목표 관찰가')
+                            stop=numeric('손실 제한 참고가')
+                            # Percentage comparisons are anchored to the proposed entry, not today's price.
+                            upside=round((target/buy-1)*100,1) if buy and target else None
+                            downside=round((1-stop/buy)*100,1) if buy and stop else None
+                            scenario_ok=valid_scenario(buy,target,stop)
+                            rr=round(upside/downside,2) if scenario_ok and upside is not None and downside and downside>0 else None
+                            report_rows.append({'종목명':name,'코드':ticker,'매매 판단':result.get('종합 의견'),
+                                                '분석 점수':numeric('종합 점수(100)'),'현재가':current,
+                                                '1차 매수가':buy,'1차 목표가':target,'손절 기준가':stop,
+                                                '예상 상승폭':upside if scenario_ok else None,'예상 하락폭':downside if scenario_ok else None,'손익비':rr,'가격 조건':'정상' if scenario_ok else '재검토 필요'})
+                        st.markdown('**추천 종목 한눈에 비교**')
+                        if any(r.get('가격 조건')=='재검토 필요' for r in report_rows):
+                            st.warning('일부 종목의 손절가·매수가·목표가 순서가 맞지 않아 수익·손실 비교를 생략했습니다. 해당 가격은 재검토가 필요합니다.')
+                        st.caption('상승폭·하락폭은 1차 매수가를 기준으로 계산한 시나리오입니다. 손익비는 예상 상승폭 ÷ 예상 하락폭이며, 실제 수익을 보장하지 않습니다.')
+                        st.dataframe(pd.DataFrame(report_rows), hide_index=True, use_container_width=True,
+                                     height=min(430, 40+len(report_rows)*35),
+                                     column_config={
+                                         '종목명':st.column_config.TextColumn('종목',width='medium'),
+                                         '코드':st.column_config.TextColumn('코드',width='small'),
+                                         '매매 판단':explained_column('매매 판단',width='medium'),
+                                         '분석 점수':st.column_config.NumberColumn('점수 /100 ⓘ',format='%.0f',help=glossary['기술 점수']),
+                                         '현재가':st.column_config.NumberColumn('현재가',format='%.2f'),
+                                         '1차 매수가':st.column_config.NumberColumn('매수 참고',format='%.2f'),
+                                         '1차 목표가':st.column_config.NumberColumn('목표 참고',format='%.2f'),
+                                         '손절 기준가':st.column_config.NumberColumn('손절 참고',format='%.2f'),
+                                         '예상 상승폭':explained_column('예상 상승폭',numeric=True,fmt='%+.1f%%'),
+                                         '예상 하락폭':explained_column('예상 하락폭',numeric=True,fmt='%.1f%%'),
+                                         '손익비':explained_column('손익비',numeric=True,fmt='%.2f'),
+                                         '가격 조건':explained_column('가격 조건',width='small'),
+                                     })
+                        with st.expander('📘 표에 나오는 용어 쉽게 이해하기'):
+                            st.markdown("""
+                            - **매매 판단**: 기술적 지표에 따른 관찰 의견입니다. 실제 매수 지시가 아닙니다.
+                            - **분석 점수**: 추세·매수 시점·거래량·위험 관리를 합산한 100점 만점의 규칙 기반 점수입니다. 상승 확률이 아닙니다.
+                            - **현재가**: 분석에 사용된 마지막 종가로, 실시간 가격과 다를 수 있습니다.
+                            - **매수 참고**: 1차 매수를 검토할 가격입니다.
+                            - **목표 참고**: 1차 매도 목표를 검토할 가격입니다.
+                            - **손절 참고**: 손실 제한을 검토할 가격입니다.
+                            - **상승 여지**: 1차 매수가에서 1차 목표가까지의 가격 차이를 백분율로 계산한 값입니다.
+                            - **손실 위험**: 1차 매수가에서 손절 참고가까지의 가격 차이를 백분율로 계산한 값입니다.
+                            - **손익비**: 상승 여지 ÷ 손실 위험입니다. 예를 들어 2라면 예상 이익 폭이 예상 손실 폭의 2배입니다.
+                            - **가격 조건**: 손절가 < 매수가 < 목표가 순서가 맞는지 확인합니다. 맞지 않으면 수익률과 손익비를 계산하지 않습니다.
+                            - **추천 검증**: 현재 화면의 점수는 과거 가격 기반 지표이며, 추천 이후 실제 수익률·적중률 검증과는 다릅니다.
+                            """)
+                        show_integrated_opinion(st, report_rows, ranked, period)
+                        st.markdown('**종목별 분석 결과**')
+                        for i,(name,ticker,result) in enumerate(stored['reports'],1):
+                            with st.expander(f'{i}. {name} ({ticker}) · {result.get("종합 의견", "분석 실패")}'):
+                                if not isinstance(result,dict) or result.get('error'):
+                                    st.warning(result.get('error','분석 결과를 불러오지 못했습니다.') if isinstance(result,dict) else '분석 결과 형식이 올바르지 않습니다.')
+                                    continue
+                                st.write(f"**기술 점수 {result.get('종합 점수(100)','-')}점 / 100점** · 가격 기준일 {result.get('기준일','-')} · 통화 {result.get('통화','-')}")
+                                def fmt_price(key):
+                                    try: return f"{float(result[key]):,.2f}"
+                                    except (TypeError,ValueError,KeyError): return '-'
+                                st.markdown(
+                                    f"**매수 검토** {fmt_price('1차 매수 관찰가')} / {fmt_price('2차 매수 관찰가')}  "
+                                    f"\n\n**목표 가격** {fmt_price('1차 목표 관찰가')} / {fmt_price('2차 목표 관찰가')}  "
+                                    f"\n\n**손절 참고** {fmt_price('손실 제한 참고가')}"
+                                )
+                                display_company_brief(st, name, ticker, f'batch_news_{i}')
+                                with st.expander('전문 기술 지표 보기 · RSI / MACD 등'):
+                                    st.caption('RSI·MACD 등 지표별 설명은 표의 오른쪽 열에서 확인할 수 있습니다.')
+                                    indicators=indicator_explanations()
+                                    st.dataframe(pd.DataFrame([{'지표':k,'분석값':result.get(k),'쉬운 설명':d} for k,d in indicators]),
+                                                 hide_index=True,use_container_width=True,height=390,
+                                                 column_config={'지표':st.column_config.TextColumn(width='medium'),
+                                                                '쉬운 설명':st.column_config.TextColumn(width='large')})
+                        st.warning('매수·목표·손절 가격은 과거 차트로 계산한 참고 구간입니다. 실제 수익률 검증이나 미래 가격 예측이 아닙니다.')
+                        with st.expander('📊 실제 추천 성과 검증 상태'):
+                            st.info('실제 추천 성과는 아래 ‘지난 추천 성과 확인’에서 1·5·20거래일 관측 수익률과 통계 점검 결과를 확인하세요. 충분한 표본이 쌓이기 전에는 검증 부족으로 표시됩니다.')
                     else:
-                        hist['observed_return_pct']=pd.to_numeric(hist.get('observed_return_pct'),errors='coerce')
-                        hist['elapsed_days']=pd.to_numeric(hist.get('elapsed_days'),errors='coerce')
-                        done=hist.dropna(subset=['observed_return_pct','elapsed_days'])
-                        a,b,c=st.columns(3)
-                        a.metric('누적 추천 기록',f'{len(hist):,}건',help=glossary['누적 추천 기록'])
-                        b.metric('이후 가격 확인',f'{len(done):,}건',help=glossary['이후 가격 확인'])
-                        c.metric('관측 결과 평균',f"{done.observed_return_pct.mean():+.2f}%" if len(done) else '자료 없음',help=glossary['관측 결과 평균'])
-                        st.caption('같은 종목이 여러 날짜·투자 기간에 중복 기록될 수 있습니다. 평균은 투자 수익률이나 전략 적중률이 아닙니다.')
-                        with st.expander('❓ 위의 추천 건수·가격 확인·평균 수익률은 무엇을 뜻하나요? (쉬운 설명)', expanded=False):
-                            st.markdown('''**① 누적 추천 기록:** 프로그램이 추천을 저장한 전체 횟수입니다. 같은 종목이 다른 날 또는 다른 투자 기간에 추천되면 각각 1건으로 셉니다.
+                        st.info('상위 10종목의 상세 가격 구간과 지표를 보려면 위 분석 실행 버튼을 누르세요.')
+            with st.expander('📊 지난 추천 성과 확인 (관측된 가격 기준)'):
+                history_file=DATA/'recommendation_history.csv'
+                if not history_file.exists():
+                    st.info('추천 기록이 아직 없습니다. 업데이트 후 GitHub Actions의 Market scan v9을 실행하면 기록이 시작됩니다.')
+                else:
+                    try:
+                        hist=pd.read_csv(history_file,dtype={'ticker':str})
+                        if hist.empty:
+                            st.info('기록된 추천이 없습니다.')
+                        else:
+                            hist['observed_return_pct']=pd.to_numeric(hist.get('observed_return_pct'),errors='coerce')
+                            hist['elapsed_days']=pd.to_numeric(hist.get('elapsed_days'),errors='coerce')
+                            done=hist.dropna(subset=['observed_return_pct','elapsed_days'])
+                            a,b,c=st.columns(3)
+                            a.metric('누적 추천 기록',f'{len(hist):,}건',help=glossary['누적 추천 기록'])
+                            b.metric('이후 가격 확인',f'{len(done):,}건',help=glossary['이후 가격 확인'])
+                            c.metric('관측 결과 평균',f"{done.observed_return_pct.mean():+.2f}%" if len(done) else '자료 없음',help=glossary['관측 결과 평균'])
+                            st.caption('같은 종목이 여러 날짜·투자 기간에 중복 기록될 수 있습니다. 평균은 투자 수익률이나 전략 적중률이 아닙니다.')
+                            with st.expander('❓ 위의 추천 건수·가격 확인·평균 수익률은 무엇을 뜻하나요? (쉬운 설명)', expanded=False):
+                                st.markdown('''**① 누적 추천 기록:** 프로그램이 추천을 저장한 전체 횟수입니다. 같은 종목이 다른 날 또는 다른 투자 기간에 추천되면 각각 1건으로 셉니다.
 
-**② 이후 가격 확인:** 일반 관측일·경과일·관측 수익률이 모두 저장되어 계산 가능한 기록 수입니다. 아래의 **1·5·20거래일별 확인 건수와는 다른 집계**입니다.
+    **② 이후 가격 확인:** 일반 관측일·경과일·관측 수익률이 모두 저장되어 계산 가능한 기록 수입니다. 아래의 **1·5·20거래일별 확인 건수와는 다른 집계**입니다.
 
-**③ 관측 결과 평균:** 위 ②의 기록들만 평균한 가격 변화율입니다. 2건만 확인됐다면 그 2건의 평균일 뿐이며 전체 추천 성과가 아닙니다.
+    **③ 관측 결과 평균:** 위 ②의 기록들만 평균한 가격 변화율입니다. 2건만 확인됐다면 그 2건의 평균일 뿐이며 전체 추천 성과가 아닙니다.
 
-**④ 1·5·20거래일 평균:** 추천 기준 종가와 각 거래일 뒤 종가를 비교합니다. 1거래일은 다음 *거래일*이고, 주말·휴장일은 건너뜁니다.
+    **④ 1·5·20거래일 평균:** 추천 기준 종가와 각 거래일 뒤 종가를 비교합니다. 1거래일은 다음 *거래일*이고, 주말·휴장일은 건너뜁니다.
 
-**⑤ 통계적 신뢰성 표:** 중복·이상 기록을 별도 기준으로 검토한 **유효 추천**만 사용합니다. 따라서 위의 96건이나 2건과 표의 숫자가 달라질 수 있습니다.
+    **⑤ 통계적 신뢰성 표:** 중복·이상 기록을 별도 기준으로 검토한 **유효 추천**만 사용합니다. 따라서 위의 96건이나 2건과 표의 숫자가 달라질 수 있습니다.
 
-**주의:** 어느 수치도 실제 주문 체결, 거래비용, 손절 실행을 반영한 계좌 수익률이 아닙니다.''')
-                        st.info('💡 보는 순서: 전체 추천 건수 → 1·5·20거래일 확인 건수 → 통계적 신뢰성 판정. 자료 부족이면 추천 전략이 검증됐다고 해석하지 마세요.')
-                        display_hist = hist.sort_values('recorded_at_utc',ascending=False).head(100).copy()
-                        display_hist['recorded_at_utc'] = display_hist['recorded_at_utc'].map(format_kst)
-                        st.dataframe(display_hist.rename(columns={
-                            'recorded_at_utc':'추천 기록 시각(한국시간)','period':'투자 기간','ticker':'종목코드',
-                            'name':'종목명','entry_date':'추천 기준일','entry_close':'기준 종가',
-                            'observed_date':'이후 관측일','observed_close':'이후 종가',
-                            'elapsed_days':'경과 일수','observed_return_pct':'관측 수익률(%)'
-                        })[['추천 기록 시각(한국시간)','투자 기간','종목명','종목코드','추천 기준일','기준 종가',
-                             '이후 관측일','이후 종가','경과 일수','관측 수익률(%)']],
-                            hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['투자 기간','종목명','종목코드','추천 기준일','기준 종가','이후 관측일','이후 종가','경과 일수','관측 수익률(%)']} | {'추천 기록 시각(한국시간)':st.column_config.TextColumn('추천 기록 시각(한국시간) ⓘ',help=glossary['추천 기록 시각'])})
-                        st.markdown('**추천 이후 1·5·20거래일 성과 (확인된 자료만)**')
-                        with st.expander('❓ 1·5·20거래일 성과는 어떻게 읽나요?', expanded=False):
-                            st.markdown('''**예시:** 월요일 종가 10,000원에 추천된 종목이 화요일 종가 10,200원이라면 1거래일 가격 변화율은 +2%입니다. 그 다음 5번째 거래일 종가가 10,500원이면 5거래일 가격 변화율은 +5%입니다.
+    **주의:** 어느 수치도 실제 주문 체결, 거래비용, 손절 실행을 반영한 계좌 수익률이 아닙니다.''')
+                            st.info('💡 보는 순서: 전체 추천 건수 → 1·5·20거래일 확인 건수 → 통계적 신뢰성 판정. 자료 부족이면 추천 전략이 검증됐다고 해석하지 마세요.')
+                            display_hist = hist.sort_values('recorded_at_utc',ascending=False).head(100).copy()
+                            display_hist['recorded_at_utc'] = display_hist['recorded_at_utc'].map(format_kst)
+                            st.dataframe(display_hist.rename(columns={
+                                'recorded_at_utc':'추천 기록 시각(한국시간)','period':'투자 기간','ticker':'종목코드',
+                                'name':'종목명','entry_date':'추천 기준일','entry_close':'기준 종가',
+                                'observed_date':'이후 관측일','observed_close':'이후 종가',
+                                'elapsed_days':'경과 일수','observed_return_pct':'관측 수익률(%)'
+                            })[['추천 기록 시각(한국시간)','투자 기간','종목명','종목코드','추천 기준일','기준 종가',
+                                 '이후 관측일','이후 종가','경과 일수','관측 수익률(%)']],
+                                hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['투자 기간','종목명','종목코드','추천 기준일','기준 종가','이후 관측일','이후 종가','경과 일수','관측 수익률(%)']} | {'추천 기록 시각(한국시간)':st.column_config.TextColumn('추천 기록 시각(한국시간) ⓘ',help=glossary['추천 기록 시각'])})
+                            st.markdown('**추천 이후 1·5·20거래일 성과 (확인된 자료만)**')
+                            with st.expander('❓ 1·5·20거래일 성과는 어떻게 읽나요?', expanded=False):
+                                st.markdown('''**예시:** 월요일 종가 10,000원에 추천된 종목이 화요일 종가 10,200원이라면 1거래일 가격 변화율은 +2%입니다. 그 다음 5번째 거래일 종가가 10,500원이면 5거래일 가격 변화율은 +5%입니다.
 
-**예: 확인 70/96건:** 전체 추천 기록 96건 중 1거래일 뒤 종가를 확인한 기록이 70건이라는 뜻입니다. **미확인**은 실패나 손실을 뜻하지 않습니다.
+    **예: 확인 70/96건:** 전체 추천 기록 96건 중 1거래일 뒤 종가를 확인한 기록이 70건이라는 뜻입니다. **미확인**은 실패나 손실을 뜻하지 않습니다.
 
-**주의:** 아래의 1거래일 평균은 상단 '관측 결과 평균'과 집계에 사용하는 칸이 다르므로 숫자가 다를 수 있습니다.''')
-                        for h in (1, 5, 20):
-                            col=f'return_{h}d_pct'
-                            if col not in hist.columns: hist[col]=float('nan')
-                            hist[col]=pd.to_numeric(hist[col],errors='coerce')
-                        horizon_cols=st.columns(3)
-                        for ui,h in zip(horizon_cols,(1,5,20)):
-                            observed=hist[f'return_{h}d_pct'].dropna()
-                            ui.metric(f'{h}거래일 평균', f'{observed.mean():+.2f}%' if len(observed) else '미확인',
-                                      help=f'관측 완료 {len(observed):,}건 / 전체 {len(hist):,}건. 추천 기준 종가 대비 이후 {h}번째 거래일 종가 변화')
-                            ui.caption(f'확인 {len(observed):,}/{len(hist):,}건')
-                        from statistical_validation import report as statistical_report
-                        stats=statistical_report(history_file)
-                        st.markdown('**통계적 신뢰성 점검**')
-                        with st.expander('❓ 통계적 신뢰성 표의 숫자와 자료 부족 판정을 쉽게 이해하기', expanded=False):
-                            st.markdown('''**유효 추천:** 중복·오류 등 검증 기준을 적용한 뒤 통계 계산에 사용할 수 있는 추천 건수입니다.
+    **주의:** 아래의 1거래일 평균은 상단 '관측 결과 평균'과 집계에 사용하는 칸이 다르므로 숫자가 다를 수 있습니다.''')
+                            for h in (1, 5, 20):
+                                col=f'return_{h}d_pct'
+                                if col not in hist.columns: hist[col]=float('nan')
+                                hist[col]=pd.to_numeric(hist[col],errors='coerce')
+                            horizon_cols=st.columns(3)
+                            for ui,h in zip(horizon_cols,(1,5,20)):
+                                observed=hist[f'return_{h}d_pct'].dropna()
+                                ui.metric(f'{h}거래일 평균', f'{observed.mean():+.2f}%' if len(observed) else '미확인',
+                                          help=f'관측 완료 {len(observed):,}건 / 전체 {len(hist):,}건. 추천 기준 종가 대비 이후 {h}번째 거래일 종가 변화')
+                                ui.caption(f'확인 {len(observed):,}/{len(hist):,}건')
+                            from statistical_validation import report as statistical_report
+                            stats=statistical_report(history_file)
+                            st.markdown('**통계적 신뢰성 점검**')
+                            with st.expander('❓ 통계적 신뢰성 표의 숫자와 자료 부족 판정을 쉽게 이해하기', expanded=False):
+                                st.markdown('''**유효 추천:** 중복·오류 등 검증 기준을 적용한 뒤 통계 계산에 사용할 수 있는 추천 건수입니다.
 
-**관측 완료:** 유효 추천 중 해당 거래일의 이후 종가가 확보된 건수입니다.
+    **관측 완료:** 유효 추천 중 해당 거래일의 이후 종가가 확보된 건수입니다.
 
-**관측률:** 관측 완료 ÷ 유효 추천 × 100입니다. 예: 44 ÷ 64 = 68.75%, 화면에는 약 68.8%로 표시됩니다.
+    **관측률:** 관측 완료 ÷ 유효 추천 × 100입니다. 예: 44 ÷ 64 = 68.75%, 화면에는 약 68.8%로 표시됩니다.
 
-**서로 다른 추천일:** 추천한 날짜의 가짓수입니다. 같은 날 50종목을 추천해도 추천일은 1일입니다.
+    **서로 다른 추천일:** 추천한 날짜의 가짓수입니다. 같은 날 50종목을 추천해도 추천일은 1일입니다.
 
-**서로 다른 종목:** 실제로 몇 종류의 종목을 평가했는지 보여줍니다.
+    **서로 다른 종목:** 실제로 몇 종류의 종목을 평가했는지 보여줍니다.
 
-**중앙값:** 결과를 작은 순서대로 정렬했을 때 가운데 값입니다. 극단적인 수익률의 영향을 평균보다 덜 받습니다.
+    **중앙값:** 결과를 작은 순서대로 정렬했을 때 가운데 값입니다. 극단적인 수익률의 영향을 평균보다 덜 받습니다.
 
-**상승 비율:** 관측 종가가 추천 기준 종가보다 높았던 기록의 비율입니다. 실제 매매 승률이 아닙니다.
+    **상승 비율:** 관측 종가가 추천 기준 종가보다 높았던 기록의 비율입니다. 실제 매매 승률이 아닙니다.
 
-**95% 탐색구간:** 데이터가 충분할 때 평균의 불확실성을 살펴보는 통계 구간입니다. 미래 수익이 이 안에 들어간다는 보장이 아닙니다.
+    **95% 탐색구간:** 데이터가 충분할 때 평균의 불확실성을 살펴보는 통계 구간입니다. 미래 수익이 이 안에 들어간다는 보장이 아닙니다.
 
-**자료 부족:** 현재 표본이나 날짜·종목의 다양성, 관측률이 검증 기준에 미달한 상태입니다. 수익성이 없다는 판정도, 수익성이 입증됐다는 판정도 아닙니다.''')
-                        if stats['issues']:
-                            st.error('데이터 검증 문제: ' + '; '.join(stats['issues'][:5]))
-                        stat_rows=[]
-                        for h, info in stats['horizons'].items():
-                            stat_rows.append({'기간':f'{h}거래일','판정':info['status'],
-                                '유효 추천':info.get('total',0),'관측 완료':info.get('observed',0),
-                                '관측률(%)':info.get('coverage_pct',0),'서로 다른 추천일':info.get('days',0),
-                                '서로 다른 종목':info.get('tickers',0),'평균 수익률(%)':info.get('mean_pct'),
-                                '중앙값(%)':info.get('median_pct'),'상승 비율(%)':info.get('win_rate_pct'),
-                                '95% 탐색구간 하한(%)':info.get('ci_low_pct'),
-                                '95% 탐색구간 상한(%)':info.get('ci_high_pct')})
-                        st.dataframe(pd.DataFrame(stat_rows),hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['기간','판정','유효 추천','관측 완료','관측률(%)','서로 다른 추천일','서로 다른 종목','평균 수익률(%)','중앙값(%)','상승 비율(%)']} | {'95% 탐색구간 하한(%)':st.column_config.NumberColumn('95% 하한 ⓘ',help=glossary['95% 하한']),'95% 탐색구간 상한(%)':st.column_config.NumberColumn('95% 상한 ⓘ',help=glossary['95% 상한'])})
-                        st.caption('30건 이상·추천일 10일 이상·서로 다른 종목 10개 이상·관측률 70% 이상인 경우에만 날짜 단위 재표집으로 탐색적 95% 구간을 계산합니다. 추천 간 상관, 시장 국면, 거래비용, 데이터 누락 때문에 통계적 우위의 증명은 아닙니다.')
-                        periods=[]
-                        for period_name, group in hist.groupby('period',dropna=False):
-                            item={'투자 기간':period_name,'추천 기록':len(group)}
-                            for h in (1,5,20):
-                                vals=group[f'return_{h}d_pct'].dropna()
-                                item[f'{h}일 확인']=len(vals)
-                                item[f'{h}일 평균(%)']=round(vals.mean(),2) if len(vals) else None
-                            periods.append(item)
-                        with st.expander('❓ 단기·스윙·중기·장기별 성과 표 읽는 법', expanded=False):
-                            st.markdown('''**추천 기록:** 해당 기간으로 저장된 전체 추천 횟수입니다.
+    **자료 부족:** 현재 표본이나 날짜·종목의 다양성, 관측률이 검증 기준에 미달한 상태입니다. 수익성이 없다는 판정도, 수익성이 입증됐다는 판정도 아닙니다.''')
+                            if stats['issues']:
+                                st.error('데이터 검증 문제: ' + '; '.join(stats['issues'][:5]))
+                            stat_rows=[]
+                            for h, info in stats['horizons'].items():
+                                stat_rows.append({'기간':f'{h}거래일','판정':info['status'],
+                                    '유효 추천':info.get('total',0),'관측 완료':info.get('observed',0),
+                                    '관측률(%)':info.get('coverage_pct',0),'서로 다른 추천일':info.get('days',0),
+                                    '서로 다른 종목':info.get('tickers',0),'평균 수익률(%)':info.get('mean_pct'),
+                                    '중앙값(%)':info.get('median_pct'),'상승 비율(%)':info.get('win_rate_pct'),
+                                    '95% 탐색구간 하한(%)':info.get('ci_low_pct'),
+                                    '95% 탐색구간 상한(%)':info.get('ci_high_pct')})
+                            st.dataframe(pd.DataFrame(stat_rows),hide_index=True,use_container_width=True, column_config={k:explained_column(k) for k in ['기간','판정','유효 추천','관측 완료','관측률(%)','서로 다른 추천일','서로 다른 종목','평균 수익률(%)','중앙값(%)','상승 비율(%)']} | {'95% 탐색구간 하한(%)':st.column_config.NumberColumn('95% 하한 ⓘ',help=glossary['95% 하한']),'95% 탐색구간 상한(%)':st.column_config.NumberColumn('95% 상한 ⓘ',help=glossary['95% 상한'])})
+                            st.caption('30건 이상·추천일 10일 이상·서로 다른 종목 10개 이상·관측률 70% 이상인 경우에만 날짜 단위 재표집으로 탐색적 95% 구간을 계산합니다. 추천 간 상관, 시장 국면, 거래비용, 데이터 누락 때문에 통계적 우위의 증명은 아닙니다.')
+                            periods=[]
+                            for period_name, group in hist.groupby('period',dropna=False):
+                                item={'투자 기간':period_name,'추천 기록':len(group)}
+                                for h in (1,5,20):
+                                    vals=group[f'return_{h}d_pct'].dropna()
+                                    item[f'{h}일 확인']=len(vals)
+                                    item[f'{h}일 평균(%)']=round(vals.mean(),2) if len(vals) else None
+                                periods.append(item)
+                            with st.expander('❓ 단기·스윙·중기·장기별 성과 표 읽는 법', expanded=False):
+                                st.markdown('''**추천 기록:** 해당 기간으로 저장된 전체 추천 횟수입니다.
 
-**1일·5일·20일 확인:** 각 거래일 뒤 종가를 확인한 기록 수입니다.
+    **1일·5일·20일 확인:** 각 거래일 뒤 종가를 확인한 기록 수입니다.
 
-**1일·5일·20일 평균:** 해당 기간으로 추천된 종목의 각 관측 시점 평균 가격 변화율입니다.
+    **1일·5일·20일 평균:** 해당 기간으로 추천된 종목의 각 관측 시점 평균 가격 변화율입니다.
 
-**가상 예시:** 스윙 추천 22건 중 1일 확인 16건, 1일 평균 +1.26%라면, 16건의 다음 거래일 종가가 추천 기준 종가 대비 평균 1.26% 높았다는 뜻입니다. 22건 모두 수익을 냈다는 뜻은 아닙니다.''')
-                        st.dataframe(pd.DataFrame(periods),hide_index=True,use_container_width=True, column_config={k:explained_column(k,numeric=k=='추천 기록') for k in ['투자 기간','추천 기록','1일 확인','1일 평균(%)','5일 확인','5일 평균(%)','20일 확인','20일 평균(%)']})
-                        st.caption('거래일은 해당 종목 거래소의 실제 거래 세션 기준입니다. 거래 수수료·세금·슬리피지는 제외되며, 추천 기준 종가에 실제로 매수했다고 가정할 수 없습니다.')
-                        st.warning('관측 가능한 추천만 평균에 포함되어 선택 편향이 있을 수 있습니다. 장중·장마감 시차, 데이터 누락 및 자동 수집 한계가 있으며, 미래 수익을 보장하거나 매매 적중률을 뜻하지 않습니다.')
-                except (OSError,ValueError,KeyError) as exc:
-                    st.warning(f'추천 기록 파일을 읽지 못했습니다: {exc}')
+    **가상 예시:** 스윙 추천 22건 중 1일 확인 16건, 1일 평균 +1.26%라면, 16건의 다음 거래일 종가가 추천 기준 종가 대비 평균 1.26% 높았다는 뜻입니다. 22건 모두 수익을 냈다는 뜻은 아닙니다.''')
+                            st.dataframe(pd.DataFrame(periods),hide_index=True,use_container_width=True, column_config={k:explained_column(k,numeric=k=='추천 기록') for k in ['투자 기간','추천 기록','1일 확인','1일 평균(%)','5일 확인','5일 평균(%)','20일 확인','20일 평균(%)']})
+                            st.caption('거래일은 해당 종목 거래소의 실제 거래 세션 기준입니다. 거래 수수료·세금·슬리피지는 제외되며, 추천 기준 종가에 실제로 매수했다고 가정할 수 없습니다.')
+                            st.warning('관측 가능한 추천만 평균에 포함되어 선택 편향이 있을 수 있습니다. 장중·장마감 시차, 데이터 누락 및 자동 수집 한계가 있으며, 미래 수익을 보장하거나 매매 적중률을 뜻하지 않습니다.')
+                    except (OSError,ValueError,KeyError) as exc:
+                        st.warning(f'추천 기록 파일을 읽지 못했습니다: {exc}')
     with watchlist_tab:
         st.subheader('관심종목 분석 · 통합 보고서')
         st.caption('종목명 또는 종목코드로 검색하면 추천 참고점수와 기술 분석·매수/목표/손절 가격을 한 화면에서 확인할 수 있습니다.')
-        st.info('💡 테마별 추천은 후보를 찾는 메뉴이고, 이곳은 특정 종목을 자세히 살펴보는 메뉴입니다. 추천 참고점수와 기술 점수는 계산 목적과 산식이 서로 다릅니다.')
+        st.info('💡 종목추천순위는 후보를 찾는 메뉴이고, 이곳은 특정 종목을 자세히 살펴보는 메뉴입니다. 추천 참고점수와 기술 점수는 계산 목적과 산식이 서로 다릅니다.')
         search_period=st.selectbox('분석할 투자 기간', PERIODS, index=1, key='unified_search_period',
             help='추천 참고점수는 선택한 투자 기간에 따라 달라집니다. 기술 점수는 가격 차트의 별도 규칙 기반 점수입니다.')
         symbol=st.text_input('종목명 또는 코드',placeholder='삼성전자 / 005930.KS / NVDA',key='simple_ticker')
