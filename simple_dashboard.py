@@ -46,15 +46,56 @@ def score_guide(period):
 
 
 def show_score_guide(st, period):
-    """Use plain text: Markdown's emphasis/strikethrough parser must not alter score explanations."""
+    """Render literal text; Streamlit st.write parses Markdown ~~ as strikethrough."""
     with st.expander('ⓘ 추천 참고점수 읽는 법 · 점수 범위와 예시', expanded=False):
-        st.write('점수의 범위: 기술 점수는 0~100점입니다. 추천 참고점수는 수익률을 더하고 변동성을 빼는 순위용 계산값이므로 0~100점으로 제한되지 않으며 음수도 가능합니다.')
-        st.write('점수 해석: 같은 투자 기간과 같은 조건에서 상대적으로 높은 점수가 우선 관찰 대상이라는 뜻입니다. 80점이 상승 확률 80%라는 의미는 아닙니다.')
-        st.write('절대 매수 기준은 없습니다. 예를 들어 70점 이상은 매수, 50점 미만은 매도라는 규칙은 검증되지 않았습니다.')
-        st.write('선택 기간의 계산식: ' + score_guide(period))
-        st.write('스윙 예시: 기술 점수 80점, 최근 5일 수익률 +4%, 최근 20일 수익률 +8%, 연율 변동성 0.4이면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = 47.4점입니다.')
-        st.write('47.4점 자체가 좋거나 나쁘다는 뜻이 아니라 같은 기준으로 계산한 후보와 비교해야 합니다.')
-        st.info('입력값이 누락되면 계산용 기본값이 적용되어 점수 신뢰도가 낮아질 수 있습니다. 시세 기준일·공시·손절 위험도 확인하세요.')
+        lines = [
+            '점수의 범위: 기술 점수는 0점부터 100점까지입니다. 추천 참고점수는 순위용 계산값으로 100점을 넘거나 음수가 될 수도 있습니다.',
+            '점수 해석: 같은 투자 기간과 조건에서 높은 점수일수록 우선 검토 후보입니다. 80점이 상승 확률 80%라는 뜻은 아닙니다.',
+            '고정 매수 기준은 없습니다. 70점 이상이면 매수, 50점 미만이면 매도라는 기준은 검증되지 않았습니다.',
+            '선택한 기간의 계산식: ' + score_guide(period).replace('~', '부터 ').replace('로 제한)', '까지 제한)'),
+            '스윙 예시: 기술 점수 80점, 5일 수익률 +4%, 20일 수익률 +8%, 연율 변동성 0.4라면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = 47.4점입니다.',
+            '47.4점 자체에 매수·매도 의미는 없으며 같은 기준의 다른 후보와 비교해야 합니다.',
+            '누락된 입력값은 기본값으로 대체되므로 점수 입력 완전성도 확인해야 합니다.',
+        ]
+        for line in lines:
+            st.text(line)
+
+
+def show_integrated_opinion(st, report_rows, ranked, period):
+    """Conservative shortlist based on verified technical data, without inventing news."""
+    st.subheader('🎯 종합의견 · 최종 매매 검토 후보')
+    st.caption('상위 10종목의 실제 기술 분석값을 비교한 결과입니다. 뉴스·공시의 긍정/부정 여부는 이 표에서 자동 판정하지 않으며, 아래 개별 종목 뉴스에서 확인해야 합니다.')
+    candidates=[]
+    score_by_ticker = dict(zip(ranked['ticker'].astype(str), ranked['추천 참고점수']))
+    for r in report_rows:
+        if r.get('가격 조건')!='정상' or r.get('손익비') is None or r.get('분석 점수') is None:
+            continue
+        if r['손익비'] < 1.5 or r['예상 하락폭'] is None or r['예상 하락폭'] <= 0:
+            continue
+        row=dict(r)
+        row['추천 참고점수']=score_by_ticker.get(str(r['코드']))
+        candidates.append(row)
+    candidates.sort(key=lambda x:(x['분석 점수'],x['손익비'],x['추천 참고점수'] or 0),reverse=True)
+    selected=candidates[:3]
+    if not selected:
+        st.warning('현재 상위 후보 중 기술 점수와 가격 조건, 손익비 1.5 이상을 함께 만족하는 종목이 없습니다. 신규 매수를 보류하고 다음 분석을 기다리는 편이 합리적입니다.')
+        return
+    st.write(f'**{period} 기준 최종 검토 후보 {len(selected)}종목** · 최대 3종목 · 손익비 1.5 이상 · 손절가 < 매수가 < 목표가')
+    st.warning('뉴스·공시·실적 검증 전에는 확정 매수 대상이 아닙니다. 실제 주문 전에는 최근 가격, 거래량, 시장 급변, 기업별 악재를 다시 확인하세요.')
+    budget=10_000_000
+    risk_cap=100_000
+    for i,r in enumerate(selected,1):
+        buy,stop,target=r['1차 매수가'],r['손절 기준가'],r['1차 목표가']
+        risk_per_share=buy-stop
+        is_krw=str(r['코드']).upper().endswith(('.KS','.KQ'))
+        qty=int(min(budget/len(selected)/buy,risk_cap/risk_per_share)) if is_krw and risk_per_share>0 else None
+        st.markdown(f"**{i}순위 · {r['종목명']} ({r['코드']})**")
+        st.text(f"기술 점수: {r['분석 점수']:.0f}/100 | 추천 참고점수: {r['추천 참고점수']} | 손익비: {r['손익비']:.2f}:1")
+        st.text(f"매수 관찰가 {buy:,.2f} | 1차 목표 {target:,.2f} | 손절 참고 {stop:,.2f} | 가정 손실폭 {r['예상 하락폭']:.1f}%")
+        st.text((f'예시 최대 {qty:,}주 (총 투자금 1,000만원, 종목별 균등 배분, 1회 최대 손실 10만원 가정)' if qty is not None else '미국 종목: 달러 환산 예산·환율을 입력하기 전에는 주문 수량 계산 보류'))
+        st.text('매매 방침: 매수가 부근에서 지지·거래량을 재확인한 뒤 분할 진입 검토. 손절가 이탈 시 손실 제한, 목표가 도달 시 분할 매도 검토.')
+        st.text('뉴스·공시: 자동 호재·악재 검증 미완료 — 아래 해당 종목의 뉴스와 공식 공시 확인 필요.')
+    st.caption('수량은 국내 상장 종목의 원화 가격을 가정한 참고치입니다. 수수료·슬리피지·갭 하락으로 실제 손실은 더 커질 수 있습니다.')
 
 
 def resolve_symbol(raw):
@@ -212,7 +253,8 @@ def show(st):
     recommendation_tab, watchlist_tab, news_tab = st.tabs(['📈 테마별 종목 추천', '🔎 관심종목 검색', '📰 시장 뉴스·공시'])
     with recommendation_tab:
         st.subheader('테마별 종목 추천')
-        st.caption('기간별 가격 흐름으로 정렬한 **관찰 후보**입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
+        st.caption('기간별 가격 흐름으로 정렬한 관찰 후보입니다. 검증된 상승 확률이나 확정 매수 신호가 아닙니다.')
+        st.info('월요일 오전 10시 투자 점검: 자동 분석 결과의 기준일을 확인하고, 장중 가격·거래량과 최신 뉴스·공시를 재확인한 뒤 아래 종합의견을 검토하세요. 이 화면은 실시간 주문 신호가 아닙니다.')
         c1,c2,c3=st.columns([2,1,1])
         with c1: period=st.selectbox('투자 기간',PERIODS,index=1,help='단기·스윙·중기 등 추천 순위를 계산할 기간입니다. 투자 기간별 추천 참고점수가 달라질 수 있습니다.')
         with c2: market=st.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
@@ -331,6 +373,7 @@ def show(st):
                         - **가격 조건**: 손절가 < 매수가 < 목표가 순서가 맞는지 확인합니다. 맞지 않으면 수익률과 손익비를 계산하지 않습니다.
                         - **추천 검증**: 현재 화면의 점수는 과거 가격 기반 지표이며, 추천 이후 실제 수익률·적중률 검증과는 다릅니다.
                         """)
+                    show_integrated_opinion(st, report_rows, ranked, period)
                     st.markdown('**종목별 분석 결과**')
                     for i,(name,ticker,result) in enumerate(stored['reports'],1):
                         with st.expander(f'{i}. {name} ({ticker}) · {result.get("종합 의견", "분석 실패")}'):
