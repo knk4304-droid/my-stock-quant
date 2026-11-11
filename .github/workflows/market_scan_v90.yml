@@ -30,6 +30,8 @@ jobs:
           SCAN_BATCH_SIZE: '250'
           REVISIT_TOP_N: '25'
         run: python market_batch_v90.py
+      - name: Save per-run ranking history
+        run: python ranking_history.py
       - name: Record and follow up recommendation snapshots
         run: python recommendation_tracker.py
       - name: Validate 1/5/20-session forward outcomes
