@@ -2,6 +2,7 @@
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import json
+from html import escape
 import pandas as pd
 from technical_report_v63 import get_technical_report
 from market_news import display_briefing, display_company_brief, MACRO_QUERY, ticker_query, fetch_news
@@ -64,6 +65,50 @@ def show_score_guide(st, period):
             st.text(line)
 
 
+def mobile_cards(st, rows, *, kind='rank'):
+    """Full-width, narrow-screen cards without sideways scrolling; escape all source text."""
+    if not rows:
+        return
+    blocks=[]
+    for i, row in enumerate(rows, 1):
+        name=escape(str(row.get('종목명', '미확인')))
+        ticker=escape(str(row.get('종목코드', row.get('코드', ''))))
+        def val(key):
+            v=row.get(key)
+            if v is None or pd.isna(v): return '미확인'
+            if isinstance(v,(int,float)): return f'{v:,.2f}'
+            return escape(str(v))
+        if kind=='rank':
+            detail=f'<span>추천점수 <b>{val("추천 참고점수")}</b></span><span>기술점수 <b>{val("기술 점수")}</b></span><span>시장 <b>{val("시장")}</b></span><span>기준일 <b>{val("가격 기준일")}</b></span>'
+        else:
+            detail=f'<span>매수 <b>{val("1차 매수가")}</b></span><span>목표 <b>{val("1차 목표가")}</b></span><span>손절 <b>{val("손절 기준가")}</b></span><span>손익비 <b>{val("손익비")}</b></span>'
+        blocks.append(f'<div class="qp-card"><div class="qp-name">{i}. {name} <small>{ticker}</small></div><div class="qp-details">{detail}</div></div>')
+    st.markdown('<div class="qp-mobile">'+''.join(blocks)+'</div>', unsafe_allow_html=True)
+
+
+def weekly_brief(st, state, scores, ranked, period):
+    """Show verifiable weekly facts without equating successful execution with fresh quotes."""
+    st.subheader('📋 주간 투자 종합보고서')
+    try:
+        weekly=weekly_status(latest_scan=state.get('updated_utc'))
+        anchor=weekly['anchor'].strftime('%Y-%m-%d %H:%M KST')
+        scan=weekly['scan'].strftime('%Y-%m-%d %H:%M KST') if weekly['scan'] else '확인 불가'
+        status=weekly['status']
+    except (ValueError,TypeError):
+        anchor,scan,status='확인 불가','확인 불가','분석 시각 확인 필요'
+    attempted=state.get('attempted',0)
+    succeeded=state.get('succeeded',0)
+    st.caption(f'이번 주 월요일 기준: {anchor} · 마지막 저장 분석: {scan}')
+    st.caption(f'자동 분석 상태: {status} · 마지막 실행 성공 {succeeded}/{attempted}개 · 이번 선택 기간: {period}')
+    if not ranked.empty:
+        dates=ranked['asof_price'].dropna().astype(str).unique().tolist() if 'asof_price' in ranked else []
+        st.caption('상위 후보 가격 기준일: '+(', '.join(sorted(dates,reverse=True)[:5]) if dates else '확인 불가')+' · 기준일은 실시간 시세를 뜻하지 않습니다.')
+        st.info(f'현재 조건의 검토 후보 {len(ranked):,}개 중 상위 10개를 표시합니다. 최종 3종목 선정과 매수·목표·손절가는 아래 「추천 종목 분석」에서 상세 분석 실행 후 확인할 수 있습니다.')
+    else:
+        st.info('선택 조건에 맞는 최근 후보가 없습니다. 시장·테마 조건을 조정하거나 다음 분석을 기다려 주세요.')
+    st.caption('성공은 자동 작업 종료 상태입니다. 데이터 갱신·뉴스 확인·실거래 적합성은 별도로 검증해야 합니다.')
+
+
 def show_integrated_opinion(st, report_rows, ranked, period):
     """Conservative shortlist based on verified technical data, without inventing news."""
     st.subheader('🎯 종합의견 · 최종 매매 검토 후보')
@@ -78,6 +123,8 @@ def show_integrated_opinion(st, report_rows, ranked, period):
         st.warning('현재 상위 후보 중 기술 점수와 가격 조건, 손익비 1.5 이상을 함께 만족하는 종목이 없습니다. 신규 매수를 보류하고 다음 분석을 기다리는 편이 합리적입니다.')
         return
     st.subheader(f'{period} 기준 최종 검토 후보 {len(selected)}종목')
+    st.caption('주간 보고서의 최종 검토 후보입니다. 주문 전에 최신 뉴스·공시와 가격을 확인하세요.')
+    mobile_cards(st, selected, kind='trade')
     st.text('최대 3종목 / 손익비 1.5 이상 / 손절가 < 매수가 < 목표가')
     st.caption('선정 기준: 가격 조건 정상, 기술 점수 존재, 손익비 1.5 이상, 손절 위험 유효. 기술 점수 → 손익비 → 기간별 추천 참고점수 순으로 정렬합니다. 이 기준은 과거 수익률로 최적화된 전략이 아닙니다.')
     st.warning('뉴스·공시·실적 검증 전에는 확정 매수 대상이 아닙니다. 실제 주문 전에는 최근 가격, 거래량, 시장 급변, 기업별 악재를 다시 확인하세요.')
@@ -128,13 +175,14 @@ def show_integrated_opinion(st, report_rows, ranked, period):
             st.caption('기사 제목만으로 호재·악재를 확정하지 마세요. 공시 원문·발표일·실적 수치와 주가 선반영 여부를 확인한 뒤 최종 판단해야 합니다.')
     st.markdown('**주간 투자 계획 · 위험 한도 시뮬레이션**')
     sizing = allocate_krw(selected)
-    st.dataframe(pd.DataFrame(sizing), hide_index=True, use_container_width=True)
+    with st.expander('위험 한도 상세표 (PC용)', expanded=False):
+        st.dataframe(pd.DataFrame(sizing), hide_index=True, use_container_width=True)
     st.download_button('주간 검토 후보·위험 계획 CSV 저장', csv_bytes([
         {'기준 기간':period, '종목':r['종목명'], '코드':r['코드'], '기술 점수':r['분석 점수'],
          '추천 참고점수':r['추천 참고점수'], '손익비':r['손익비'],
          '매수 관찰가':r['1차 매수가'], '목표가':r['1차 목표가'], '손절 참고가':r['손절 기준가'],
          '뉴스 검증 상태':'원문 검증 전'} for r in selected]),
-        file_name='ai_stock_master_weekly_review.csv', mime='text/csv')
+        file_name='quantpilot_ai_weekly_review.csv', mime='text/csv')
     st.caption('시뮬레이션은 총 투자금 1,000만원, 1회 계획손실 10만원, 일일 계획손실 30만원을 가정합니다. 미국 종목은 환율과 거래단위를 확인하기 전 수량을 계산하지 않습니다.')
     st.caption('수량은 국내 상장 종목의 원화 가격을 가정한 참고치입니다. 수수료·슬리피지·갭 하락으로 실제 손실은 더 커질 수 있습니다. 종목당 10만원 손실 제한을 모두 채우면 3종목 합산 계획 손실은 최대 30만원이므로, 하루 최대 손실 3% 제한과 별도로 관리해야 합니다.')
 
@@ -270,6 +318,14 @@ def show(st):
         if numeric and fmt is not None: kwargs['format'] = fmt
         return (st.column_config.NumberColumn(title, **kwargs) if numeric
                 else st.column_config.TextColumn(title, **kwargs))
+    st.markdown('''<style>
+.qp-mobile{display:none}
+.qp-card{border:1px solid #d4d9e0;border-radius:10px;padding:10px;margin:8px 0;overflow-wrap:anywhere}
+.qp-name{font-weight:700;margin-bottom:7px}.qp-name small{font-size:11px;font-weight:400;color:#657082}
+.qp-details{display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:12px}
+.qp-details span{display:flex;flex-direction:column;gap:2px}.qp-details b{font-size:14px}
+@media(max-width:700px){.qp-mobile{display:block}.qp-desktop{display:none!important}}
+</style>''',unsafe_allow_html=True)
     st.title('📈 QUANTPILOT AI')
     st.caption('테마별 종목 추천과 관심종목 검색·분석을 구분한 투자 판단 참고 화면')
     state, scores=load_data()
@@ -340,7 +396,11 @@ def show(st):
             else:
                 st.info('조건에 맞는 최근 분석 종목이 없습니다. 시장·테마 조건을 넓히거나 아래 종목 상세 분석을 이용하세요.')
         else:
-            st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
+            with st.expander('전체 비교표 보기 (PC·가로 스크롤)', expanded=False):
+                st.dataframe(ranked.head(10).rename(columns=cols)[['종목명','종목코드','시장','추천 참고점수','점수 입력 완전성','기술 점수','가격 기준일']],hide_index=True,use_container_width=True, column_config={'추천 참고점수':explained_column('추천 참고점수',numeric=True),'기술 점수':explained_column('기술 점수',numeric=True)})
+        if not ranked.empty:
+            mobile_cards(st, ranked.head(10).rename(columns=cols).to_dict('records'))
+        weekly_brief(st, state, scores, ranked, period)
         show_score_guide(st, period)
         with st.expander('🔎 추천 종목 분석', expanded=False):
             st.caption('위에서 선택한 기간·시장·테마에 따라 상위 10종목을 분석합니다. 시세 조회는 버튼을 누를 때만 진행하며, 종목당 최대 약 12초가 걸릴 수 있습니다.')
