@@ -17,6 +17,10 @@ SWAGW,"Stran & Company, Inc. - Warrant",NASDAQ,STOCK
 HAUS,Residential REIT ETF,NYSE/OTHER,ETF
 PSQH,"PSQ Holdings, Inc. Class A Common Stock",NYSE/OTHER,STOCK
 PSQH.W,"PSQ Holdings, Inc. Warrants, each exercisable for one share of Class A common stock at an exercise price of $11.50 per share",NYSE/OTHER,STOCK
+KPTI,Karyopharm Therapeutics Inc. - Common Stock,NASDAQ,STOCK
+ATCH,"AtlasClear Holdings, Inc. Common Stock",NYSE/OTHER,STOCK
+HLSQ,Tessera Defense and Homeland Security Inc. Common Stock,NYSE/OTHER,STOCK
+MEMY,Tuttle Capital Meme Stock Income Blast ETF,NYSE/OTHER,ETF
 AAAP,Pacer Barings CLO Market Flex ETF,NASDAQ,ETF
 AACG,"ATA Creativity Global - American Depositary Shares, each representing two common shares",NASDAQ,STOCK
 AACI,Armada Acquisition Corp. III - Class A Ordinary Share,NASDAQ,STOCK
@@ -2816,7 +2820,6 @@ KOYNU,CSLM Digital Asset Acquisition Corp III - Units,NASDAQ,STOCK
 KOYNW,CSLM Digital Asset Acquisition Corp III - Warrants,NASDAQ,STOCK
 KPLT,"Katapult Holdings, Inc. - Common Stock",NASDAQ,STOCK
 KPRX,"Kiora Pharmaceuticals, Inc.  - Common Stock",NASDAQ,STOCK
-KPTI,Karyopharm Therapeutics Inc. - Common Stock,NASDAQ,STOCK
 KQQQ,Kurv Technology Titans Select ETF,NASDAQ,ETF
 KRAQ,KRAKacquisition Corp - Class A Ordinary Shares,NASDAQ,STOCK
 KRAQU,KRAKacquisition Corp - Unit,NASDAQ,STOCK
@@ -6059,7 +6062,6 @@ ASTX,Tradr 2X Long ASTS Daily ETF,NYSE/OTHER,ETF
 ASTY,Defiance Daily Target 2X Long ASTS ETF,NYSE/OTHER,ETF
 ASX,"ASE Technology Holding Co., Ltd. American Depositary Shares (each representing Two Common Shares) ",NYSE/OTHER,STOCK
 AT,Defiance Robotics Actuators ETF,NYSE/OTHER,ETF
-ATCH,"AtlasClear Holdings, Inc. Common Stock",NYSE/OTHER,STOCK
 ATCL,REX Autocallable Income ETF,NYSE/OTHER,ETF
 ATEN,"A10 Networks, Inc. Common Stock",NYSE/OTHER,STOCK
 ATFV,Alger 35 ETF,NYSE/OTHER,ETF
@@ -8763,7 +8765,6 @@ HLI,"Houlihan Lokey, Inc. Class A Common Stock",NYSE/OTHER,STOCK
 HLIO,"Helios Technologies, Inc. Common Stock",NYSE/OTHER,STOCK
 HLLY,Holley Inc. Common Stock,NYSE/OTHER,STOCK
 HLN,Haleon plc American Depositary Shares (Each representing two Ordinary Shares),NYSE/OTHER,STOCK
-HLSQ,Tessera Defense and Homeland Security Inc. Common Stock,NYSE/OTHER,STOCK
 HMAY,Corgi U.S. Equities 100% Structured Buffer ETF - May Series,NYSE/OTHER,ETF
 HMC,"Honda Motor Company, Ltd. Common Stock",NYSE/OTHER,STOCK
 HMN,Horace Mann Educators Corporation Common Stock,NYSE/OTHER,STOCK
@@ -8921,6 +8922,7 @@ IBIK,iShares iBonds Oct 2034 Term TIPS ETF,NYSE/OTHER,ETF
 IBIL,iShares iBonds Oct 2035 Term TIPS ETF,NYSE/OTHER,ETF
 IBIM,iShares iBonds Oct 2036 Term TIPS ETF,NYSE/OTHER,ETF
 IBLC,iShares Blockchain and Tech ETF,NYSE/OTHER,ETF
+IBLY,FT Vest Equity Target Income Plus 0-3 Month Treasury ETF,NYSE/OTHER,ETF
 IBM,International Business Machines Corporation Common Stock,NYSE/OTHER,STOCK
 IBMO,iShares iBonds Dec 2026 Term Muni Bond ETF,NYSE/OTHER,ETF
 IBMP,iShares iBonds Dec 2027 Term Muni Bond ETF,NYSE/OTHER,ETF
@@ -9124,6 +9126,10 @@ IPOS,Renaissance Capital Greenwich Fund,NYSE/OTHER,ETF
 IQDF,Northern Trust International Quality Dividend ETF,NYSE/OTHER,ETF
 IQDG,WisdomTree International Quality Dividend Growth Fund,NYSE/OTHER,ETF
 IQDY,Northern Trust International Quality Dividend Dynamic ETF,NYSE/OTHER,ETF
+IQEE,Invesco Emerging Markets Enhanced ETF,NYSE/OTHER,ETF
+IQEI,Invesco International Developed Enhanced ETF,NYSE/OTHER,ETF
+IQEL,Invesco U.S. Large Cap Enhanced ETF,NYSE/OTHER,ETF
+IQES,Invesco U.S. Small Cap Enhanced ETF,NYSE/OTHER,ETF
 IQHI,NYLIM MacKay High Income ETF,NYSE/OTHER,ETF
 IQI,Invesco Quality Municipal Income Trust Common Stock,NYSE/OTHER,STOCK
 IQLT,iShares MSCI Intl Quality Factor ETF,NYSE/OTHER,ETF
@@ -9869,7 +9875,6 @@ MEIB,Direxion META Defined Income Boost ETF,NYSE/OTHER,ETF
 MEM,Matthews Emerging Markets Equity Active ETF,NYSE/OTHER,ETF
 MEME,Roundhill Meme Stock ETF,NYSE/OTHER,ETF
 MEMX,Matthews Emerging Markets ex China Active ETF,NYSE/OTHER,ETF
-MEMY,Tuttle Capital Meme Stock Income Blast ETF,NYSE/OTHER,ETF
 MER-K,"Bank of America Corporation Income Capital Obligation Notes initially due December 15, 2066",NYSE/OTHER,STOCK
 MET,"MetLife, Inc. Common Stock",NYSE/OTHER,STOCK
 MET-A,"MetLife, Inc. Preferred Series A Floating Rate",NYSE/OTHER,STOCK
