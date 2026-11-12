@@ -1,6 +1,6 @@
 """Unified recommendation home. Existing scan and watchlist engines remain untouched."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import pandas as pd
 from market_news import fetch_news, MACRO_QUERY, ticker_query
@@ -50,8 +50,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
                 if closes.empty: raise ValueError('no prices')
                 last=float(closes.iloc[-1]); prev=float(closes.iloc[-2]) if len(closes)>1 else None
                 stamp=closes.index[-1]
-                result.append((name,last,100*(last/prev-1) if prev else None,str(stamp.date())))
-            except Exception: result.append((name,None,None,'조회 실패'))
+                result.append((name,last,100*(last/prev-1) if prev else None,str(stamp.date()),datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')))
+            except Exception: result.append((name,None,None,'조회 실패',None))
         return result
     @st.cache_data(ttl=1800,show_spinner=False)
     def news(): return fetch_news(MACRO_QUERY,limit=12)
@@ -76,12 +76,19 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         return
 
     st.subheader('1. 주요 시장 지수')
-    st.caption('지수는 데이터 제공처의 최근 거래일 종가 기준이며, 실시간 체결 지수가 아닙니다. 최대 15분 캐시됩니다.')
+    st.caption('일봉의 마지막 제공 가격 기준입니다. 장중에는 잠정 가격일 수 있으며 실시간 체결 지수를 보장하지 않습니다. 조회 결과는 최대 15분 캐시됩니다.')
     grid=st.columns(4)
-    for col,(name,price,change,asof) in zip(grid,indices()):
-        col.metric(name,f'{price:,.2f}' if price is not None else '조회 불가',f'{change:+.2f}%' if change is not None else None)
-        col.caption(f'기준일 {asof}')
-    st.caption(f"조회 화면 시각: {datetime.now(timezone.utc).astimezone(__import__('datetime').timezone(__import__('datetime').timedelta(hours=9))):%Y-%m-%d %H:%M} KST · 지수별 가격 기준일은 위에 별도 표시")
+    for col,(name,price,change,asof,updated) in zip(grid,indices()):
+        col.markdown(f"**{name}**")
+        col.markdown(f"### {price:,.2f}" if price is not None else '조회 불가')
+        if change is not None:
+            color='#D32F2F' if change>0 else '#1565C0' if change<0 else '#808080'
+            arrow='▲' if change>0 else '▼' if change<0 else '—'
+            col.markdown(f'<span style="color:{color};font-weight:600">{arrow} {change:+.2f}%</span>',unsafe_allow_html=True)
+        else: col.caption('등락률 미확인')
+        col.caption(f'가격 기준일: {asof}')
+        col.caption(f'업데이트: {updated} KST' if updated else '업데이트: 조회 실패')
+    st.caption('업데이트는 데이터 조회 성공 시각이며 거래소 체결 시각과 다릅니다.')
 
     st.subheader('2. 글로벌 마켓 브리핑')
     articles,error=news()
