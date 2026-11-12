@@ -5,6 +5,7 @@ import pandas as pd
 DATA=Path(__file__).resolve().parent/'market_scan_data'
 
 def show(st):
+    from qp_manual_r15 import AUTO_HELP
     st.header('관리자 · 분석 운영센터')
     mode=st.radio('관리 목적',['분석 현황','저장 종목 조회','검증 기록','기존 고급 도구'],horizontal=True,key='qp_admin_r14')
     try:
@@ -17,8 +18,10 @@ def show(st):
     if mode=='분석 현황':
         fresh=d[(pd.Timestamp.now(tz='UTC')-d['_time']).dt.total_seconds().between(0,604800)]
         total=int(state.get('catalog_size',0) or 0); attempted=int(state.get('attempted',0) or 0); success=int(state.get('succeeded',0) or 0)
-        for c,(label,value) in zip(st.columns(4),[('등록 종목',total),('누적 분석',len(d)),('최근 7일',len(fresh)),('최근 실행 성공',f'{success}/{attempted}')]):c.metric(label,value)
+        for c,(label,value) in zip(st.columns(4),[('등록 종목',total),('누적 분석',len(d)),('최근 7일',len(fresh)),('최근 실행 성공',f'{success}/{attempted}')]):c.metric(label,value,help=AUTO_HELP if label=='최근 실행 성공' else None)
         st.markdown('**읽는 법:** 등록 15,896개 중 3,302개가 저장됐다면 누적 범위는 약 20.8%입니다. 최근 실행 254/275는 시세 분석 성공률 92.4%이며 추천 적중률이 아닙니다. 최근 7일 수는 현재 추천 후보의 최대 범위입니다.')
+        with st.expander('❔ 최근 자동 작업이란?'):
+            st.write(AUTO_HELP)
         if total:st.progress(min(1,len(d)/total))
         updated=pd.to_datetime(state.get('updated_utc'),utc=True,errors='coerce');st.caption('최근 자동 실행(KST): '+(updated.tz_convert('Asia/Seoul').strftime('%Y-%m-%d %H:%M') if pd.notna(updated) else '미확인'))
         summary=pd.concat([d.groupby('market').size().rename('누적 분석'),fresh.groupby('market').size().rename('최근 7일'),pd.Series(state.get('catalog_by_market',{}),dtype=float).rename('등록')],axis=1).fillna(0).astype(int)

@@ -71,7 +71,11 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             return today,yesterday,*[100*(c.iloc[-1]/c.iloc[-1-h]-1) if len(c)>h else None for h in (5,20)]
         except Exception: return (None,)*4
 
-    mode=st.radio('검색 메뉴',['🏆 추천종목 검색','🔎 관심종목 검색'],horizontal=True,key='qp_unified_mode')
+    mode=st.radio('검색 메뉴',['🏆 추천종목 검색','🔎 관심종목 검색','📖 프로그램 사용 설명서'],horizontal=True,key='qp_unified_mode')
+    if mode=='📖 프로그램 사용 설명서':
+        from qp_manual_r15 import show as show_manual
+        show_manual(st,score_guide,period_options)
+        return
     if mode=='🔎 관심종목 검색':
         st.subheader('🔎 관심종목 검색')
         query=st.text_input('종목명 또는 종목코드',placeholder='삼성전자 / 005930.KS / NVDA')
@@ -142,7 +146,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     table=table[['순위','종목','시장구분','추천점수','기술점수','최근 저장 가격',*ret.columns,'분석 완료(KST)']]
     def color(v): return 'color: #D32F2F' if pd.notna(v) and v>0 else 'color: #1565C0' if pd.notna(v) and v<0 else 'color: #808080'
     styled=table.style.apply(lambda col: col.map(color),subset=list(ret.columns)).format({c:'{:+.2f}%' for c in ret},na_rep='미확인')
-    st.dataframe(styled,hide_index=True,use_container_width=True,column_config={'추천점수':st.column_config.NumberColumn(help='기술점수와 기간별 수익률을 반영하고 변동성에 따라 감점하는 상대 순위 점수입니다. 100점 만점이나 상승 확률이 아니며 음수도 가능합니다.',format='%.1f')})
+    st.dataframe(styled,hide_index=True,use_container_width=True,column_config={'추천점수':st.column_config.NumberColumn(help='기술점수와 기간별 수익률을 반영하고 변동성에 따라 감점하는 상대 순위 점수입니다. 상승 확률이 아니며 100점 초과 또는 음수도 가능합니다.',format='%.1f')})
     st.caption('수익률은 별도 조회한 수정 일봉 기준이며 장중 잠정값일 수 있습니다. 오늘 거래일 가격이 없으면 미확인입니다. 저장 가격 및 추천점수와 조회 기준이 다를 수 있습니다.')
     with st.expander('📱 스마트폰용 TOP10 간편 보기'):
         for r in table.to_dict('records'):
@@ -235,6 +239,7 @@ def interpret(k,v,r):
 
 def detail_html(report):
     from html import escape
+    from qp_manual_r15 import example
     import math
     first=['기준 종가','1차 매수 관찰가','2차 매수 관찰가','1차 목표 관찰가','2차 목표 관찰가','손실 제한 참고가']
     keys=first+[k for k in report if k not in first]
@@ -242,7 +247,7 @@ def detail_html(report):
     for k in keys:
         v=report.get(k); label='기준가 (최근 일봉 가격)' if k=='기준 종가' else k
         value=('미확인' if v is None or isinstance(v,float) and not math.isfinite(v) else f'{v:,.4f}'.rstrip('0').rstrip('.') if isinstance(v,float) else str(v))
-        rows.append('<tr><td>'+escape(label)+'</td><td>'+escape(value)+'</td><td>'+escape(interpret(k,v,report))+'<br><strong>추가 확인:</strong> '+escape(check_next(k,v,report))+'</td></tr>')
+        rows.append('<tr><td>'+escape(label)+'</td><td>'+escape(value)+'</td><td>'+escape(interpret(k,v,report))+'<br><strong>추가 확인:</strong> '+escape(check_next(k,v,report))+'<br><strong>쉬운 예시:</strong> '+escape(example(k))+'</td></tr>')
     return '<style>.qp-detail13{width:100%;table-layout:fixed;border-collapse:collapse;font-size:0.9rem;line-height:1.6}.qp-detail13 th,.qp-detail13 td{padding:10px 8px;border:1px solid rgba(128,128,128,.28);vertical-align:top;overflow-wrap:anywhere;white-space:normal}.qp-detail13 th{background:rgba(128,128,128,.12);text-align:left}.qp-detail13 td:first-child{font-weight:600}.qp-detail13 td:nth-child(2){font-variant-numeric:tabular-nums;text-align:right}.qp-detail13 tr:nth-child(even){background:rgba(128,128,128,.045)}@media(max-width:600px){.qp-detail13{font-size:.78rem}.qp-detail13 td,.qp-detail13 th{padding:6px 4px}}</style><table class="qp-detail13"><colgroup><col style="width:20%"><col style="width:16%"><col style="width:64%"></colgroup><thead><tr><th>항목 (지표)</th><th>수치</th><th>분석 · 의미와 현재 상태</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table>'
 
 

@@ -376,8 +376,10 @@ def show(st):
 </style>''',unsafe_allow_html=True)
     st.title('📈 QUANTPILOT AI')
     st.caption('월요일 10시를 주간 기준점으로 삼고, 이후 자동 스캔에서 갱신된 전체 시장 후보를 한 화면에 표시합니다.')
+    from qp_manual_r15 import AUTO_HELP, show as show_manual
     state, scores=load_data()
     if scores.empty:
+        show_manual(st,score_guide,PERIODS)
         st.warning('저장된 시장 분석 결과가 없습니다. GitHub Actions의 Market scan v9을 먼저 실행해 주세요.')
         return
     scores=scores.copy()
@@ -393,9 +395,11 @@ def show(st):
     a,b,c=st.columns(3)
     a.metric('저장된 분석 종목',f'{len(scores):,}개',help=glossary['저장된 분석 종목'])
     b.metric('최근 7일 분석',f'{len(fresh):,}개',help=glossary['최근 7일 분석'])
-    c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=glossary['최근 실행 성공'])
+    c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=AUTO_HELP)
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
-    st.caption('화면 버전: QP-R14 · 상세분석·이중축·검증 개선')
+    st.caption('화면 버전: QP-R15 · 상세분석·이중축·검증·사용 설명서')
+    with st.expander('❔ 최근 자동 작업이란?'):
+        st.write(AUTO_HELP)
     from qp_home_r12 import show as show_unified_home
     show_unified_home(st, fresh, PERIODS, rank, resolve_symbol, score_guide, glossary)
     return
