@@ -41,7 +41,7 @@ jobs:
         run: python validation_smoke.py --data market_scan_data/recommendation_history.csv
       - name: Capture scheduled ranking and validate outcomes
         env:
-          QP_SCHEDULE: ${{ github.event.schedule }}
+          QP_SCHEDULE: ${{ github.event.schedule || 'manual' }}
         run: python qp_weekly.py
       - name: Save scan results
         run: |
