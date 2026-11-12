@@ -152,6 +152,9 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         for r in table.to_dict('records'):
             st.write(f"**{r['순위']}위 {r['종목']}** · 추천 {r['추천점수']}점 · 5일 {r['5일수익률']}")
 
+    from qp_weekly import load as load_weekly
+    from qp_entry_r16 import show as show_entry
+    show_entry(st,load_weekly(),'|'.join((period,market,theme)))
     st.subheader('4. 추천종목 상세분석')
     chosen=st.selectbox('상세 분석할 종목',list(range(len(top))),format_func=lambda i:f"{i+1}위 · {top.iloc[i]['name']} ({top.iloc[i]['ticker']})",key='qp_unified_detail_choice')
     item=top.iloc[chosen]; ticker=str(item['ticker']); name=str(item['name'])

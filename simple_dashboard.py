@@ -397,7 +397,7 @@ def show(st):
     b.metric('최근 7일 분석',f'{len(fresh):,}개',help=glossary['최근 7일 분석'])
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=AUTO_HELP)
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
-    st.caption('화면 버전: QP-R15 · 상세분석·이중축·검증·사용 설명서')
+    st.caption('화면 버전: QP-R16 · 상세분석·이중축·검증·사용 설명서')
     with st.expander('❔ 최근 자동 작업이란?'):
         st.write(AUTO_HELP)
     from qp_home_r12 import show as show_unified_home

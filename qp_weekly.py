@@ -33,7 +33,9 @@ def capture():
             for theme in ('전체','반도체','AI·기술','금융','헬스케어','배당'):
                 top=current_top(df,p,m,theme,ranking)
                 groups['|'.join((p,m,theme))]=[{'ticker':str(r.ticker),'name':str(r['name']),'rank':i,'market':str(r.market),'price':float(r.close) if pd.notna(r.close) and float(r.close)>0 else None,'price_date':str(r.get('asof_price',''))} for i,(_,r) in enumerate(top.iterrows(),1)]
-    history.append({'slot':key,'captured':now.isoformat(),'groups':groups,'outcomes':{}}); PATH.write_text(json.dumps(history,ensure_ascii=False))
+    from qp_entry_r16 import capture as capture_entry
+    entry_review=capture_entry(groups,now)
+    history.append({'slot':key,'captured':pd.Timestamp.now(tz='Asia/Seoul').isoformat(),'groups':groups,'outcomes':{},'entry_review':entry_review}); PATH.write_text(json.dumps(history,ensure_ascii=False))
 
 def validate():
     import yfinance as yf
