@@ -17,9 +17,11 @@ def week_start(now):
 
 def capture():
     cron=os.getenv('QP_SCHEDULE',''); now=pd.Timestamp.now(tz='Asia/Seoul')
-    if cron not in ('0 1 * * 1-5','0 6 * * 1-5'): return
+    if cron not in ('0 1 * * 1-5','0 6 * * 1-5'):
+        print('No scheduled slot: manual run validates existing records only'); return
     slot=now.normalize()+pd.Timedelta(hours=10 if cron.startswith('0 1 ') else 15)
-    if now.weekday()>4 or not 0 <= (now-slot).total_seconds() <= 7200: return
+    if now.weekday()>4 or not 0 <= (now-slot).total_seconds() <= 7200:
+        print('Scheduled capture skipped: outside 2-hour window'); return
     history=load(); key=slot.isoformat()
     if any(s['slot']==key for s in history): return
     df=pd.read_csv(DATA/'scores.csv',dtype={'ticker':str}); times=pd.to_datetime(df.scanned_at_utc,utc=True,errors='coerce'); df=df.loc[(now-times).dt.total_seconds().between(0,604800)].copy(); df['_time']=times.loc[df.index]; df=df.sort_values('_time').drop_duplicates('ticker',keep='last')
@@ -30,7 +32,7 @@ def capture():
         for m in ('전체','한국 주식','미국 주식','국내 ETF','미국 ETF'):
             for theme in ('전체','반도체','AI·기술','금융','헬스케어','배당'):
                 top=current_top(df,p,m,theme,ranking)
-                groups['|'.join((p,m,theme))]=[{'ticker':str(r.ticker),'name':str(r['name']),'rank':i,'market':str(r.market)} for i,(_,r) in enumerate(top.iterrows(),1)]
+                groups['|'.join((p,m,theme))]=[{'ticker':str(r.ticker),'name':str(r['name']),'rank':i,'market':str(r.market),'price':float(r.close) if pd.notna(r.close) and float(r.close)>0 else None,'price_date':str(r.get('asof_price',''))} for i,(_,r) in enumerate(top.iterrows(),1)]
     history.append({'slot':key,'captured':now.isoformat(),'groups':groups,'outcomes':{}}); PATH.write_text(json.dumps(history,ensure_ascii=False))
 
 def validate():

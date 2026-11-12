@@ -329,10 +329,14 @@ st.set_page_config(page_title="QUANTPILOT AI · 간편 추천", layout="wide")
 from simple_dashboard import show as show_simple_dashboard
 show_simple_dashboard(st)
 st.divider()
-advanced = st.toggle('기존 상세 분석 · 관리자 메뉴 열기', value=False, help='관리자 인증 후에만 이전 버전의 상세 기능을 사용할 수 있습니다.')
+advanced = st.toggle('관리자 메뉴 열기', value=False, help='관리자 인증 후 운영 상태와 고급 도구를 확인합니다.')
 if advanced and authorized(st):
+    from qp_admin_r14 import show as show_admin
+    admin_mode=show_admin(st)
+else:
+    admin_mode=''
+if admin_mode=='기존 고급 도구':
     df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
-    show_market_scan(st)
 
     # v8.3: Explicit opt-in expansion. Do not issue hundreds of Yahoo calls on each page load.
     if 'v83_scored' not in st.session_state:

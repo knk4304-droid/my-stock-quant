@@ -17,7 +17,7 @@ def verify(root):
     home=(root/'qp_home_r12.py').read_text(encoding='utf-8')
     for label in ('오늘수익률','전일수익률','5일수익률','20일수익률','상승 적중률','분석 완료(KST)','#D32F2F','#1565C0'):
         if label not in home: failures.append(f'R12 missing: {label}')
-    if 'from qp_home_r12 import show' not in app or 'QP-R12' not in app: failures.append('R12 entrypoint not connected')
+    if 'from qp_home_r12 import show' not in app or 'QP-R14' not in app: failures.append('R12 entrypoint not connected')
     workflow=(root/'.github/workflows/market_scan_v90.yml').read_text()
     for label in ('0 1 * * 1-5','0 6 * * 1-5','python qp_weekly.py'):
         if label not in workflow: failures.append(f'Weekly workflow missing: {label}')
