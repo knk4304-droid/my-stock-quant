@@ -26,7 +26,7 @@ jobs:
         run: python release_verification.py
       - name: Scan next batch
         env:
-          SCAN_BATCH_SIZE: '250'
+          SCAN_BATCH_SIZE: '275'
           REVISIT_TOP_N: '25'
         run: python market_batch_v90.py
       - name: Save per-run ranking history
