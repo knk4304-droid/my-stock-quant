@@ -17,7 +17,7 @@ def verify(root):
     home=(root/'qp_home_r12.py').read_text(encoding='utf-8')
     for label in ('오늘수익률','전일수익률','5일수익률','20일수익률','상승 적중률','분석 완료(KST)','#D32F2F','#1565C0'):
         if label not in home: failures.append(f'R12 missing: {label}')
-    if 'from qp_home_r12 import show' not in app or 'QP-R16' not in app: failures.append('R12 entrypoint not connected')
+    if 'from qp_home_r12 import show' not in app or 'QP-R17' not in app: failures.append('R12 entrypoint not connected')
     workflow=(root/'.github/workflows/market_scan_v90.yml').read_text()
     for label in ('0 1 * * 1-5','0 6 * * 1-5','python qp_weekly.py'):
         if label not in workflow: failures.append(f'Weekly workflow missing: {label}')
@@ -31,6 +31,16 @@ def verify(root):
     invalid=sample.copy();invalid.loc[0,'date_1d']='2026-01-02'
     if not audit(invalid):failures.append('Future-date integrity check failed')
     if evaluate(sample,5)['observed']!=0:failures.append('Unmatured observations misreported')
+    from qp_audit_r17 import observations, summarize
+    sample_slots=[{'slot':'2026-11-09T10:00:00+09:00',
+        'groups':{'단기|전체|전체':[{'ticker':'AAA','name':'A','rank':1},{'ticker':'BBB','name':'B','rank':2}]},
+        'entry_review':{'단기|전체|전체':{'rows':[{'티커':'AAA','점수':85,'판단':'조건부 매수 검토'}]}},
+        'outcomes':{'AAA':{'base_date':'2026-11-10','base':100,'1':2.5},'BBB':{}}}]
+    audit_rows=observations(sample_slots,'단기|전체|전체')
+    audit_summary=summarize(audit_rows,1)
+    if len(audit_rows)!=2 or audit_summary.iloc[0]['검증 완료']!=1 or audit_summary.iloc[0]['검증률(%)']!=50:
+        failures.append('R17 missing-observation or coverage test failed')
+    if audit_rows.iloc[1]['타이밍판단']!='기록 없음': failures.append('R17 retrospective timing inference detected')
     if failures:
         for issue in failures:print('FAIL:',issue)
         return 1

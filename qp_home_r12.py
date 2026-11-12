@@ -203,6 +203,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         render_validation(st,rows)
     with st.expander('기존 추천 검증 기록 (별도 기준)',expanded=not rows):
         legacy_validation(st,period)
+    from qp_audit_r17 import show as show_audit
+    show_audit(st,records,group)
 
 
 def render_validation(st,rows):
