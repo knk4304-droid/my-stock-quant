@@ -395,8 +395,8 @@ def show(st):
     b.metric('최근 7일 분석',f'{len(fresh):,}개',help=glossary['최근 7일 분석'])
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=glossary['최근 실행 성공'])
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
-    st.caption('화면 버전: 종목추천순위 · 주간 순위이력 통합')
-    from qp_unified_home import show as show_unified_home
+    st.caption('화면 버전: QP-R12 · 수익률·정기순위·검증 통합')
+    from qp_home_r12 import show as show_unified_home
     show_unified_home(st, fresh, PERIODS, rank, resolve_symbol, score_guide, glossary)
     return
     recommendation_tab, watchlist_tab, news_tab = st.tabs(['🏆 종목추천순위', '🔎 관심종목 검색', '📰 시장 뉴스·공시'])

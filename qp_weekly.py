@@ -24,7 +24,7 @@ def capture():
     if any(s['slot']==key for s in history): return
     df=pd.read_csv(DATA/'scores.csv',dtype={'ticker':str}); times=pd.to_datetime(df.scanned_at_utc,utc=True,errors='coerce'); df=df.loc[(now-times).dt.total_seconds().between(0,604800)].copy(); df['_time']=times.loc[df.index]; df=df.sort_values('_time').drop_duplicates('ticker',keep='last')
     if df.empty: return
-    from qp_unified_home import current_top
+    from qp_home_r12 import current_top
     groups={}
     for p in PERIODS:
         for m in ('전체','한국 주식','미국 주식','국내 ETF','미국 ETF'):
