@@ -19,8 +19,6 @@ KR_ETF_SEEDS = [
     ('102110.KS', 'TIGER 200', 'KR ETF', 'ETF'),
     ('360750.KS', 'TIGER 미국S&P500', 'KR ETF', 'ETF'),
     ('133690.KS', 'TIGER 미국나스닥100', 'KR ETF', 'ETF'),
-    ('114800.KS', 'KODEX 인버스', 'KR ETF', 'ETF'),
-    ('122630.KS', 'KODEX 레버리지', 'KR ETF', 'ETF'),
 ]
 
 def clean_catalog(frame):
@@ -125,7 +123,8 @@ def load_catalog():
         if not part.empty: prior=pd.concat([prior,part],ignore_index=True)
     # Seeds also recover older catalogs created before Korean ETF support.
     prior=pd.concat([prior,pd.DataFrame(KR_ETF_SEEDS,columns=COLS)],ignore_index=True)
-    catalog=clean_catalog(prior)
+    from qp_universe_r18 import eligible
+    catalog=eligible(clean_catalog(prior))
     if catalog.empty: raise RuntimeError('No catalog available: check market providers or seed catalog.csv')
     catalog.to_csv(p,index=False,encoding='utf-8-sig')
     return catalog
@@ -150,24 +149,24 @@ def run(batch_size=250):
     DATA.mkdir(exist_ok=True)
     results_path=DATA/'scores.csv'; state_path=DATA/'state.json'
     existing=pd.read_csv(results_path,dtype={'ticker':str}) if results_path.exists() else pd.DataFrame()
+    from qp_universe_r18 import eligible
+    if not existing.empty:
+        excluded=existing.loc[~existing.ticker.isin(eligible(existing).ticker)]
+        if not excluded.empty:
+            archive=DATA/'excluded_etp_history.csv'
+            prev=pd.read_csv(archive,dtype={'ticker':str}) if archive.exists() else pd.DataFrame()
+            pd.concat([prev,excluded],ignore_index=True).drop_duplicates('ticker',keep='last').to_csv(archive,index=False,encoding='utf-8-sig')
+        existing=eligible(existing)
     state=json.loads(state_path.read_text()) if state_path.exists() else {}
-    chosen, next_cursors=choose_balanced_batch(catalog,state,batch_size)
-    print('KR ETF CATALOG', int(catalog.market.eq('KR ETF').sum()),
-          'KR ETF BATCH', int(chosen.market.eq('KR ETF').sum()))
-    # Keep cursor progress for temporarily missing market groups.
+    from qp_universe_r18 import choose, eligible
+    # Retain past scores for audit, but never revisit or recommend excluded ETPs.
+    chosen, next_cursors, selection_counts=choose(catalog,existing,state,batch_size,choose_balanced_batch,
+                                                  revisit_limit=int(os.getenv('REVISIT_TOP_N','25')))
+    print('R18 selection groups',selection_counts)
+    print('KR ETF CATALOG',int(catalog.market.eq('KR ETF').sum()),
+          'KR ETF BATCH',int(chosen.market.eq('KR ETF').sum()))
     next_cursors={**state.get('market_cursors',{}),**next_cursors}
-    n=len(chosen)
-    # Revisit previously high-scoring candidates so forward observations can accrue
-    # without waiting for a complete market rotation. Rotation remains independent.
-    revisit_limit=max(0,int(os.getenv('REVISIT_TOP_N','25')))
-    if revisit_limit and not existing.empty and {'ticker','score','scanned_at_utc'}.issubset(existing.columns):
-        old=existing.copy()
-        old['score']=pd.to_numeric(old['score'],errors='coerce')
-        old['scanned_at_utc']=pd.to_datetime(old['scanned_at_utc'],utc=True,errors='coerce')
-        old=old[old['scanned_at_utc'].lt(pd.Timestamp.now(tz='UTC')-pd.Timedelta(days=1))]
-        old=old.sort_values('score',ascending=False).drop_duplicates('ticker')
-        revisit=old.head(revisit_limit)[['ticker']].merge(catalog,on='ticker',how='inner')
-        chosen=pd.concat([chosen,revisit],ignore_index=True).drop_duplicates('ticker')
+    n=int(selection_counts.get('신규 순환 발굴',0))
     attempted_total=len(chosen)
     from concurrent.futures import ThreadPoolExecutor,as_completed
     records=[]; failures=[]
@@ -201,7 +200,7 @@ def run(batch_size=250):
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
-    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':attempted_total-n,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
+    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
     state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2))
     pd.DataFrame(failures,columns=['ticker','reason']).to_csv(DATA/'last_failures.csv',index=False,encoding='utf-8-sig')
     print(json.dumps(state,ensure_ascii=False))
