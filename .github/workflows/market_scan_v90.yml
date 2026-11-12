@@ -2,9 +2,8 @@ name: Market scan v9
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 23 * * 1-5'  # 평일 오전 8:30 KST
-    - cron: '0 1 * * 1'       # 월요일 오전 10:00 KST (UTC 01:00)
-    - cron: '0 2,4,6,8 * * 1-5'  # 평일 11:00/13:00/15:00/17:00 KST 순환 스캔
+    - cron: '0 1 * * 1-5'
+    - cron: '0 6 * * 1-5'
 permissions:
   contents: write
 concurrency:
@@ -40,6 +39,10 @@ jobs:
         run: python forward_validation_v95.py
       - name: Validate stored recommendation data
         run: python validation_smoke.py --data market_scan_data/recommendation_history.csv
+      - name: Capture scheduled ranking and validate outcomes
+        env:
+          QP_SCHEDULE: ${{ github.event.schedule }}
+        run: python qp_weekly.py
       - name: Save scan results
         run: |
           git config user.name 'github-actions[bot]'
