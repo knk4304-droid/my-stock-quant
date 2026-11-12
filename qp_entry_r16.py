@@ -65,9 +65,11 @@ def show(st, records, group):
     st.caption('정기 회차의 기존 TOP10 중 상세지표를 확보한 후보를 재정렬합니다. 시장별 전체 테마 TOP10의 합집합만 추가 조회하므로 세부 테마는 일부 누락될 수 있습니다. 확정 일봉 기반이며 실시간 주문 신호가 아닙니다.')
     if not group.startswith(('단기','스윙')): st.info('단기 또는 스윙을 선택하세요.'); return
     if not records: st.info('정기 회차가 아직 없습니다.'); return
-    rec=max(records,key=lambda x:x['slot']); st.write('최근 정기 회차: '+rec['slot']+' / 기록: '+rec['captured'])
+    rec=max(records,key=lambda x:x['slot']); st.write('최근 기록: '+rec['slot']+' / 유형: '+rec.get('source','이전 기록')+' / 생성: '+rec['captured'])
     block=rec.get('entry_review',{}).get(group)
-    if not block: st.info('해당 회차의 신규 매수 타이밍 기록이 없습니다. 다음 예약 실행 후 확인하세요.'); return
+    if not block:
+        st.info('이 회차에 저장된 매수 타이밍 분석이 없습니다. R19 적용 후 GitHub Actions를 수동 실행하거나 다음 예약 실행을 기다리세요. 기존 회차의 매수 판단을 사후에 만들어 넣지는 않습니다.')
+        return
     rows=block['rows']; st.caption(f"상세 분석 성공 {len(rows)}/{block['total']}개 · 누락은 순위 제외 · 장중 일봉 제외")
     if not rows: st.warning('상세 지표를 확보하지 못했습니다.'); return
     if not any(r['판단']=='조건부 매수 검토' for r in rows): st.info('현재 조건부 매수 검토 후보 없음. 무리한 진입을 피하세요.')

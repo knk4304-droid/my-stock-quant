@@ -17,10 +17,10 @@ def week_start(now):
 
 def capture():
     cron=os.getenv('QP_SCHEDULE',''); now=pd.Timestamp.now(tz='Asia/Seoul')
-    if cron not in ('0 1 * * 1-5','0 6 * * 1-5'):
-        print('No scheduled slot: manual run validates existing records only'); return
-    slot=now.normalize()+pd.Timedelta(hours=10 if cron.startswith('0 1 ') else 15)
-    if now.weekday()>4 or not 0 <= (now-slot).total_seconds() <= 7200:
+    if cron not in ('0 1 * * 1-5','0 6 * * 1-5','manual'):
+        print('No recognized capture trigger; validation only'); return
+    slot=(now.floor('min') if cron=='manual' else now.normalize()+pd.Timedelta(hours=10 if cron.startswith('0 1 ') else 15))
+    if cron!='manual' and (now.weekday()>4 or not 0 <= (now-slot).total_seconds() <= 7200):
         print('Scheduled capture skipped: outside 2-hour window'); return
     history=load(); key=slot.isoformat()
     if any(s['slot']==key for s in history): return
@@ -35,7 +35,7 @@ def capture():
                 groups['|'.join((p,m,theme))]=[{'ticker':str(r.ticker),'name':str(r['name']),'rank':i,'market':str(r.market),'price':float(r.close) if pd.notna(r.close) and float(r.close)>0 else None,'price_date':str(r.get('asof_price',''))} for i,(_,r) in enumerate(top.iterrows(),1)]
     from qp_entry_r16 import capture as capture_entry
     entry_review=capture_entry(groups,now)
-    history.append({'slot':key,'captured':pd.Timestamp.now(tz='Asia/Seoul').isoformat(),'groups':groups,'outcomes':{},'entry_review':entry_review}); PATH.write_text(json.dumps(history,ensure_ascii=False))
+    history.append({'source':'수동 실행' if cron=='manual' else '예약 실행','slot':key,'captured':pd.Timestamp.now(tz='Asia/Seoul').isoformat(),'groups':groups,'outcomes':{},'entry_review':entry_review}); PATH.write_text(json.dumps(history,ensure_ascii=False))
 
 def validate():
     import yfinance as yf

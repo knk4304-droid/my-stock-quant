@@ -45,7 +45,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         result=[]
         for name,ticker in INDEXES.items():
             try:
-                hist=yf.Ticker(ticker).history(period='7d',interval='1d',auto_adjust=False)
+                hist=yf.Ticker(ticker).history(period='10d',interval='1d',auto_adjust=False,timeout=12)
                 closes=pd.to_numeric(hist['Close'],errors='coerce').dropna()
                 if closes.empty: raise ValueError('no prices')
                 last=float(closes.iloc[-1]); prev=float(closes.iloc[-2]) if len(closes)>1 else None
@@ -93,7 +93,9 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         return
 
     st.subheader('1. 주요 시장 지수')
-    st.caption('일봉의 마지막 제공 가격 기준입니다. 장중에는 잠정 가격일 수 있으며 실시간 체결 지수를 보장하지 않습니다. 조회 결과는 최대 15분 캐시됩니다.')
+    st.caption('Yahoo Finance 제공 일봉 기준이며 실시간 지수가 아닙니다. 데이터 제공 지연·휴장·캐시로 수치가 변하지 않을 수 있습니다. 조회 결과는 최대 15분 캐시됩니다.')
+    if st.button('🔄 시장 지수 다시 조회',key='qp_indices_refresh',help='15분 캐시를 비우고 시세 공급원에 다시 요청합니다. 공급원 자료가 지연되면 같은 숫자가 나올 수 있습니다.'):
+        indices.clear()
     grid=st.columns(4)
     for col,(name,price,change,asof,updated) in zip(grid,indices()):
         col.markdown(f"**{name}**")
@@ -104,6 +106,10 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             col.markdown(f'<span style="color:{color};font-weight:600">{arrow} {change:+.2f}%</span>',unsafe_allow_html=True)
         else: col.caption('등락률 미확인')
         col.caption(f'가격 기준일: {asof}')
+        try:
+            days=(datetime.now(timezone(timedelta(hours=9))).date()-pd.Timestamp(asof).date()).days
+            if days>=2: col.warning(f'기준일이 {days}일 전입니다. 휴장 또는 데이터 지연 여부 확인')
+        except Exception: pass
         col.caption(f'업데이트: {updated} KST' if updated else '업데이트: 조회 실패')
     st.caption('업데이트는 데이터 조회 성공 시각이며 거래소 체결 시각과 다릅니다.')
 
