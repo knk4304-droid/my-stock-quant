@@ -21,6 +21,10 @@ KPTI,Karyopharm Therapeutics Inc. - Common Stock,NASDAQ,STOCK
 ATCH,"AtlasClear Holdings, Inc. Common Stock",NYSE/OTHER,STOCK
 HLSQ,Tessera Defense and Homeland Security Inc. Common Stock,NYSE/OTHER,STOCK
 MEMY,Tuttle Capital Meme Stock Income Blast ETF,NYSE/OTHER,ETF
+KAZR,Skyline Builders Group Holding Limited - Class A Ordinary Shares,NASDAQ,STOCK
+NXXT,"NextNRG, Inc. - Common Stock",NASDAQ,STOCK
+KNRX,KNOREX LTD. Class A Ordinary Shares,NYSE/OTHER,STOCK
+SHNY,"MicroSectors Gold 3X Leveraged ETNs due January 29, 2043",NYSE/OTHER,ETF
 AAAP,Pacer Barings CLO Market Flex ETF,NASDAQ,ETF
 AACG,"ATA Creativity Global - American Depositary Shares, each representing two common shares",NASDAQ,STOCK
 AACI,Armada Acquisition Corp. III - Class A Ordinary Share,NASDAQ,STOCK
@@ -1267,6 +1271,7 @@ CRMD,CorMedix Inc. - Common Stock,NASDAQ,STOCK
 CRMG,Leverage Shares 2X Long CRM Daily ETF,NASDAQ,ETF
 CRML,Critical Metals Corp. - Ordinary Shares,NASDAQ,STOCK
 CRMLW,Critical Metals Corp. - Warrants,NASDAQ,STOCK
+CRMN,Skyline Builders Group Holding Limited - Class A Ordinary Shares,NASDAQ,STOCK
 CRMT,"America's Car-Mart, Inc. - Common Stock",NASDAQ,STOCK
 CRNC,Cerence Inc. - Common Stock,NASDAQ,STOCK
 CRNT,Ceragon Networks Ltd. - Ordinary Shares,NASDAQ,STOCK
@@ -2759,7 +2764,6 @@ KALU,Kaiser Aluminum Corporation - Common Stock,NASDAQ,STOCK
 KARD,"Kardigan, Inc. - Common Stock",NASDAQ,STOCK
 KARO,Karooooo Ltd. - Ordinary shares,NASDAQ,STOCK
 KAT,Scharf ETF,NASDAQ,ETF
-KAZR,Skyline Builders Group Holding Limited - Class A Ordinary Shares,NASDAQ,STOCK
 KBON,Karbon Capital Partners Corp. - Class A Ordinary Shares,NASDAQ,STOCK
 KBONU,Karbon Capital Partners Corp. - Units,NASDAQ,STOCK
 KBONW,Karbon Capital Partners Corp. - Warrant,NASDAQ,STOCK
@@ -3583,7 +3587,6 @@ NXTC,"NextCure, Inc. - Common Stock",NASDAQ,STOCK
 NXTG,First Trust Indxx NextG ETF,NASDAQ,ETF
 NXTS,Nexentis Technologies Inc. - Common Stock,NASDAQ,STOCK
 NXTT,Next Technology Holding Inc. - Ordinary Shares,NASDAQ,STOCK
-NXXT,"NextNRG, Inc. - Common Stock",NASDAQ,STOCK
 NYAX,Nayax Ltd. - Ordinary Shares,NASDAQ,STOCK
 NYXH,Nyxoah SA - Ordinary Shares,NASDAQ,STOCK
 NZAC,State Street SPDR MSCI ACWI Climate Paris Aligned ETF,NASDAQ,ETF
@@ -8473,6 +8476,7 @@ GLED.U,"GalaxyEdge Acquisition Corporation Units, each consisting of one Ordinar
 GLIN,VanEck India Growth Leaders ETF,NYSE/OTHER,ETF
 GLIX,Lazard Listed Infrastructure ETF,NYSE/OTHER,ETF
 GLL,ProShares UltraShort Gold,NYSE/OTHER,ETF
+GLLD,"MicroSectors Gold 3X Leveraged ETNs due January 29, 2043",NYSE/OTHER,ETF
 GLNK,Grayscale Chainlink Trust ETF,NYSE/OTHER,ETF
 GLO,Clough Global Opportunities Fund Common Stock,NYSE/OTHER,STOCK
 GLOB,Globant S.A. Common Shares,NYSE/OTHER,STOCK
@@ -9444,6 +9448,7 @@ KBE,State Street SPDR S&P Bank ETF,NYSE/OTHER,ETF
 KBFR,Innovator U.S. Small Cap Managed 10 Buffer ETF,NYSE/OTHER,ETF
 KBH,KB Home Common Stock,NYSE/OTHER,STOCK
 KBR,"KBR, Inc. Common Stock",NYSE/OTHER,STOCK
+KBTY,Guinness Atkinson K-Beauty ETF,NYSE/OTHER,ETF
 KBUF,KraneShares 90% KWEB Defined Outcome January 2027 ETF,NYSE/OTHER,ETF
 KCA.U,"Kensington Capital Acquisition Corp. VI New Units, each consisting of one Class A Ordinary Share and three-quarters of one Class 2 Redeemable Warrant",NYSE/OTHER,STOCK
 KCAC.U,"Kensington Capital Acquisition Corp. VI Units, each consisting of one Class A ordinary share, one-quarter of one Class 1 redeemable warrant and three-quarters of one Class 2 redeemable warrant",NYSE/OTHER,STOCK
@@ -9521,7 +9526,6 @@ KNOP,KNOT Offshore Partners LP Common Units representing Limited Partner Interes
 KNOV,Innovator U.S. Small Cap Power Buffer ETF - November,NYSE/OTHER,ETF
 KNOW,Fundamentals First ETF,NYSE/OTHER,ETF
 KNRG,Simplify Kayne Anderson Energy and Infrastructure Credit ETF,NYSE/OTHER,ETF
-KNRX,KNOREX LTD. Class A Ordinary Shares,NYSE/OTHER,STOCK
 KNSL,"Kinsale Capital Group, Inc. Common Stock",NYSE/OTHER,STOCK
 KNTK,Kinetik Holdings Inc. Class A Common Stock,NYSE/OTHER,STOCK
 KNX,Knight-Swift Transportation Holdings Inc.,NYSE/OTHER,STOCK
@@ -9792,6 +9796,7 @@ MAGA,Truth Social America First ETF,NYSE/OTHER,ETF
 MAGC,Roundhill China Magnificent Seven ETF,NYSE/OTHER,ETF
 MAGG,Madison Aggregate Bond ETF,NYSE/OTHER,ETF
 MAGN,Magnera Corporation Common Stock,NYSE/OTHER,STOCK
+MAGP,Roundhill Magnificent Seven Plus ETF,NYSE/OTHER,ETF
 MAGS,Roundhill Magnificent Seven ETF,NYSE/OTHER,ETF
 MAGX,Roundhill Daily 2X Long Magnificent Seven ETF,NYSE/OTHER,ETF
 MAGY,Roundhill Magnificent Seven Covered Call ETF,NYSE/OTHER,ETF
@@ -10304,6 +10309,7 @@ NISM,NYLIM International Small-Mid Cap Equity ETF,NYSE/OTHER,ETF
 NITE,The Nightview Fund NITE,NYSE/OTHER,ETF
 NJAN,Innovator Growth-100 Power Buffer ETF - January,NYSE/OTHER,ETF
 NJNK,Columbia U.S. High Yield ETF,NYSE/OTHER,ETF
+NJPN,Nomura Japan Equity ETF,NYSE/OTHER,ETF
 NJR,NewJersey Resources Corporation Common Stock,NYSE/OTHER,STOCK
 NJUL,Innovator Growth-100 Power Buffer ETF - July,NYSE/OTHER,ETF
 NJUN,Innovator Growth-100 Power Buffer ETF - June,NYSE/OTHER,ETF
@@ -11654,7 +11660,6 @@ SHEL,Shell PLC American Depositary Shares (each representing two (2) Ordinary Sh
 SHG,Shinhan Financial Group Co Ltd American Depositary Shares,NYSE/OTHER,STOCK
 SHLD,Global X Defense Tech ETF,NYSE/OTHER,ETF
 SHM,State Street SPDR Nuveen ICE Short Term Municipal Bond ETF,NYSE/OTHER,ETF
-SHNY,"MicroSectors Gold 3X Leveraged ETNs due January 29, 2043",NYSE/OTHER,ETF
 SHO,"Sunstone Hotel Investors, Inc. Sunstone Hotel Investors, Inc. Common Shares",NYSE/OTHER,STOCK
 SHO-H,"Sunstone Hotel Investors, Inc. 6.125% Series H Cumulative Redeemable Preferred Stock",NYSE/OTHER,STOCK
 SHO-I,"Sunstone Hotel Investors, Inc. 5.70% Series I Cumulative Redeemable Preferred Stock",NYSE/OTHER,STOCK
@@ -12675,6 +12680,7 @@ VEGX,International Vegan Climate ETF,NYSE/OTHER,ETF
 VEL,"Velocity Financial, Inc. Common Stock",NYSE/OTHER,STOCK
 VELL,Defiance Daily Target 2X Long VELO ETF,NYSE/OTHER,ETF
 VEM,Virtus Emerging Markets Dividend ETF,NYSE/OTHER,ETF
+VEMB,Vanguard Emerging Markets Bond Active ETF,NYSE/OTHER,ETF
 VEMY,Virtus Stone Harbor Emerging Markets High Yield Bond ETF,NYSE/OTHER,ETF
 VENU,Venu Holding Corporation Common Stock,NYSE/OTHER,STOCK
 VET,Vermilion Energy Inc. Common (Canada),NYSE/OTHER,STOCK
