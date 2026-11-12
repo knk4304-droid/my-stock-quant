@@ -1868,5 +1868,379 @@
         }
       ]
     }
+  },
+  {
+    "at_utc": "2026-11-12T04:33:22+00:00",
+    "candidate_count": 3150,
+    "periods": {
+      "단기 (1~3일)": [
+        {
+          "rank": 1,
+          "ticker": "ARDT",
+          "name": "Ardent Health, Inc. Common Stock",
+          "score": 55.3,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T03:25:26.827192+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "ACHC",
+          "name": "Acadia Healthcare Company, Inc. - Common Stock",
+          "score": 54.3,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.305212+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "ADMA",
+          "name": "ADMA Biologics Inc - Common Stock",
+          "score": 54.2,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:21.214631+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "069510.KQ",
+          "name": "에스텍",
+          "score": 52.4,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-12",
+          "scanned_at_utc": "2026-11-12T03:25:17.505659+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "AGL",
+          "name": "agilon health, inc. Common Stock",
+          "score": 51.0,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T03:25:26.777537+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "AERO",
+          "name": "Grupo Aeromexico, S.A.B. de C.V. American Depositary Shares (each representing ten (10) Common Shares)",
+          "score": 50.4,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-10",
+          "scanned_at_utc": "2026-11-11T08:47:32.794582+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "235980.KQ",
+          "name": "메드팩토",
+          "score": 50.2,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-11T02:08:35.082688+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "298690.KS",
+          "name": "에어부산",
+          "score": 50.1,
+          "market": "KOSPI",
+          "price_date": "2026-11-12",
+          "scanned_at_utc": "2026-11-12T02:41:36.368180+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "ASO",
+          "name": "Academy Sports and Outdoors, Inc. - Common Stock",
+          "score": 49.3,
+          "market": "NASDAQ",
+          "price_date": "2026-11-10",
+          "scanned_at_utc": "2026-11-11T06:26:09.031172+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "267850.KS",
+          "name": "아시아나IDT",
+          "score": 48.9,
+          "market": "KOSPI",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-11T00:34:10.267731+00:00"
+        }
+      ],
+      "스윙 (1~2주)": [
+        {
+          "rank": 1,
+          "ticker": "ARDT",
+          "name": "Ardent Health, Inc. Common Stock",
+          "score": 63.9,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T03:25:26.827192+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "069510.KQ",
+          "name": "에스텍",
+          "score": 61.0,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-12",
+          "scanned_at_utc": "2026-11-12T03:25:17.505659+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "BOBS",
+          "name": "Bob's Discount Furniture, Inc. Common Stock",
+          "score": 60.8,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:17.613820+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "ACHC",
+          "name": "Acadia Healthcare Company, Inc. - Common Stock",
+          "score": 60.4,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.305212+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "AGL",
+          "name": "agilon health, inc. Common Stock",
+          "score": 59.9,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T03:25:26.777537+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "ADMA",
+          "name": "ADMA Biologics Inc - Common Stock",
+          "score": 59.6,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:21.214631+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "ASO",
+          "name": "Academy Sports and Outdoors, Inc. - Common Stock",
+          "score": 59.0,
+          "market": "NASDAQ",
+          "price_date": "2026-11-10",
+          "scanned_at_utc": "2026-11-11T06:26:09.031172+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "235980.KQ",
+          "name": "메드팩토",
+          "score": 58.9,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-11T02:08:35.082688+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "AER",
+          "name": "AerCap Holdings N.V. Ordinary Shares",
+          "score": 58.2,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.127973+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "ARHS",
+          "name": "Arhaus, Inc. - Class A Common Stock",
+          "score": 58.0,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:21.205210+00:00"
+        }
+      ],
+      "중기 (1~3개월)": [
+        {
+          "rank": 1,
+          "ticker": "104700.KS",
+          "name": "한국철강",
+          "score": 68.3,
+          "market": "KOSPI",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T00:11:38.020851+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "BLCO",
+          "name": "Bausch + Lomb Corporation Common Shares",
+          "score": 68.1,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:34.456973+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "ARDT",
+          "name": "Ardent Health, Inc. Common Stock",
+          "score": 67.6,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T03:25:26.827192+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "BOBS",
+          "name": "Bob's Discount Furniture, Inc. Common Stock",
+          "score": 67.4,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:17.613820+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "028050.KS",
+          "name": "삼성E&A",
+          "score": 67.0,
+          "market": "KOSPI",
+          "price_date": "2026-11-12",
+          "scanned_at_utc": "2026-11-12T03:25:27.174646+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "AER",
+          "name": "AerCap Holdings N.V. Ordinary Shares",
+          "score": 66.7,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.127973+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "ARHS",
+          "name": "Arhaus, Inc. - Class A Common Stock",
+          "score": 66.7,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:21.205210+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "BC",
+          "name": "Brunswick Corporation Common Stock",
+          "score": 66.5,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.689401+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "ALLE",
+          "name": "Allegion plc Ordinary Shares",
+          "score": 66.5,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.241984+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "ACEL",
+          "name": "Accel Entertainment, Inc. ",
+          "score": 66.5,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.498244+00:00"
+        }
+      ],
+      "장기 (1년 이상)": [
+        {
+          "rank": 1,
+          "ticker": "AER",
+          "name": "AerCap Holdings N.V. Ordinary Shares",
+          "score": 69.0,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.127973+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "ATR",
+          "name": "AptarGroup, Inc. Common Stock",
+          "score": 68.5,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-10",
+          "scanned_at_utc": "2026-11-11T06:26:08.951823+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "ACIW",
+          "name": "ACI Worldwide, Inc. - Common Stock",
+          "score": 68.4,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.253798+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "APLE",
+          "name": "Apple Hospitality REIT, Inc. Common Shares",
+          "score": 68.4,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.399277+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "AIZ",
+          "name": "Assurant, Inc. Common Stock",
+          "score": 68.3,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.645530+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "BRKU",
+          "name": "Direxion Daily BRKB Bull 2X ETF",
+          "score": 67.9,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:32.251310+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "AMX",
+          "name": "America Movil, S.A.B. de C.V. American Depositary Shares (each representing the right to receive twenty (20) Series B Shares",
+          "score": 67.9,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.223870+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "BRKL",
+          "name": "Corgi BRKB 2x Daily ETF",
+          "score": 67.8,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T04:33:19.368464+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "ALRM",
+          "name": "Alarm.com Holdings, Inc. - Common Stock",
+          "score": 67.7,
+          "market": "NASDAQ",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.208753+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "ALLE",
+          "name": "Allegion plc Ordinary Shares",
+          "score": 67.6,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-11",
+          "scanned_at_utc": "2026-11-12T02:41:36.241984+00:00"
+        }
+      ]
+    }
   }
 ]
