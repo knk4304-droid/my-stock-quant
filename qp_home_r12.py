@@ -127,18 +127,29 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
 
     st.subheader('3. 추천종목 TOP10')
     with st.form('qp_unified_filter_form'):
-        c1,c2,c3=st.columns([2,1,1])
+        c1,c2,c3,c4=st.columns([2,1,1,1.5])
         period=c1.selectbox('투자 기간',period_options,index=1)
         market=c2.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
         theme=c3.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
+        sort_mode=c4.selectbox('정렬 기준',['종합점수순','현재매수유망순'])
         submitted=st.form_submit_button('🔍 검색 · 추천종목 TOP10',type='primary',use_container_width=True)
-    if submitted: st.session_state['qp_unified_filters']=(period,market,theme)
+    if submitted: st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
     active=st.session_state.get('qp_unified_filters')
     if not active:
         st.info('투자 기간·시장·관심 테마를 선택하고 검색을 누르면 추천순위와 상세분석이 나타납니다.')
         return
-    period,market,theme=active
-    top=current_top(fresh,period,market,theme,rank_fn)
+    period,market,theme,sort_mode=active
+    # R21.1: 전체 적격 후보를 먼저 평가하고 정렬한 후 TOP10으로 제한합니다.
+    full=current_top(fresh,period,market,theme,lambda d,p:rank_fn(d,p).head(len(d)))
+    if sort_mode=='현재매수유망순' and not full.empty:
+        full=full.copy()
+        for k in ('score','return_5d_pct','return_20d_pct','volatility_annual'):
+            full[k]=pd.to_numeric(full[k],errors='coerce')
+        valid=full[['score','return_5d_pct','return_20d_pct','volatility_annual']].notna().all(axis=1)
+        r5=full['return_5d_pct'].clip(-20,20)
+        full['매수관찰점수']=(full['score']*.45+r5*.6+full['return_20d_pct'].clip(-30,30)*.2-full['volatility_annual'].clip(0,3)*12-(r5-5).clip(lower=0)*1.5).round(2)
+        full=full.loc[valid].sort_values('매수관찰점수',ascending=False)
+    top=full.head(10)
     if top.empty:
         st.warning('조건에 맞는 최근 7일 분석 결과가 없습니다. 조건을 변경해 주세요.'); return
     top=top.copy()
@@ -149,6 +160,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     ret=pd.DataFrame([returns(str(t)) for t in top.ticker],index=top.index,columns=['오늘수익률','전일수익률','5일수익률','20일수익률'])
     table=pd.DataFrame({'순위':top['순위'],'종목':top['name'],'시장구분':top['market'],'추천점수':top['추천 참고점수'],'기술점수':numeric('score'),'최근 저장 가격':last,'분석 완료(KST)':top['업데이트 시각 (KST)']})
     for col in ret: table[col]=ret[col]
+    if sort_mode=='현재매수유망순': table['매수관찰점수']=top['매수관찰점수']
     table=table[['순위','종목','시장구분','추천점수','기술점수','최근 저장 가격',*ret.columns,'분석 완료(KST)']]
     def color(v): return 'color: #D32F2F' if pd.notna(v) and v>0 else 'color: #1565C0' if pd.notna(v) and v<0 else 'color: #808080'
     styled=table.style.apply(lambda col: col.map(color),subset=list(ret.columns)).format({c:'{:+.2f}%' for c in ret},na_rep='미확인')
@@ -159,9 +171,9 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.write(f"**{r['순위']}위 {r['종목']}** · 추천 {r['추천점수']}점 · 5일 {r['5일수익률']}")
 
     from qp_weekly import load as load_weekly
-    from qp_entry_r16 import show as show_entry
-    show_entry(st,load_weekly(),'|'.join((period,market,theme)))
+    # 이전 별도 매수타이밍 TOP10 및 상세 확인 메뉴 제거: 4번 상세분석으로 통합.
     st.subheader('4. 추천종목 상세분석')
+    st.caption('두 TOP10의 상세 분석을 통합했습니다. 선택 종목의 최신 이용 가능 일봉과 지표를 한곳에서 확인합니다.')
     chosen=st.selectbox('상세 분석할 종목',list(range(len(top))),format_func=lambda i:f"{i+1}위 · {top.iloc[i]['name']} ({top.iloc[i]['ticker']})",key='qp_unified_detail_choice')
     item=top.iloc[chosen]; ticker=str(item['ticker']); name=str(item['name'])
     if st.button('선택 종목 상세분석 실행',type='primary',key='qp_unified_detail_run'):
@@ -173,6 +185,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         else:
             st.write(f"**{name}** · {report.get('종합 의견','판단 보류')} · 기술점수 {report.get('종합 점수(100)','미확인')}/100 · 가격 기준일 {report.get('기준일','미확인')} · 분석 완료 {report.get('분석 완료(KST)','미확인')} KST")
             st.caption('통합 상세분석 · 가격 기준일과 분석 완료 시각은 서로 다릅니다. 관찰가는 기술적 참고 수준이며 체결가나 예측가가 아닙니다.')
+            from qp_r21_summary import summarize
+            st.markdown(summarize(report))
             st.markdown(detail_html(report), unsafe_allow_html=True)
             with st.expander('관련 뉴스 확인',expanded=False):
                 related,err=fetch_news(ticker_query(name,ticker),limit=4)
