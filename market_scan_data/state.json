@@ -1,9 +1,9 @@
 {
   "market_cursors": {
-    "KOSDAQ": 1474,
-    "KOSPI": 563,
-    "NASDAQ": 1466,
-    "NYSE/OTHER": 1466,
+    "KOSDAQ": 1584,
+    "KOSPI": 673,
+    "NASDAQ": 1576,
+    "NYSE/OTHER": 1576,
     "KR ETF": 0
   },
   "catalog_by_market": {
@@ -14,10 +14,10 @@
     "KR ETF": 4
   },
   "scanned_by_market": {
-    "KOSDAQ": 118,
-    "KOSPI": 64,
-    "NASDAQ": 51,
-    "NYSE/OTHER": 42
+    "KOSDAQ": 114,
+    "KOSPI": 63,
+    "NASDAQ": 53,
+    "NYSE/OTHER": 44
   },
   "catalog_size": 15183,
   "attempted": 275,
@@ -30,7 +30,7 @@
     "기존 우수 후보": 25,
     "신규 순환 발굴": 140
   },
-  "succeeded": 275,
-  "failed": 0,
-  "updated_utc": "2026-11-12T23:56:45.500457+00:00"
+  "succeeded": 274,
+  "failed": 1,
+  "updated_utc": "2026-11-13T01:55:21.002312+00:00"
 }
