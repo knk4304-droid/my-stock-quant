@@ -338,6 +338,10 @@ else:
 if admin_mode=='기존 고급 도구':
     df, engine, macro_info, fetch_failures, requested_count = run_quant_analysis()
 
+    with st.expander('🔄 현재 시점 종합 재조회 (R20 · 선택 실행)', expanded=False):
+        from qp_live_r20 import show as show_live_r20
+        show_live_r20(st)
+
     # v8.3: Explicit opt-in expansion. Do not issue hundreds of Yahoo calls on each page load.
     if 'v83_scored' not in st.session_state:
         st.session_state['v83_scored'] = {}
