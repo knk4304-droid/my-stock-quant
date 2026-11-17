@@ -37,34 +37,66 @@ def capture():
     entry_review=capture_entry(groups,now)
     history.append({'source':'수동 실행' if cron=='manual' else '예약 실행','slot':key,'captured':pd.Timestamp.now(tz='Asia/Seoul').isoformat(),'groups':groups,'outcomes':{},'entry_review':entry_review}); PATH.write_text(json.dumps(history,ensure_ascii=False))
 
-def validate():
+def apply_outcome(s,t,bars,now):
+    import math
+    o=s['outcomes'][t]
+    zone='Asia/Seoul' if t.endswith(('.KS','.KQ')) else 'America/New_York'
+    local=now.tz_convert(zone)
+    c=pd.to_numeric(bars['Close'],errors='coerce').dropna()
+    c=c[c.map(lambda v: math.isfinite(v) and v>0)]
+    c.index=pd.DatetimeIndex(c.index).tz_localize(None).normalize()
+    c=c[~c.index.duplicated(keep='last')].sort_index()
+    # Conservative buffer after regular close; exclude current session before then.
+    cutoff=pd.Timestamp(local.date())
+    if local.hour >= (17 if zone=='Asia/Seoul' else 18): cutoff+=pd.Timedelta(days=1)
+    c=c[c.index<cutoff]
+    day=pd.Timestamp(s['captured']).tz_convert(zone).date()
+    future=c[c.index>pd.Timestamp(day)]
+    if future.empty:
+        o['status']='기준 거래일 대기 또는 시세 미확보'; return
+    o.setdefault('base_date',str(future.index[0].date())); o.setdefault('base',float(future.iloc[0]))
+    base=pd.Timestamp(o['base_date'])
+    if base not in c.index or abs(c.loc[base]/o['base']-1)>.015:
+        o['status']='기준가 불일치 · 재확인 필요'; return
+    after=c[c.index>base]
+    for h in (1,5,20):
+        if len(after)>=h: o.setdefault(str(h),round(100*(float(after.iloc[h-1])/o['base']-1),2))
+    o['status']='20일 검증 완료' if '20' in o else f'기준가 확보 · {len(after)}거래일 관측'
+
+
+def validate(max_tickers=None):
     import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor
     history=load(); now=pd.Timestamp.now(tz='UTC'); pending={}
     for s in history:
         if (now-pd.Timestamp(s['captured'])).days>60: continue
-        for rows in s['groups'].values():
-            for r in rows:
-                t=r['ticker']; o=s['outcomes'].setdefault(t,{})
-                if '20' not in o: pending.setdefault(t,[]).append(s) if s not in pending.get(t,[]) else None
-    for t,records in sorted(pending.items(),key=lambda kv:min(s['outcomes'][kv[0]].get('last_attempt','') for s in kv[1]))[:40]:
-        for s in records: s['outcomes'][t]['last_attempt']=now.isoformat()
+        for t in {r['ticker'] for rows in s['groups'].values() for r in rows}:
+            o=s['outcomes'].setdefault(t,{})
+            if '20' not in o: pending.setdefault(t,[]).append(s)
+    cap=int(max_tickers or os.getenv('QP_VALIDATION_MAX_TICKERS','240'))
+    selected=sorted(pending.items(),key=lambda kv:min(s['outcomes'][kv[0]].get('last_attempt','') for s in kv[1]))[:cap]
+    def fetch(item):
+        t,records=item
         try:
             first=min(pd.Timestamp(s['captured']) for s in records)
             bars=yf.Ticker(t).history(start=(first-pd.Timedelta(days=2)).date().isoformat(),auto_adjust=True,timeout=10)
-            c=bars.Close.dropna(); dates=pd.DatetimeIndex(c.index).tz_localize(None).normalize(); c.index=dates; c=c[~c.index.duplicated()].sort_index()
-            # Conservative baseline: first completed session strictly after capture's exchange-local date.
-            zone='Asia/Seoul' if t.endswith(('.KS','.KQ')) else 'America/New_York'
-            cutoff=now.tz_convert(zone).date()
-            c=c[c.index<pd.Timestamp(cutoff)]
-            for s in records:
-                day=pd.Timestamp(s['captured']).tz_convert(zone).date(); future=c[c.index>pd.Timestamp(day)]
-                if future.empty or future.iloc[0]<=0: continue
-                o=s['outcomes'][t]; o.setdefault('base_date',str(future.index[0].date())); o.setdefault('base',float(future.iloc[0])); base=pd.Timestamp(o['base_date']); after=c[c.index>base]
-                if base not in c.index or abs(c.loc[base]/o['base']-1)>.015: continue
-                for h in (1,5,20):
-                    if len(after)>=h: o.setdefault(str(h),round(100*(float(after.iloc[h-1])/o['base']-1),2))
-        except Exception as e: print(t,type(e).__name__)
-    if history: PATH.write_text(json.dumps(history,ensure_ascii=False))
+            if bars.empty: raise ValueError('empty history')
+            return t,bars,None
+        except Exception as e: return t,None,type(e).__name__
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        for t,bars,error in pool.map(fetch,selected):
+            for s in pending[t]:
+                o=s['outcomes'][t]; o['last_attempt']=now.isoformat()
+                try:
+                    if error: raise ValueError(error)
+                    apply_outcome(s,t,bars,now)
+                except Exception as e:
+                    o['status']='시세 조회 실패 · 재시도 예정'; print(t,type(e).__name__)
+    if history:
+        tmp=PATH.with_suffix('.tmp'); tmp.write_text(json.dumps(history,ensure_ascii=False)); tmp.replace(PATH)
+    print(f'Weekly validation: {len(selected)}/{len(pending)} tickers')
 
 if __name__=='__main__':
-    capture(); validate()
+    import sys
+    if '--validate-only' not in sys.argv: capture()
+    validate()

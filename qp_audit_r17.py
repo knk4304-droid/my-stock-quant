@@ -4,6 +4,7 @@ No simulated fills, no invented missing returns, no strategy performance claims.
 from collections import defaultdict
 import math
 import pandas as pd
+from qp_classic_r22 import outcome_status
 
 HORIZONS=(1,5,20)
 
@@ -21,7 +22,7 @@ def observations(records, group):
             row={'회차':slot,'종목':item.get('name',ticker),'티커':ticker,
                  '추천순위':item.get('rank'),'매수타이밍점수':review.get('점수'),
                  '타이밍판단':review.get('판단','기록 없음'),
-                 '평가기준일':outcome.get('base_date'),'평가기준가':outcome.get('base')}
+                 '평가기준일':outcome.get('base_date'),'평가기준가':outcome.get('base'),'검증 상태':outcome_status(outcome)}
             for h in HORIZONS:
                 v=pd.to_numeric(outcome.get(str(h)),errors='coerce')
                 row[f'{h}일 수익률']=float(v) if pd.notna(v) and math.isfinite(float(v)) else None
@@ -67,6 +68,8 @@ def show(st,records,group):
     total=summarize(d,horizon)
     st.markdown('**전체 추천 성과(관찰 기준)**')
     st.dataframe(total,hide_index=True,use_container_width=True)
+    st.caption(f"기준가 확보 {info['기준가확보']}/{len(d)}건 · 미완료 사유는 아래 상태별 집계에서 확인하세요.")
+    st.dataframe(d['검증 상태'].value_counts().rename_axis('검증 상태').reset_index(name='건수'),hide_index=True,use_container_width=True)
     if int(total.iloc[0]['검증 완료'])==0:
         st.info('수익률 수치가 비어 있는 이유: 추천 이후 첫 거래일의 확정 종가를 평가 기준가로 삼고, 그 다음부터 선택한 1·5·20거래일이 지나야 관측값을 계산합니다. 예약/수동 실행 직후에는 0건이 정상일 수 있습니다. GitHub Actions에서 추적 작업이 실행되고 데이터 파일이 저장되는지도 확인하세요.')
     with st.expander('추천 신뢰도 점검: 숫자와 계산 기준을 쉽게 설명'):
