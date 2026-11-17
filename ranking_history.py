@@ -9,23 +9,8 @@ PERIODS = ['단기 (1~3일)', '스윙 (1~2주)', '중기 (1~3개월)', '장기 (
 
 
 def ranking(frame, period):
-    d = frame.copy()
-    for k in ('score', 'return_5d_pct', 'return_20d_pct', 'volatility_annual'):
-        d[k] = pd.to_numeric(d[k], errors='coerce') if k in d else float('nan')
-    r5 = d['return_5d_pct'].clip(-25, 25).fillna(0)
-    r20 = d['return_20d_pct'].clip(-40, 40).fillna(0)
-    vol = d['volatility_annual'].clip(0, 3).fillna(1)
-    base = d['score'].fillna(0)
-    if period.startswith('단기'):
-        score = base*.5+r5*.8-vol*12
-    elif period.startswith('스윙'):
-        score = base*.6+r5*.35+r20*.25-vol*10
-    elif period.startswith('중기'):
-        score = base*.7+r20*.35-vol*10
-    else:
-        score = base*.8+r20*.15-vol*18
-    d['ranking_score'] = score.round(1)
-    return d.sort_values('ranking_score', ascending=False)
+    from qp_rank_r26 import rank as shared_rank
+    return shared_rank(frame, period)
 
 
 def record_snapshot(data_dir, *, now=None):
@@ -42,6 +27,8 @@ def record_snapshot(data_dir, *, now=None):
     fresh = scores.loc[age.between(0, 7)].copy()
     fresh['_scan_time'] = scan_times.loc[fresh.index]
     fresh = fresh.sort_values('_scan_time').drop_duplicates('ticker', keep='last')
+    from qp_discovery_r25 import valid_prices
+    fresh=valid_prices(fresh,now)
     if fresh.empty:
         return False
     history_file = data_dir / 'ranking_snapshots.json'
@@ -51,8 +38,11 @@ def record_snapshot(data_dir, *, now=None):
         history = []
     # One run creates one snapshot. Existing entries are never rewritten.
     stamp = now.astimezone(timezone.utc).isoformat(timespec='seconds')
-    snapshot = {'at_utc': stamp, 'candidate_count': len(fresh), 'periods': {}}
+    snapshot = {'at_utc': stamp, 'candidate_count': len(fresh), 'periods': {}, 'model_version':'R26-baseline', 'challenger_periods': {}}
     for period in PERIODS:
+        from qp_rank_r26 import rank as shared_rank
+        shadow=shared_rank(fresh,period,challenger=True).head(10)
+        snapshot['challenger_periods'][period]=[{'ticker':str(r.ticker),'score':float(r.ranking_score),'price_date':str(r.asof_price),'close':float(r.close)} for r in shadow.itertuples()]
         top = ranking(fresh, period).head(10)
         snapshot['periods'][period] = [
             {'rank': i, 'ticker': str(row['ticker']), 'name': str(row.get('name', '')),

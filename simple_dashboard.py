@@ -19,21 +19,8 @@ def load_data():
     return state, scores
 
 def rank(frame, period):
-    d=frame.copy()
-    for k in ('score','return_5d_pct','return_20d_pct','volatility_annual'):
-        d[k]=pd.to_numeric(d[k],errors='coerce') if k in d else float('nan')
-    r5=d['return_5d_pct'].clip(-25,25).fillna(0)
-    r20=d['return_20d_pct'].clip(-40,40).fillna(0)
-    vol=d['volatility_annual'].clip(0,3).fillna(1)
-    base=d['score'].fillna(0)
-    if period.startswith('단기'): score=base*.5+r5*.8-vol*12
-    elif period.startswith('스윙'): score=base*.6+r5*.35+r20*.25-vol*10
-    elif period.startswith('중기'): score=base*.7+r20*.35-vol*10
-    else: score=base*.8+r20*.15-vol*18
-    d['추천 참고점수']=score.round(1)
-    # Missing inputs currently receive fallback values; disclose this beside rankings.
-    d['점수 입력 완전성'] = d[['score','return_5d_pct','return_20d_pct','volatility_annual']].notna().sum(axis=1).astype(str) + '/4'
-    return d.sort_values('추천 참고점수',ascending=False)
+    from qp_rank_r26 import rank as shared_rank
+    return shared_rank(frame, period)
 
 
 def score_guide(period):
@@ -59,7 +46,7 @@ def show_score_guide(st, period):
             '선택한 기간의 계산식: ' + score_guide(period).replace('~', '에서 ').replace('로 제한)', '까지 제한)'),
             '스윙 예시: 기술 점수 80점, 5일 수익률 +4%, 20일 수익률 +8%, 연율 변동성 0.4라면 80×0.6 + 4×0.35 + 8×0.25 - 0.4×10 = 47.4점입니다.',
             '47.4점 자체에 매수·매도 의미는 없으며 같은 기준의 다른 후보와 비교해야 합니다.',
-            '누락된 입력값은 기본값으로 대체되므로 점수 입력 완전성도 확인해야 합니다.',
+            '필수 입력값이 누락된 종목은 추천 순위에서 제외합니다.',
         ]
         for line in lines:
             st.text(line)
@@ -390,7 +377,7 @@ def show(st):
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=AUTO_HELP)
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
     st.caption('마지막 자동 분석 저장: '+str(pd.to_datetime(state.get('updated_utc'),utc=True,errors='coerce').tz_convert('Asia/Seoul')) if state.get('updated_utc') else '마지막 자동 분석 저장: 미확인')
-    st.caption('화면 버전: QP-R24 · 통합 갱신·성과 추적·공통 상세분석')
+    st.caption('화면 버전: QP-R26 · 공통 추천 엔진·비교 검증')
     with st.expander('❔ 최근 자동 작업이란?'):
         st.write(AUTO_HELP)
     from qp_home_r12 import show as show_unified_home

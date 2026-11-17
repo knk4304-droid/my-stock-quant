@@ -25,6 +25,8 @@ def capture():
     history=load(); key=slot.isoformat()
     if any(s['slot']==key for s in history): return
     df=pd.read_csv(DATA/'scores.csv',dtype={'ticker':str}); times=pd.to_datetime(df.scanned_at_utc,utc=True,errors='coerce'); df=df.loc[(now-times).dt.total_seconds().between(0,604800)].copy(); df['_time']=times.loc[df.index]; df=df.sort_values('_time').drop_duplicates('ticker',keep='last')
+    from qp_discovery_r25 import valid_prices
+    df=valid_prices(df,now)
     if df.empty: return
     from qp_home_r12 import current_top
     groups={}
@@ -35,7 +37,7 @@ def capture():
                 groups['|'.join((p,m,theme))]=[{'ticker':str(r.ticker),'name':str(r['name']),'rank':i,'market':str(r.market),'price':float(r.close) if pd.notna(r.close) and float(r.close)>0 else None,'price_date':str(r.get('asof_price',''))} for i,(_,r) in enumerate(top.iterrows(),1)]
     from qp_entry_r16 import capture as capture_entry
     entry_review=capture_entry(groups,now)
-    history.append({'source':'수동 실행' if cron=='manual' else '예약 실행','slot':key,'captured':pd.Timestamp.now(tz='Asia/Seoul').isoformat(),'groups':groups,'outcomes':{},'entry_review':entry_review}); PATH.write_text(json.dumps(history,ensure_ascii=False))
+    history.append({'source':'수동 실행' if cron=='manual' else '예약 실행','slot':key,'captured':pd.Timestamp.now(tz='Asia/Seoul').isoformat(),'groups':groups,'model_version':'R26-baseline','outcomes':{},'entry_review':entry_review}); PATH.write_text(json.dumps(history,ensure_ascii=False))
 
 def apply_outcome(s,t,bars,now):
     import math

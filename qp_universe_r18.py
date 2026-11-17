@@ -26,7 +26,7 @@ def eligible(frame):
     return f.loc[~blocked].copy().reset_index(drop=True)
 
 def choose(catalog, existing, state, batch_size, rotation_fn, revisit_limit=25):
-    """Targets 50+50+50+25+100. Shortfall goes to market-balanced rotation.
+    """Anchor groups capped at one twelfth of batch each; remaining capacity rotates.
     Deduplicates across buckets, never invents financial fundamentals.
     """
     cat=eligible(catalog); n=min(len(cat),max(1,int(batch_size)))
@@ -38,7 +38,7 @@ def choose(catalog, existing, state, batch_size, rotation_fn, revisit_limit=25):
     for name,quota,seeds in TARGETS:
         count=0
         for ticker in seeds:
-            if count>=quota: break
+            if count>=min(quota,max(1,n//12)): break
             if add(ticker,name): count+=1
         counts[name]=count
     # Revisit top scoring candidates with a completed scan at least 24h ago.
@@ -52,18 +52,16 @@ def choose(catalog, existing, state, batch_size, rotation_fn, revisit_limit=25):
             if add(t,'기존 우수 후보'): count+=1
     counts['기존 우수 후보']=count
     # Rotate through all eligible markets, then skip already selected symbols.
-    # Ask for the full eligible catalog so overlapping anchors do not starve rotation.
-    rotated,cursors=rotation_fn(cat,state,min(len(cat),max(n*2,350)))
-    rotation_count=0
-    for t in rotated.ticker.astype(str):
-        if len(chosen)>=n: break
-        if add(t,'신규 순환 발굴'): rotation_count+=1
-    # Rare collision-heavy batches get an extra rotation pass.
-    if len(chosen)<n:
-        more,cursors=rotation_fn(cat,{'market_cursors':cursors},min(len(cat),n*2))
-        for t in more.ticker.astype(str):
+    # Advance only over inspected symbols, not an oversized discarded batch.
+    cursors=dict(state.get('market_cursors',{}))
+    buckets={m:cat[cat.market.eq(m)].ticker.astype(str).tolist() for m in sorted(cat.market.dropna().unique())}
+    inspected={m:0 for m in buckets}; rotation_count=0
+    while len(chosen)<n and any(inspected[m]<len(v) for m,v in buckets.items()):
+        for m,v in buckets.items():
             if len(chosen)>=n: break
-            if add(t,'신규 순환 발굴'): rotation_count+=1
+            if inspected[m]>=len(v): continue
+            i=int(cursors.get(m,0))%len(v); cursors[m]=(i+1)%len(v); inspected[m]+=1
+            if add(v[i],'신규 순환 발굴'): rotation_count+=1
     counts['신규 순환 발굴']=rotation_count
     if not chosen: return cat.head(0),cursors,counts
     result=pd.DataFrame(chosen).reset_index(drop=True)
