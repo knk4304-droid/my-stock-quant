@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '30 8 * * 1-5'
-    - cron: '30 23 * * 1-5'
+    - cron: '30 23 * * 0-4'
 permissions:
   contents: write
 concurrency:
