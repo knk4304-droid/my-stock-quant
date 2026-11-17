@@ -54,7 +54,7 @@ def diagnostics(records,group):
             '기준가확보':int(pd.to_numeric(rows['평가기준가'],errors='coerce').notna().sum()) if not rows.empty else 0}
 
 def show(st,records,group):
-    st.subheader('6. R17 추천 신뢰도 점검')
+    st.subheader('6. 추천 신뢰도 점검')
     st.caption('실제 주문 성과가 아닌, 저장된 정기 추천 이후 확정 종가 변화에 대한 관찰 통계입니다. 매수 타이밍 점수는 사후 성과로 학습하거나 조정하지 않습니다.')
     d=observations(records,group); info=diagnostics(records,group)
     c=st.columns(3)
@@ -67,9 +67,9 @@ def show(st,records,group):
     horizon=st.selectbox('검증 기간',[1,5,20],format_func=lambda n:f'{n}거래일',key='qp_r17_horizon')
     total=summarize(d,horizon)
     st.markdown('**전체 추천 성과(관찰 기준)**')
-    st.dataframe(total,hide_index=True,use_container_width=True)
+    st.dataframe(total,hide_index=True,width="stretch")
     st.caption(f"기준가 확보 {info['기준가확보']}/{len(d)}건 · 미완료 사유는 아래 상태별 집계에서 확인하세요.")
-    st.dataframe(d['검증 상태'].value_counts().rename_axis('검증 상태').reset_index(name='건수'),hide_index=True,use_container_width=True)
+    st.dataframe(d['검증 상태'].value_counts().rename_axis('검증 상태').reset_index(name='건수'),hide_index=True,width="stretch")
     if int(total.iloc[0]['검증 완료'])==0:
         st.info('수익률 수치가 비어 있는 이유: 추천 이후 첫 거래일의 확정 종가를 평가 기준가로 삼고, 그 다음부터 선택한 1·5·20거래일이 지나야 관측값을 계산합니다. 예약/수동 실행 직후에는 0건이 정상일 수 있습니다. GitHub Actions에서 추적 작업이 실행되고 데이터 파일이 저장되는지도 확인하세요.')
     with st.expander('추천 신뢰도 점검: 숫자와 계산 기준을 쉽게 설명'):
@@ -83,13 +83,13 @@ def show(st,records,group):
     if int(total.iloc[0]['검증 완료'])<30:
         st.warning('검증 완료 표본이 30건 미만입니다. 통계적 신뢰도가 부족하므로 전략 우열을 판단하지 마세요.')
     st.markdown('**매수 타이밍 판단별 성과 비교**')
-    st.dataframe(summarize(d,horizon,'타이밍판단'),hide_index=True,use_container_width=True)
+    st.dataframe(summarize(d,horizon,'타이밍판단'),hide_index=True,width="stretch")
     st.markdown('**추천 순위 구간별 비교**')
     d=d.copy()
     d['순위 구간']=pd.cut(pd.to_numeric(d['추천순위'],errors='coerce'),bins=[0,3,5,10],labels=['1~3위','4~5위','6~10위'])
-    st.dataframe(summarize(d,horizon,'순위 구간'),hide_index=True,use_container_width=True)
+    st.dataframe(summarize(d,horizon,'순위 구간'),hide_index=True,width="stretch")
     with st.expander('개별 검증 원자료 및 해석 주의사항'):
-        st.dataframe(d,hide_index=True,use_container_width=True)
+        st.dataframe(d,hide_index=True,width="stretch")
         st.markdown('''- **미검증 건은 0% 수익으로 계산하지 않습니다.** 검증률을 반드시 함께 보세요.
 - **동일 종목의 오전·오후 반복 추천은 독립 거래가 아닙니다.** 표본 수가 많아도 독립적인 예측 사례가 적을 수 있습니다.
 - **기준가는 추천 후 첫 거래일의 확정 수정종가**입니다. 실제 매수 체결가, 추천 당시 가격 또는 10시·15시 체결가가 아닙니다.

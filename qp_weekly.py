@@ -54,7 +54,10 @@ def apply_outcome(s,t,bars,now):
     future=c[c.index>pd.Timestamp(day)]
     if future.empty:
         o['status']='기준 거래일 대기 또는 시세 미확보'; return
-    o.setdefault('base_date',str(future.index[0].date())); o.setdefault('base',float(future.iloc[0]))
+    if 'base_date' not in o and 'base' not in o:
+        o['base_date']=str(future.index[0].date()); o['base']=float(future.iloc[0])
+    elif 'base_date' not in o or 'base' not in o:
+        o['status']='기준가 기록 불완전 · 재확인 필요'; return
     base=pd.Timestamp(o['base_date'])
     if base not in c.index or abs(c.loc[base]/o['base']-1)>.015:
         o['status']='기준가 불일치 · 재확인 필요'; return
@@ -69,7 +72,6 @@ def validate(max_tickers=None):
     from concurrent.futures import ThreadPoolExecutor
     history=load(); now=pd.Timestamp.now(tz='UTC'); pending={}
     for s in history:
-        if (now-pd.Timestamp(s['captured'])).days>60: continue
         for t in {r['ticker'] for rows in s['groups'].values() for r in rows}:
             o=s['outcomes'].setdefault(t,{})
             if '20' not in o: pending.setdefault(t,[]).append(s)

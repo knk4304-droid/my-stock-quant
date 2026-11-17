@@ -8,9 +8,12 @@ class V55DisplayTests(unittest.TestCase):
         cls.source = Path(__file__).with_name('app.py').read_text(encoding='utf-8')
 
     def test_version_and_compact_table(self):
-        self.assertIn('AI 추천 주식 매매 (v5.9)', self.source)
-        self.assertIn("core_cols = ['종목명', '차트링크'", self.source)
-        self.assertIn("with st.expander('📊 세부 평가 지표 전체 보기')", self.source)
+        dashboard=Path(__file__).with_name('simple_dashboard.py').read_text(encoding='utf-8')
+        home=Path(__file__).with_name('qp_home_r12.py').read_text(encoding='utf-8')
+        self.assertIn('QUANTPILOT Classic',dashboard)
+        self.assertIn('show_unified_home(st, fresh',dashboard)
+        self.assertIn('추천종목 TOP10',home)
+        self.assertIn('스마트폰용 TOP10 간편 보기',home)
 
     def test_batch_and_live_universe_are_not_conflated(self):
         self.assertIn('배치 저장', self.source)

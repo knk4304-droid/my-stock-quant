@@ -91,7 +91,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         if st.button('관심종목 분석',type='primary') and query.strip():
             symbol=resolve_symbol(query.strip())
             if not symbol: st.warning('종목명을 확인하거나 정확한 종목코드를 입력하세요.'); return
-            technical.clear()
+            technical.clear(symbol)
             st.session_state['qp_watch_report']=(query.strip(),technical(symbol))
         stored=st.session_state.get('qp_watch_report')
         if stored and query.strip()==stored[0]:
@@ -184,6 +184,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     top=top.copy()
     top['순위']=range(1,len(top)+1)
     age=(pd.Timestamp.now(tz='UTC')-pd.to_datetime(top['scanned_at_utc'],utc=True,errors='coerce')).dt.total_seconds()/3600
+    if age.isna().any(): st.warning('분석 시각 미확인 종목 포함')
     if age.gt(24).any(): st.warning(f'24시간 초과 저장 분석 {int(age.gt(24).sum())}개 포함 · 최신 수익률과 추천점수의 기준 시각이 다릅니다. 휴장 여부와 정기 스캔 상태를 확인하세요.')
     top['업데이트 시각 (KST)']=pd.to_datetime(top['scanned_at_utc'],utc=True,errors='coerce').dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M').fillna('미확인')
     def numeric(column): return pd.to_numeric(top[column],errors='coerce') if column in top else pd.Series([float('nan')]*len(top),index=top.index)
@@ -202,6 +203,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     with st.expander('📱 스마트폰용 TOP10 간편 보기'):
         for r in table.to_dict('records'):
             st.write(f"**{r['순위']}위 {r['종목']}** · 추천 {r['추천점수']}점 · 5일 {r['5일수익률']}")
+            st.link_button('차트 열기',r['차트'])
 
     # 이전 별도 매수타이밍 TOP10 및 상세 확인 메뉴 제거: 4번 상세분석으로 통합.
     st.subheader('4. 추천종목 상세분석')
@@ -210,7 +212,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     item=top.iloc[chosen]; ticker=str(item['ticker']); name=str(item['name'])
     st.link_button('선택 종목 실시간·지연 차트 열기',chart_url(ticker))
     if st.button('선택 종목 상세분석 실행',type='primary',key='qp_unified_detail_run'):
-        technical.clear()
+        technical.clear(ticker)
         st.session_state['qp_unified_report']=(ticker,technical(ticker))
     stored=st.session_state.get('qp_unified_report')
     if stored and stored[0]==ticker:

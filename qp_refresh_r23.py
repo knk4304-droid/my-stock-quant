@@ -1,5 +1,6 @@
 """Bounded on-demand refresh; never writes historical recommendations."""
 import re
+import math
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
@@ -17,14 +18,19 @@ def resolve_catalog(raw, catalog):
     return raw.upper() if re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]{0,14}|\d{6}\.(?:KS|KQ)',raw,re.I) else ''
 
 
-def refresh_candidates(frame, fetch, limit=20):
+def refresh_candidates(frame, fetch, limit=20, now=None):
     """Only successful fresh candidates enter the refreshed ranking."""
+    now=pd.Timestamp.now(tz='UTC') if now is None else pd.Timestamp(now)
     candidates=frame.head(limit).copy(); rows=[]; failed=[]
     def one(row):
         try:
             result=fetch(str(row['ticker']))
-            if not result or not all(pd.notna(result.get(k)) for k in ('score','close','return_5d_pct','return_20d_pct','volatility_annual','asof_price')): return None
-            return {**row,**result,'scanned_at_utc':pd.Timestamp.now(tz='UTC')}
+            if not result or not all(math.isfinite(float(result[k])) for k in ('score','close','return_5d_pct','return_20d_pct','volatility_annual')): return None
+            if not 0 <= float(result['score']) <= 100 or float(result['close']) <= 0 or float(result['volatility_annual']) < 0: return None
+            day=pd.Timestamp(result['asof_price']).date()
+            local=now.tz_convert('Asia/Seoul' if str(row['ticker']).endswith(('.KS','.KQ')) else 'America/New_York').date()
+            if day>local or (local-day).days>7: return None
+            return {**row,**result,'scanned_at_utc':now}
         except Exception: return None
     with ThreadPoolExecutor(max_workers=4) as pool:
         for row,result in zip(candidates.to_dict('records'),pool.map(one,candidates.to_dict('records'))):

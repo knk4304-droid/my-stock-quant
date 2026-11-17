@@ -13,7 +13,7 @@ def test_refresh():
     def fetch(t):
         if t=='B': raise RuntimeError()
         return dict(score=80,close=10,return_5d_pct=1,return_20d_pct=2,volatility_annual=.2,asof_price='2026-11-17')
-    out,failed=refresh_candidates(d,fetch)
+    out,failed=refresh_candidates(d,fetch,now=pd.Timestamp('2026-11-17 22:00Z'))
     assert list(out.ticker)==['A'] and failed==['B'] and out.iloc[0].score==80
     assert d.iloc[0].score==1
 
