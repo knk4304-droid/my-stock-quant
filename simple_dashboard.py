@@ -237,18 +237,10 @@ def show_integrated_opinion(st, report_rows, ranked, period):
 
 def resolve_symbol(raw):
     """Resolve exact company name/code against saved catalog without a network call."""
-    raw=raw.strip()
-    if not raw: return ''
-    if raw.isdigit() and len(raw)==6: raw=raw+'.KS'
-    catalog=DATA/'catalog.csv'
-    if catalog.exists():
-        try:
-            f=pd.read_csv(catalog,dtype=str,usecols=['ticker','name'])
-            exact=f[f['name'].fillna('').str.casefold().eq(raw.casefold()) | f['ticker'].fillna('').str.casefold().eq(raw.casefold())]
-            if len(exact)==1: return str(exact.iloc[0]['ticker']).upper()
-            if raw.endswith('.KS') and not exact.empty: return str(exact.iloc[0]['ticker']).upper()
-        except (OSError,ValueError,KeyError): pass
-    return raw.upper()
+    from qp_refresh_r23 import resolve_catalog
+    try: catalog=pd.read_csv(DATA/'catalog.csv',dtype=str,usecols=['ticker','name'])
+    except (OSError,ValueError): catalog=pd.DataFrame(columns=['ticker','name'])
+    return resolve_catalog(raw,catalog)
 
 from functools import lru_cache
 from datetime import datetime, timezone, timedelta
@@ -374,7 +366,7 @@ def show(st):
 .qp-details span{display:flex;flex-direction:column;gap:2px}.qp-details b{font-size:14px}
 @media(max-width:700px){.qp-mobile{display:block}.qp-desktop{display:none!important}}
 </style>''',unsafe_allow_html=True)
-    st.title('📈 QUANTPILOT AI')
+    st.title('📈 QUANTPILOT Classic')
     st.caption('월요일 10시를 주간 기준점으로 삼고, 이후 자동 스캔에서 갱신된 전체 시장 후보를 한 화면에 표시합니다.')
     from qp_manual_r15 import AUTO_HELP, show as show_manual
     state, scores=load_data()
@@ -397,7 +389,7 @@ def show(st):
     b.metric('최근 7일 분석',f'{len(fresh):,}개',help=glossary['최근 7일 분석'])
     c.metric('최근 실행 성공',f"{state.get('succeeded',0):,}/{state.get('attempted',0):,}개",help=AUTO_HELP)
     st.caption('저장된 분석은 전체 상장종목을 동시에 분석한 결과가 아닙니다. 최근 실행 성공은 마지막 자동 작업 기준입니다. 동일 종목은 최신 결과 하나만 사용합니다.')
-    st.caption('화면 버전: QP-R22 (QP-R17 기반) · 최근 순위·성과 추적·공통 상세분석')
+    st.caption('화면 버전: QP-R23 · 통합 갱신·성과 추적·공통 상세분석')
     with st.expander('❔ 최근 자동 작업이란?'):
         st.write(AUTO_HELP)
     from qp_home_r12 import show as show_unified_home

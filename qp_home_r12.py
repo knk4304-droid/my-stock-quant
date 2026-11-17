@@ -41,6 +41,7 @@ def current_top(fresh, period, market, theme, rank_fn):
 
 def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossary):
     import yfinance as yf
+    from qp_refresh_r23 import refresh_candidates, expected_weekday
     @st.cache_data(ttl=900,show_spinner=False)
     def indices():
         result=[]
@@ -72,6 +73,13 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             return today,yesterday,*[100*(c.iloc[-1]/c.iloc[-1-h]-1) if len(c)>h else None for h in (5,20)]
         except Exception: return (None,)*4
 
+    @st.cache_data(ttl=300,show_spinner=False)
+    def fresh_candidates(tickers, rows_json):
+        from market_batch_v90 import scan_one
+        return refresh_candidates(pd.read_json(__import__('io').StringIO(rows_json),dtype={'ticker':str}),scan_one)
+    st.caption('접속·새로고침: 저장 추천 재읽기 / 지수 15분·뉴스 30분·개별 분석 5분 캐시. 전체 시장 재분석은 예약 작업에서만 수행합니다.')
+    if st.button('시장 정보 새로고침 (지수·뉴스)',key='qp_refresh_market'):
+        indices.clear(); news.clear()
     mode=st.radio('검색 메뉴',['🏆 추천종목 검색','🔎 관심종목 검색','📖 프로그램 사용 설명서'],horizontal=True,key='qp_unified_mode')
     if mode=='📖 프로그램 사용 설명서':
         from qp_manual_r15 import show as show_manual
@@ -81,7 +89,10 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         st.subheader('🔎 관심종목 검색')
         query=st.text_input('종목명 또는 종목코드',placeholder='삼성전자 / 005930.KS / NVDA')
         if st.button('관심종목 분석',type='primary') and query.strip():
-            st.session_state['qp_watch_report']=(query.strip(),technical(resolve_symbol(query.strip())))
+            symbol=resolve_symbol(query.strip())
+            if not symbol: st.warning('종목명을 확인하거나 정확한 종목코드를 입력하세요.'); return
+            technical.clear()
+            st.session_state['qp_watch_report']=(query.strip(),technical(symbol))
         stored=st.session_state.get('qp_watch_report')
         if stored and query.strip()==stored[0]:
             result=stored[1]
@@ -107,14 +118,14 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         col.caption(f'가격 기준일: {asof}')
         try:
             days=(datetime.now(timezone(timedelta(hours=9))).date()-pd.Timestamp(asof).date()).days
-            if days>=2: col.warning(f'기준일이 {days}일 전입니다. 휴장 또는 데이터 지연 여부 확인')
+            if pd.Timestamp(asof).date()<expected_weekday(pd.Timestamp.now(tz='UTC'),name in ('코스피','코스닥')): col.warning('최근 평일보다 이전 가격입니다. 휴장 또는 제공 지연 여부 확인')
         except Exception: pass
         col.caption(f'업데이트: {updated} KST' if updated else '업데이트: 조회 실패')
     st.caption('업데이트는 데이터 조회 성공 시각이며 거래소 체결 시각과 다릅니다.')
 
     st.subheader('2. 글로벌 마켓 브리핑')
     articles,error=news()
-    if error: st.info(error)
+    if error: st.info(error); st.markdown('[네이버 증권 뉴스](https://finance.naver.com/news/) · [Yahoo Finance 뉴스](https://finance.yahoo.com/news/)')
     elif not articles: st.info('확인 가능한 최근 뉴스가 없습니다.')
     else:
         for a in articles[:5]:
@@ -131,7 +142,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         market=c2.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
         theme=c3.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
         sort_mode=c4.selectbox('정렬 기준',['종합점수순','현재매수유망순'])
-        submitted=st.form_submit_button('🔍 검색 · 추천종목 TOP10',type='primary',use_container_width=True)
+        submitted=st.form_submit_button('🔍 검색 · 추천종목 TOP10',type='primary',width="stretch")
     if submitted: st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
     active=st.session_state.get('qp_unified_filters')
     if not active:
@@ -148,6 +159,25 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         r5=full['return_5d_pct'].clip(-20,20)
         full['매수관찰점수']=(full['score']*.45+r5*.6+full['return_20d_pct'].clip(-30,30)*.2-full['volatility_annual'].clip(0,3)*12-(r5-5).clip(lower=0)*1.5).round(2)
         full=full.loc[valid].sort_values('매수관찰점수',ascending=False)
+    refresh_key=(period,market,theme,sort_mode)
+    if submitted: st.session_state.pop('qp_live_candidates',None)
+    if st.button('주요 후보 20개 최신 재평가',key='qp_refresh_candidates') and not full.empty:
+        with st.spinner('후보의 최신 일봉을 조회합니다...'):
+            candidates=full.head(20)
+            updated,failed=fresh_candidates(tuple(candidates.ticker),candidates.to_json(orient='records',date_format='iso'))
+            st.session_state['qp_live_candidates']=(refresh_key,updated,failed,pd.Timestamp.now(tz='UTC'))
+    live=st.session_state.get('qp_live_candidates')
+    if live and live[0]==refresh_key:
+        if pd.Timestamp.now(tz='UTC')-live[3]>pd.Timedelta(minutes=5):
+            st.session_state.pop('qp_live_candidates',None); st.info('재평가 결과 만료 · 저장 추천 표시')
+        elif not live[1].empty:
+            full=rank_fn(live[1],period)
+            if sort_mode=='현재매수유망순':
+                r5=full['return_5d_pct'].clip(-20,20)
+                full['매수관찰점수']=(full['score']*.45+r5*.6+full['return_20d_pct'].clip(-30,30)*.2-full['volatility_annual'].clip(0,3)*12-(r5-5).clip(lower=0)*1.5).round(2)
+                full=full.sort_values('매수관찰점수',ascending=False)
+            st.info(f'주요 후보 재평가: 성공 {len(live[1])}개 / 실패 {len(live[2])}개. 전체 시장 재순위가 아니며 정기 기록은 변경하지 않습니다.')
+        else: st.warning('재평가 실패 · 기존 저장 추천 유지')
     top=full.head(10)
     if top.empty:
         st.warning('조건에 맞는 최근 7일 분석 결과가 없습니다. 조건을 변경해 주세요.'); return
@@ -166,7 +196,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     table=table[['순위','종목','차트','시장구분','추천점수','기술점수','최근 저장 가격','통화',*ret.columns,'분석 완료(KST)'] + (['매수관찰점수'] if sort_mode=='현재매수유망순' else [])]
     def color(v): return 'color: #D32F2F' if pd.notna(v) and v>0 else 'color: #1565C0' if pd.notna(v) and v<0 else 'color: #808080'
     styled=table.style.apply(lambda col: col.map(color),subset=list(ret.columns)).format({**{c:'{:+.2f}%' for c in ret},'최근 저장 가격':'{:,.2f}','기술점수':'{:.1f}'},na_rep='미확인')
-    st.dataframe(styled,hide_index=True,use_container_width=True,column_config={'차트':st.column_config.LinkColumn('차트',display_text='차트 열기'),'최근 저장 가격':st.column_config.NumberColumn(format='%.2f'),'기술점수':st.column_config.NumberColumn(format='%.1f'),'추천점수':st.column_config.NumberColumn(help='기술점수와 기간별 수익률을 반영하고 변동성에 따라 감점하는 상대 순위 점수입니다. 상승 확률이 아니며 100점 초과 또는 음수도 가능합니다.',format='%.1f')})
+    st.dataframe(styled,hide_index=True,width="stretch",column_config={'차트':st.column_config.LinkColumn('차트',display_text='차트 열기'),'최근 저장 가격':st.column_config.NumberColumn(format='%.2f'),'기술점수':st.column_config.NumberColumn(format='%.1f'),'추천점수':st.column_config.NumberColumn(help='기술점수와 기간별 수익률을 반영하고 변동성에 따라 감점하는 상대 순위 점수입니다. 상승 확률이 아니며 100점 초과 또는 음수도 가능합니다.',format='%.1f')})
+    st.caption('가격 기준일: '+', '.join(sorted(set(top['asof_price'].dropna().astype(str)))) if 'asof_price' in top else '가격 기준일 미확인')
     st.caption('수익률은 별도 조회한 수정 일봉 기준이며 장중 잠정값일 수 있습니다. 오늘 거래일 가격이 없으면 미확인입니다. 저장 가격 및 추천점수와 조회 기준이 다를 수 있습니다.')
     with st.expander('📱 스마트폰용 TOP10 간편 보기'):
         for r in table.to_dict('records'):
@@ -179,6 +210,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     item=top.iloc[chosen]; ticker=str(item['ticker']); name=str(item['name'])
     st.link_button('선택 종목 실시간·지연 차트 열기',chart_url(ticker))
     if st.button('선택 종목 상세분석 실행',type='primary',key='qp_unified_detail_run'):
+        technical.clear()
         st.session_state['qp_unified_report']=(ticker,technical(ticker))
     stored=st.session_state.get('qp_unified_report')
     if stored and stored[0]==ticker:
@@ -200,7 +232,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         x=alt.X('시각:N',sort=labels,axis=alt.Axis(labelAngle=-45,title='추천 기록 시각 (KST)'))
         rank_chart=alt.Chart(d).mark_line(point=True,color='#2563eb').encode(x=x,y=alt.Y('순위:Q',scale=alt.Scale(domain=[11,1]),axis=alt.Axis(values=list(range(1,12)),title='추천 순위',titleColor='#2563eb')),tooltip=['시각','순위'])
         price_chart=alt.Chart(d).mark_line(point=True,color='#dc2626').encode(x=x,y=alt.Y('가격:Q',scale=alt.Scale(zero=False),axis=alt.Axis(orient='right',title='저장 가격 ('+('KRW' if ticker.endswith(('.KS','.KQ')) else 'USD')+')',titleColor='#dc2626')),tooltip=['시각','가격','가격 기준일'])
-        if not d.empty: st.altair_chart(alt.layer(rank_chart,price_chart).resolve_scale(y='independent').properties(height=300),use_container_width=True)
+        if not d.empty: st.altair_chart(alt.layer(rank_chart,price_chart).resolve_scale(y='independent').properties(height=300),width="stretch")
         st.caption('파란색: 순위(1위가 위), 빨간색: 당시 저장 일봉 가격. 11은 TOP10 밖입니다. 미실행 회차는 표시하지 않으며 가격 미저장은 빈칸입니다. 과거 가격을 임의로 채우지 않습니다.')
         if not d['순위'].notna().any(): st.info('이 조건의 정기 기록이 아직 없습니다. 아래 검증 메뉴에서 기존 기록을 별도로 확인할 수 있습니다.')
     st.subheader('5. 추천종목 검증')
@@ -224,8 +256,8 @@ def render_validation(st,rows):
     d=pd.DataFrame(rows); summary=[]
     for h in (1,5,20):
         v=pd.to_numeric(d[f'{h}일 수익률'],errors='coerce').dropna(); summary.append({'기간':f'{h}거래일','추천 건수':len(d),'검증 완료':len(v),'평균 수익률(%)':v.mean() if len(v) else None,'상승 적중률(%)':100*(v>0).mean() if len(v) else None})
-    st.dataframe(pd.DataFrame(summary).style.format({'평균 수익률(%)':'{:+.2f}%','상승 적중률(%)':'{:.1f}%'},na_rep='검증 대기'),hide_index=True,use_container_width=True)
-    st.dataframe(d.style.format({f'{h}일 수익률':'{:+.2f}%' for h in (1,5,20)},na_rep='검증 대기'),hide_index=True,use_container_width=True)
+    st.dataframe(pd.DataFrame(summary).style.format({'평균 수익률(%)':'{:+.2f}%','상승 적중률(%)':'{:.1f}%'},na_rep='검증 대기'),hide_index=True,width="stretch")
+    st.dataframe(d.style.format({f'{h}일 수익률':'{:+.2f}%' for h in (1,5,20)},na_rep='검증 대기'),hide_index=True,width="stretch")
     st.caption('검증 상태는 마지막 추적 결과입니다. 기존 기록의 미확인 상태는 다음 추적 실행에서 갱신됩니다.')
     st.caption('상승 적중률 = 양의 수익률 건수 / 검증 완료 건수. 동일 종목 반복 추천은 독립 표본이 아니며, 미확인 건은 제외합니다. 수수료·세금 미반영. 시장 대비 초과성과나 미래 예측 정확도를 보장하지 않습니다.')
 
@@ -304,9 +336,9 @@ def legacy_validation(st,period):
         base=pd.to_datetime(d.get('entry_date',pd.Series(index=d.index,dtype=object)),errors='coerce'); end=pd.to_datetime(d.get(f'date_{h}d',pd.Series(index=d.index,dtype=object)),errors='coerce')
         v=v.where(end>base).dropna()
         rows.append({'기간':f'{h}거래일','기록':len(d),'검증 완료':len(v),'평균 수익률(%)':round(v.mean(),2) if len(v) else None,'상승 비율(%)':round(100*(v>0).mean(),1) if len(v) else None})
-    st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
+    st.dataframe(pd.DataFrame(rows),hide_index=True,width="stretch")
     cols=['기록 시각(KST)','name','ticker','entry_date','entry_close','return_1d_pct','return_5d_pct','return_20d_pct']
-    st.dataframe(d[[c for c in cols if c in d]].rename(columns={'name':'종목','ticker':'코드','entry_date':'기준일','entry_close':'기준가','return_1d_pct':'1일 수익률(%)','return_5d_pct':'5일 수익률(%)','return_20d_pct':'20일 수익률(%)'}),hide_index=True,use_container_width=True)
+    st.dataframe(d[[c for c in cols if c in d]].rename(columns={'name':'종목','ticker':'코드','entry_date':'기준일','entry_close':'기준가','return_1d_pct':'1일 수익률(%)','return_5d_pct':'5일 수익률(%)','return_20d_pct':'20일 수익률(%)'}),hide_index=True,width="stretch")
 
 
 def render_detail(st,name,ticker,report):
@@ -319,7 +351,7 @@ def render_detail(st,name,ticker,report):
     st.markdown(summarize(report))
     st.markdown(detail_html(report),unsafe_allow_html=True)
     st.markdown('**투자 기간별 매수·매도 대응 전략**')
-    st.dataframe(pd.DataFrame(strategy_rows(report)),hide_index=True,use_container_width=True)
+    st.dataframe(pd.DataFrame(strategy_rows(report)),hide_index=True,width="stretch")
     st.caption('공통 일봉 기술지표를 활용한 조건부 대응이며 기간별 독립 검증 모델이나 확정 매매 신호가 아닙니다.')
     with st.expander('관련 뉴스 확인',expanded=False):
         related,err=fetch_news(ticker_query(name,ticker),limit=4)
