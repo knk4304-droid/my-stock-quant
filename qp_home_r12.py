@@ -154,6 +154,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     broad=current_top(fresh,period,market,theme,lambda d,p:rank_fn(d,p).head(len(d)))
     full=valid_prices(broad)
     st.caption(f'최근 가격 및 필수 지표 확인 후보: {len(full):,}개 · 가격 기준일 4일 초과 제외(휴장 시 후보 감소 가능)')
+    st.caption('추천 TOP10은 현재 저장된 스캔 후보에서 선정됩니다. 같은 종목이 반복된다면 자동 스캔의 신규 분석 성공 수와 데이터 저장 여부를 확인해야 합니다. 수익률만 새로 조회해도 추천점수는 자동으로 갱신되지 않습니다.')
     from qp_rank_r26 import rank as shared_rank
     full=shared_rank(full,period,entry=sort_mode=='현재매수유망순')
     refresh_key=(period,market,theme,sort_mode)
@@ -255,8 +256,10 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.dataframe(pd.DataFrame(strategy_rows(report)),hide_index=True,width='stretch')
             st.caption('조건부 기술적 참고 가격입니다. 실시간 호가·체결가나 미래 수익을 보장하지 않습니다.')
             with st.expander('ⓘ RSI·MACD 등 기술 지표와 설명 펼쳐보기',expanded=False):
-                from qp_r21_summary import detail_html
-                st.markdown(detail_html(report),unsafe_allow_html=True)
+                from qp_r21_summary import summarize
+                st.markdown(summarize(report))
+                with st.expander('전체 기술지표 원자료', expanded=False):
+                    st.dataframe(pd.DataFrame([{'지표': str(k), '값': str(v)} for k, v in report.items() if k not in ('error',)]), hide_index=True, width='stretch')
             with st.expander('관련 뉴스와 차트',expanded=False):
                 st.link_button('차트 열기',chart_url(ticker))
                 related,err=fetch_news(ticker_query(name,ticker),limit=4)
