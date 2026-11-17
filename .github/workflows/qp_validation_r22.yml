@@ -7,7 +7,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: market-scan-v90
+  group: classic-data-writers
   cancel-in-progress: false
 jobs:
   validate:
