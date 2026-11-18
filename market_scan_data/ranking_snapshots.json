@@ -8477,5 +8477,630 @@
         }
       ]
     }
+  },
+  {
+    "at_utc": "2026-11-18T07:09:18+00:00",
+    "candidate_count": 1153,
+    "periods": {
+      "단기 (1~3일)": [
+        {
+          "rank": 1,
+          "ticker": "073570.KQ",
+          "name": "리튬포어스",
+          "score": 53.2,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-17T06:04:10.744371+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "419120.KQ",
+          "name": "산돌",
+          "score": 51.1,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T02:04:32.146467+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "489460.KQ",
+          "name": "바이오비쥬",
+          "score": 48.0,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-17T07:09:29.035595+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "001080.KS",
+          "name": "MH머트리얼즈",
+          "score": 47.7,
+          "market": "KOSPI",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T07:09:15.092142+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "BILL",
+          "name": "BILL Holdings, Inc. Common Stock",
+          "score": 44.3,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.248252+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "239610.KQ",
+          "name": "에이치엘사이언스",
+          "score": 44.1,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T02:04:29.211937+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "BRKW",
+          "name": "Roundhill BRKB WeeklyPay ETF",
+          "score": 44.0,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.126901+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "263860.KQ",
+          "name": "지니언스",
+          "score": 43.5,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-16T08:36:37.491390+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "COST",
+          "name": "Costco Wholesale Corporation - Common Stock",
+          "score": 43.2,
+          "market": "NASDAQ",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:27.351384+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "FIAT",
+          "name": "YieldMax Short COIN Option Income Strategy ETF",
+          "score": 43.2,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-18T07:09:14.295155+00:00"
+        }
+      ],
+      "스윙 (1~2주)": [
+        {
+          "rank": 1,
+          "ticker": "419120.KQ",
+          "name": "산돌",
+          "score": 58.9,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T02:04:32.146467+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "001080.KS",
+          "name": "MH머트리얼즈",
+          "score": 58.8,
+          "market": "KOSPI",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T07:09:15.092142+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "489460.KQ",
+          "name": "바이오비쥬",
+          "score": 57.2,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-17T07:09:29.035595+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "BILL",
+          "name": "BILL Holdings, Inc. Common Stock",
+          "score": 57.2,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.248252+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "073570.KQ",
+          "name": "리튬포어스",
+          "score": 56.6,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-17T06:04:10.744371+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "FIAT",
+          "name": "YieldMax Short COIN Option Income Strategy ETF",
+          "score": 56.6,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-18T07:09:14.295155+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "ACM",
+          "name": "AECOM Common Stock",
+          "score": 56.4,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.004491+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "COLM",
+          "name": "Columbia Sportswear Company - Common Stock",
+          "score": 56.0,
+          "market": "NASDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-18T07:09:12.500435+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "CLAR",
+          "name": "Clarus Corporation - Common Stock",
+          "score": 55.9,
+          "market": "NASDAQ",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.578782+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "AHCO",
+          "name": "AdaptHealth Corp.  - Common Stock",
+          "score": 55.6,
+          "market": "NASDAQ",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.058911+00:00"
+        }
+      ],
+      "중기 (1~3개월)": [
+        {
+          "rank": 1,
+          "ticker": "CLAR",
+          "name": "Clarus Corporation - Common Stock",
+          "score": 69.0,
+          "market": "NASDAQ",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.578782+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "ARDT",
+          "name": "Ardent Health, Inc. Common Stock",
+          "score": 67.8,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.263988+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "104700.KS",
+          "name": "한국철강",
+          "score": 67.7,
+          "market": "KOSPI",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T07:09:12.803649+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "ACEL",
+          "name": "Accel Entertainment, Inc. ",
+          "score": 67.0,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.080634+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "ACM",
+          "name": "AECOM Common Stock",
+          "score": 66.5,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.004491+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "CARS",
+          "name": "Cars.com Inc. Common Stock ",
+          "score": 66.2,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.193594+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "ALGT",
+          "name": "Allegiant Travel Company - Common Stock",
+          "score": 66.0,
+          "market": "NASDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-18T07:09:12.801939+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "BILL",
+          "name": "BILL Holdings, Inc. Common Stock",
+          "score": 66.0,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.248252+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "BOBS",
+          "name": "Bob's Discount Furniture, Inc. Common Stock",
+          "score": 66.0,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.311380+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "001080.KS",
+          "name": "MH머트리얼즈",
+          "score": 65.9,
+          "market": "KOSPI",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T07:09:15.092142+00:00"
+        }
+      ],
+      "장기 (1년 이상)": [
+        {
+          "rank": 1,
+          "ticker": "AER",
+          "name": "AerCap Holdings N.V. Ordinary Shares",
+          "score": 68.3,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-18T07:09:12.376071+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "AIZ",
+          "name": "Assurant, Inc. Common Stock",
+          "score": 68.1,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.027365+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "ACM",
+          "name": "AECOM Common Stock",
+          "score": 67.6,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.004491+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "BRKW",
+          "name": "Roundhill BRKB WeeklyPay ETF",
+          "score": 67.6,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.126901+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "ACEL",
+          "name": "Accel Entertainment, Inc. ",
+          "score": 67.5,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-18T02:04:29.080634+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "ALRM",
+          "name": "Alarm.com Holdings, Inc. - Common Stock",
+          "score": 67.5,
+          "market": "NASDAQ",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:28.951823+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "COLM",
+          "name": "Columbia Sportswear Company - Common Stock",
+          "score": 67.2,
+          "market": "NASDAQ",
+          "price_date": "2026-11-17",
+          "scanned_at_utc": "2026-11-18T07:09:12.500435+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "225220.KQ",
+          "name": "제놀루션",
+          "score": 66.9,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T07:09:12.310374+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "419120.KQ",
+          "name": "산돌",
+          "score": 66.9,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-18",
+          "scanned_at_utc": "2026-11-18T02:04:32.146467+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "AWK",
+          "name": "American Water Works Company, Inc. Common Stock",
+          "score": 66.9,
+          "market": "NYSE/OTHER",
+          "price_date": "2026-11-16",
+          "scanned_at_utc": "2026-11-17T07:09:29.185441+00:00"
+        }
+      ]
+    },
+    "model_version": "R26-baseline",
+    "challenger_periods": {
+      "단기 (1~3일)": [
+        {
+          "ticker": "239610.KQ",
+          "score": 86.2,
+          "price_date": "2026-11-18",
+          "close": 6280.0
+        },
+        {
+          "ticker": "BRKW",
+          "score": 84.9,
+          "price_date": "2026-11-16",
+          "close": 45.142
+        },
+        {
+          "ticker": "419120.KQ",
+          "score": 84.6,
+          "price_date": "2026-11-18",
+          "close": 2825.0
+        },
+        {
+          "ticker": "BILL",
+          "score": 84.3,
+          "price_date": "2026-11-16",
+          "close": 57.63
+        },
+        {
+          "ticker": "COST",
+          "score": 83.9,
+          "price_date": "2026-11-16",
+          "close": 1113.74
+        },
+        {
+          "ticker": "CMTV",
+          "score": 83.6,
+          "price_date": "2026-11-17",
+          "close": 48.66
+        },
+        {
+          "ticker": "AIZ",
+          "score": 83.5,
+          "price_date": "2026-11-16",
+          "close": 323.8
+        },
+        {
+          "ticker": "FISK",
+          "score": 83.5,
+          "price_date": "2026-11-17",
+          "close": 5.21
+        },
+        {
+          "ticker": "225220.KQ",
+          "score": 83.1,
+          "price_date": "2026-11-18",
+          "close": 1739.0
+        },
+        {
+          "ticker": "197140.KQ",
+          "score": 82.9,
+          "price_date": "2026-11-17",
+          "close": 2580.0
+        }
+      ],
+      "스윙 (1~2주)": [
+        {
+          "ticker": "239610.KQ",
+          "score": 84.9,
+          "price_date": "2026-11-18",
+          "close": 6280.0
+        },
+        {
+          "ticker": "BRKW",
+          "score": 84.7,
+          "price_date": "2026-11-16",
+          "close": 45.142
+        },
+        {
+          "ticker": "AIZ",
+          "score": 84.2,
+          "price_date": "2026-11-16",
+          "close": 323.8
+        },
+        {
+          "ticker": "BILL",
+          "score": 84.1,
+          "price_date": "2026-11-16",
+          "close": 57.63
+        },
+        {
+          "ticker": "CMTV",
+          "score": 84.0,
+          "price_date": "2026-11-17",
+          "close": 48.66
+        },
+        {
+          "ticker": "225220.KQ",
+          "score": 83.7,
+          "price_date": "2026-11-18",
+          "close": 1739.0
+        },
+        {
+          "ticker": "ALRM",
+          "score": 83.6,
+          "price_date": "2026-11-16",
+          "close": 66.31
+        },
+        {
+          "ticker": "FISK",
+          "score": 83.6,
+          "price_date": "2026-11-17",
+          "close": 5.21
+        },
+        {
+          "ticker": "AWK",
+          "score": 83.3,
+          "price_date": "2026-11-16",
+          "close": 151.36
+        },
+        {
+          "ticker": "COLM",
+          "score": 83.3,
+          "price_date": "2026-11-17",
+          "close": 75.03
+        }
+      ],
+      "중기 (1~3개월)": [
+        {
+          "ticker": "AIZ",
+          "score": 84.9,
+          "price_date": "2026-11-16",
+          "close": 323.8
+        },
+        {
+          "ticker": "ALRM",
+          "score": 84.5,
+          "price_date": "2026-11-16",
+          "close": 66.31
+        },
+        {
+          "ticker": "BRKW",
+          "score": 84.5,
+          "price_date": "2026-11-16",
+          "close": 45.142
+        },
+        {
+          "ticker": "225220.KQ",
+          "score": 84.3,
+          "price_date": "2026-11-18",
+          "close": 1739.0
+        },
+        {
+          "ticker": "CMTV",
+          "score": 84.3,
+          "price_date": "2026-11-17",
+          "close": 48.66
+        },
+        {
+          "ticker": "LLY",
+          "score": 84.0,
+          "price_date": "2026-11-16",
+          "close": 1431.67
+        },
+        {
+          "ticker": "AWK",
+          "score": 83.9,
+          "price_date": "2026-11-16",
+          "close": 151.36
+        },
+        {
+          "ticker": "BILL",
+          "score": 83.9,
+          "price_date": "2026-11-16",
+          "close": 57.63
+        },
+        {
+          "ticker": "COLM",
+          "score": 83.9,
+          "price_date": "2026-11-17",
+          "close": 75.03
+        },
+        {
+          "ticker": "239610.KQ",
+          "score": 83.7,
+          "price_date": "2026-11-18",
+          "close": 6280.0
+        }
+      ],
+      "장기 (1년 이상)": [
+        {
+          "ticker": "AIZ",
+          "score": 85.3,
+          "price_date": "2026-11-16",
+          "close": 323.8
+        },
+        {
+          "ticker": "AER",
+          "score": 85.2,
+          "price_date": "2026-11-17",
+          "close": 170.92
+        },
+        {
+          "ticker": "ALRM",
+          "score": 85.1,
+          "price_date": "2026-11-16",
+          "close": 66.31
+        },
+        {
+          "ticker": "225220.KQ",
+          "score": 84.8,
+          "price_date": "2026-11-18",
+          "close": 1739.0
+        },
+        {
+          "ticker": "CMTV",
+          "score": 84.6,
+          "price_date": "2026-11-17",
+          "close": 48.66
+        },
+        {
+          "ticker": "LLY",
+          "score": 84.6,
+          "price_date": "2026-11-16",
+          "close": 1431.67
+        },
+        {
+          "ticker": "ACM",
+          "score": 84.5,
+          "price_date": "2026-11-16",
+          "close": 72.5
+        },
+        {
+          "ticker": "ALLE",
+          "score": 84.4,
+          "price_date": "2026-11-17",
+          "close": 186.77
+        },
+        {
+          "ticker": "BRKW",
+          "score": 84.4,
+          "price_date": "2026-11-16",
+          "close": 45.142
+        },
+        {
+          "ticker": "COLM",
+          "score": 84.4,
+          "price_date": "2026-11-17",
+          "close": 75.03
+        }
+      ]
+    }
   }
 ]
