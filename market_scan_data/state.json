@@ -1,36 +1,37 @@
 {
   "market_cursors": {
-    "KOSDAQ": 528,
-    "KOSPI": 422,
-    "NASDAQ": 2236,
-    "NYSE/OTHER": 2236,
+    "KOSDAQ": 574,
+    "KOSPI": 468,
+    "NASDAQ": 2282,
+    "NYSE/OTHER": 2281,
     "KR ETF": 0
   },
   "catalog_by_market": {
-    "NYSE/OTHER": 7127,
-    "NASDAQ": 5441,
-    "KOSDAQ": 1717,
+    "NYSE/OTHER": 7129,
+    "NASDAQ": 5451,
+    "KOSDAQ": 1718,
     "KOSPI": 911,
     "KR ETF": 4
   },
   "scanned_by_market": {
-    "KOSDAQ": 115,
-    "KOSPI": 62,
-    "NASDAQ": 49,
-    "NYSE/OTHER": 45
+    "KOSPI": 78,
+    "NASDAQ": 74,
+    "NYSE/OTHER": 63,
+    "KOSDAQ": 52,
+    "KR ETF": 4
   },
-  "catalog_size": 15200,
+  "catalog_size": 15213,
   "attempted": 275,
-  "rotation_count": 140,
+  "rotation_count": 184,
   "revisit_count": 25,
   "selection_groups": {
-    "우량주 관찰군": 49,
-    "성장·가치 검토군": 41,
-    "테마 대표 관찰군": 20,
+    "우량주 관찰군": 22,
+    "성장·가치 검토군": 22,
+    "테마 대표 관찰군": 22,
     "기존 우수 후보": 25,
-    "신규 순환 발굴": 140
+    "신규 순환 발굴": 184
   },
   "succeeded": 271,
   "failed": 4,
-  "updated_utc": "2026-11-17T07:09:31.970905+00:00"
+  "updated_utc": "2026-11-18T02:04:34.481393+00:00"
 }
