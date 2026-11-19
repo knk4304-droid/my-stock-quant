@@ -75,7 +75,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         except Exception: return (None,)*4
 
     @st.cache_data(ttl=300,show_spinner=False)
-    def fresh_candidates(tickers, rows_json):
+    def fresh_candidates(tickers, rows_json, refresh_token):
         from market_batch_v90 import scan_one
         return refresh_candidates(pd.read_json(__import__('io').StringIO(rows_json),dtype={'ticker':str}),scan_one,limit=60)
     st.caption('추천 검색 시 후보의 최신 일봉을 자동 재조회합니다. 조회 실패·오래된 가격은 최신 추천에서 제외합니다. 전체 시장 재분석은 예약 작업에서 수행합니다.')
@@ -144,7 +144,11 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         theme=c3.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
         sort_mode=c4.selectbox('정렬 기준',['종합점수순','현재매수유망순'])
         submitted=st.form_submit_button('🔍 검색 · 추천종목 TOP10',type='primary',width="stretch")
-    if submitted: st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
+    if submitted:
+        st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
+    elif 'qp_unified_filters' not in st.session_state:
+        # First visit / browser refresh: evaluate the default selection automatically.
+        st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
     active=st.session_state.get('qp_unified_filters')
     if not active:
         st.info('투자 기간·시장·관심 테마를 선택하고 검색을 누르면 추천순위와 상세분석이 나타납니다.')
@@ -159,14 +163,16 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     refresh_key=(period,market,theme,sort_mode)
     # User-requested default: refresh on every explicit search, not an optional second click.
     # Never silently substitute an older saved ranking after a failed live refresh.
-    if submitted:
+    previous=st.session_state.get('qp_live_candidates')
+    expired=(previous is None or previous[0]!=refresh_key or
+             pd.Timestamp.now(tz='UTC')-previous[3]>pd.Timedelta(minutes=5))
+    # Initial load, browser reload, explicit search and expired results all trigger a new fetch.
+    if submitted or expired:
         st.session_state.pop('qp_live_candidates',None)
         candidates=candidate_pool(pd.concat([full,broad]).drop_duplicates('ticker')) if not broad.empty else broad
         if not candidates.empty:
-            # Every explicit search must attempt a provider fetch, not reuse a cached result.
-            fresh_candidates.clear()
             with st.spinner('선정 후보의 최신 가격과 지표를 확인하고 있습니다...'):
-                updated,failed=fresh_candidates(tuple(candidates.ticker),candidates.to_json(orient='records',date_format='iso'))
+                updated,failed=fresh_candidates(tuple(candidates.ticker),candidates.to_json(orient='records',date_format='iso'),pd.Timestamp.now(tz='UTC').isoformat())
             st.session_state['qp_live_candidates']=(refresh_key,updated,failed,pd.Timestamp.now(tz='UTC'))
         else:
             st.session_state['qp_live_candidates']=(refresh_key,pd.DataFrame(),[],pd.Timestamp.now(tz='UTC'))
@@ -184,7 +190,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.warning('최신 가격을 검증한 후보가 없어 추천을 보류합니다. 저장된 과거 순위를 현재 추천으로 표시하지 않습니다.')
             full=full.iloc[0:0].copy()
     else:
-        st.info('현재 보이는 저장 순위는 과거 참고 자료입니다. 검색 버튼을 누르면 최신 데이터로 다시 평가합니다.')
+        st.warning('최신 데이터 조회가 완료되지 않았습니다. 현재 추천을 보류합니다.'); full=full.iloc[0:0].copy()
     with st.expander('개선 모델 비교 (연구용 · 실전 추천 미반영)'):
         comparison=shared_rank(valid_prices(broad),period,challenger=True).head(10)
         st.caption('기술점수 중심 + 기간별 상승 가속도 + 과열·급락·변동성 제한. 기존 모델과 별도 비교하며 수익률 우위는 미검증입니다.')
