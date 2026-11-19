@@ -52,6 +52,13 @@ SHFSW,"SHF Holdings, Inc. - Warrants",NASDAQ,STOCK
 IBO,"Impact BioMedical, Inc. Common Stock",NYSE/OTHER,STOCK
 TYYY,xETFs TSLA Daily Income ETF,NYSE/OTHER,ETF
 WZRD,Opportunistic Trader ETF,NYSE/OTHER,ETF
+KOYN,CSLM Digital Asset Acquisition Corp III - Class A Ordinary Shares,NASDAQ,STOCK
+KOYNU,CSLM Digital Asset Acquisition Corp III - Units,NASDAQ,STOCK
+KOYNW,CSLM Digital Asset Acquisition Corp III - Warrants,NASDAQ,STOCK
+SCKT,"Socket Mobile, Inc. - Common Stock",NASDAQ,STOCK
+SSTI,"SoundThinking, Inc. - Common Stock",NASDAQ,STOCK
+GMMA,GammaRoad Market Navigation ETF,NYSE/OTHER,ETF
+LXFR,Luxfer Holdings PLC Ordinary Shares,NYSE/OTHER,STOCK
 AAAP,Pacer Barings CLO Market Flex ETF,NASDAQ,ETF
 AACG,"ATA Creativity Global - American Depositary Shares, each representing two common shares",NASDAQ,STOCK
 AACI,Armada Acquisition Corp. III - Class A Ordinary Share,NASDAQ,STOCK
@@ -1766,6 +1773,9 @@ FCUV,Focus Universal Inc. - Common Stock,NASDAQ,STOCK
 FCVT,First Trust SSI Strategic Convertible Securities ETF,NASDAQ,ETF
 FDBC,"Fidelity D & D Bancorp, Inc. - Common Stock",NASDAQ,STOCK
 FDCF,Fidelity Disruptive Communications ETF,NASDAQ,ETF
+FDGX,First Digital Acquisition Corp Ltd. - Class A Ordinary Shares,NASDAQ,STOCK
+FDGXU,First Digital Acquisition Corp Ltd. - Units,NASDAQ,STOCK
+FDGXW,First Digital Acquisition Corp Ltd. - Warrants,NASDAQ,STOCK
 FDIG,Fidelity Crypto Industry and Digital Payments ETF,NASDAQ,ETF
 FDIQ,Invesco Bloomberg Financial Data Providers ETF,NASDAQ,ETF
 FDIV,MarketDesk Focused U.S. Dividend ETF,NASDAQ,ETF
@@ -2779,9 +2789,6 @@ KOD,Kodiak Sciences Inc - Common Stock,NASDAQ,STOCK
 KOID,KraneShares Global Humanoid Robotics and Physical AI Index ETF,NASDAQ,ETF
 KOPN,Kopin Corporation - Common Stock,NASDAQ,STOCK
 KOSS,Koss Corporation - Common Stock,NASDAQ,STOCK
-KOYN,CSLM Digital Asset Acquisition Corp III - Class A Ordinary Shares,NASDAQ,STOCK
-KOYNU,CSLM Digital Asset Acquisition Corp III - Units,NASDAQ,STOCK
-KOYNW,CSLM Digital Asset Acquisition Corp III - Warrants,NASDAQ,STOCK
 KPLT,"Katapult Holdings, Inc. - Common Stock",NASDAQ,STOCK
 KPRX,"Kiora Pharmaceuticals, Inc.  - Common Stock",NASDAQ,STOCK
 KQQQ,Kurv Technology Titans Select ETF,NASDAQ,ETF
@@ -4348,7 +4355,6 @@ SCHL,Scholastic Corporation - Common Stock,NASDAQ,STOCK
 SCII,SC II Acquisition Corp. - Class A ordinary share,NASDAQ,STOCK
 SCIIR,SC II Acquisition Corp. - Rights,NASDAQ,STOCK
 SCIIU,SC II Acquisition Corp. - Units,NASDAQ,STOCK
-SCKT,"Socket Mobile, Inc. - Common Stock",NASDAQ,STOCK
 SCLX,Scilex Holding Company - Common Stock,NASDAQ,STOCK
 SCLXW,Scilex Holding Company - Warrant,NASDAQ,STOCK
 SCNI,Scinai Immunotherapeutics Ltd. - American Depositary Shares,NASDAQ,STOCK
@@ -4613,7 +4619,6 @@ SSNC,"SS&C Technologies Holdings, Inc. - Common Stock",NASDAQ,STOCK
 SSP,E.W. Scripps Company (The) - Class A Common Stock,NASDAQ,STOCK
 SSRM,SSR Mining Inc. - Common Stock,NASDAQ,STOCK
 SSS,CYBER HORNET S&P 500 and Solana 75/25 Strategy ETF,NASDAQ,ETF
-SSTI,"SoundThinking, Inc. - Common Stock",NASDAQ,STOCK
 SSYS,"Stratasys, Ltd. - Common Stock",NASDAQ,STOCK
 STAA,STAAR Surgical Company - Common Stock,NASDAQ,STOCK
 STAK,STAK Inc. - Class A Ordinary Shares,NASDAQ,STOCK
@@ -6568,6 +6573,7 @@ CFR,"Cullen/Frost Bankers, Inc. Common Stock",NYSE/OTHER,STOCK
 CFR-B,"Cullen/Frost Bankers, Inc. Depositary Shares, each representing a 1/40th ownership interest in a share of 4.450% non-cumulative perpetual preferred stock, Series B",NYSE/OTHER,STOCK
 CFTR-A,"Cantor Fitzgerald Income Trust, Inc. 9.50% Series A Cumulative Redeemable Preferred Stock",NYSE/OTHER,STOCK
 CGAU,Centerra Gold Inc. Common Shares,NYSE/OTHER,STOCK
+CGBI,Capital Group Multi-Asset Income Builder ETF,NYSE/OTHER,ETF
 CGBL,Capital Group Core Balanced ETF,NYSE/OTHER,ETF
 CGCB,Capital Group Core Bond ETF,NYSE/OTHER,ETF
 CGCP,Capital Group Core Plus Income ETF,NYSE/OTHER,ETF
@@ -6584,6 +6590,7 @@ CGHY,Capital Group High Yield Bond ETF,NYSE/OTHER,ETF
 CGIB,Capital Group International Bond ETF (USD-Hedged),NYSE/OTHER,ETF
 CGIC,Capital Group International Core Equity ETF,NYSE/OTHER,ETF
 CGIE,Capital Group International Equity ETF,NYSE/OTHER,ETF
+CGMI,Capital Group Multi-Asset Income ETF,NYSE/OTHER,ETF
 CGMM,Capital Group U.S. Small and Mid Cap ETF,NYSE/OTHER,ETF
 CGMS,Capital Group U.S. Multi-Sector Income ETF,NYSE/OTHER,ETF
 CGMU,Capital Group Municipal Income ETF,NYSE/OTHER,ETF
@@ -7856,6 +7863,7 @@ FMAG,Fidelity Magellan ETF,NYSE/OTHER,ETF
 FMAR,FT Vest U.S. Equity Buffer ETF - March,NYSE/OTHER,ETF
 FMAT,Fidelity MSCI Materials Index ETF,NYSE/OTHER,ETF
 FMAY,FT Vest U.S. Equity Buffer ETF - May,NYSE/OTHER,ETF
+FMBM,F&M Bank Corp. Common Stock,NYSE/OTHER,STOCK
 FMC,FMC Corporation Common Stock,NYSE/OTHER,STOCK
 FMCE,FM Compounders Equity ETF,NYSE/OTHER,ETF
 FMCX,FM Focus Equity ETF,NYSE/OTHER,ETF
@@ -8178,7 +8186,6 @@ GMEY,YieldMax GME Option Income Strategy ETF,NYSE/OTHER,ETF
 GMF,State Street SPDR S&P Emerging Asia Pacific ETF,NYSE/OTHER,ETF
 GMIE,"GMO International Equity Fund, ETF Class",NYSE/OTHER,ETF
 GMIX,iShares Macro AlphaBeta Active ETF,NYSE/OTHER,ETF
-GMMA,GammaRoad Market Navigation ETF,NYSE/OTHER,ETF
 GMMF,iShares Government Money Market ETF,NYSE/OTHER,ETF
 GMNY,Goldman Sachs Dynamic New York Municipal Income ETF,NYSE/OTHER,ETF
 GMOC,GMO Ultra-Short Income ETF,NYSE/OTHER,ETF
@@ -8237,6 +8244,7 @@ GPTY,YieldMax AI & Tech Portfolio Option Income ETF,NYSE/OTHER,ETF
 GPUS,"Hyperscale Data, Inc. Common Stock",NYSE/OTHER,STOCK
 GPUS-D,"Hyperscale Data, Inc. 13.00% Series D Cumulative Redeemable Perpetual Preferred Stock",NYSE/OTHER,STOCK
 GPZ,VanEck Alternative Asset Manager ETF,NYSE/OTHER,ETF
+GQGG,GQG Global Equity ETF,NYSE/OTHER,ETF
 GQGU,GQG US Equity ETF,NYSE/OTHER,ETF
 GQI,Natixis Gateway Quality Income ETF,NYSE/OTHER,ETF
 GQRE,Northern Trust Global Quality Real Estate ETF,NYSE/OTHER,ETF
@@ -8268,6 +8276,7 @@ GS-C,"Goldman Sachs Group, Inc. (The) Depositary Share repstg 1/1000th Preferred
 GS-D,"Goldman Sachs Group, Inc. (The) Dep Shs repstg 1/1000 Pfd Ser D Fltg",NYSE/OTHER,STOCK
 GSBD,"Goldman Sachs BDC, Inc. Common Stock",NYSE/OTHER,STOCK
 GSC,Goldman Sachs Small Cap Equity ETF,NYSE/OTHER,ETF
+GSCZ,Goldman Sachs Securitized Income ETF,NYSE/OTHER,ETF
 GSEE,Goldman Sachs MarketBeta Emerging Markets Equity ETF,NYSE/OTHER,ETF
 GSEP,FT Vest U.S. Equity Moderate Buffer ETF - September,NYSE/OTHER,ETF
 GSEU,Goldman Sachs ActiveBeta Europe Equity ETF,NYSE/OTHER,ETF
@@ -8909,6 +8918,7 @@ JADB,Aptus January Deep Buffer ETF,NYSE/OTHER,ETF
 JADE,JPMorgan Active Developing Markets Equity ETF,NYSE/OTHER,ETF
 JAGU,Jaguar Uranium Corp. Class A Common Shares,NYSE/OTHER,STOCK
 JAJL,Innovator Equity Defined Protection ETF - 6mo Jan/Jul,NYSE/OTHER,ETF
+JALL,JPMorgan All Country Research Enhanced Equity ETF,NYSE/OTHER,ETF
 JAN,"Janus Living, Inc. Class A-1 Common Stock",NYSE/OTHER,STOCK
 JANB,Aptus January Buffer ETF,NYSE/OTHER,ETF
 JANH,Innovator Premium Income 20 Barrier ETF - January,NYSE/OTHER,ETF
@@ -9378,7 +9388,6 @@ LVHI,Franklin International Low Volatility High Dividend Index ETF,NYSE/OTHER,ET
 LVS,Las Vegas Sands Corp. Common Stock,NYSE/OTHER,STOCK
 LVWR,"LiveWire Group, Inc. Common Stock",NYSE/OTHER,STOCK
 LW,"Lamb Weston Holdings, Inc. Common Stock ",NYSE/OTHER,STOCK
-LXFR,Luxfer Holdings PLC Ordinary Shares,NYSE/OTHER,STOCK
 LXU,"LSB Industries, Inc. Common Stock",NYSE/OTHER,STOCK
 LYB,LyondellBasell Industries NV Ordinary Shares Class A (Netherlands),NYSE/OTHER,STOCK
 LYG,Lloyds Banking Group Plc American Depositary Shares,NYSE/OTHER,STOCK
@@ -11607,6 +11616,7 @@ TFI,State Street SPDR Nuveen ICE Municipal Bond ETF,NYSE/OTHER,ETF
 TFII,TFI International Inc. Common Shares,NYSE/OTHER,STOCK
 TFIN,"Triumph Financial, Inc. Common Stock",NYSE/OTHER,STOCK
 TFIN-,"Triumph Financial, Inc. Depositary Shares, Each Representing a 1/40th Interest in a Share of 7.125% Series C Fixed-Rate Non-Cumulative Perpetual Preferred Stock",NYSE/OTHER,STOCK
+TFIX,T. Rowe Price Capital Appreciation Fixed Income ETF,NYSE/OTHER,ETF
 TFJL,Innovator 20  Year Treasury Bond 5 Floor ETF - July,NYSE/OTHER,ETF
 TFLO,iShares Treasury Floating Rate Bond ETF,NYSE/OTHER,ETF
 TFLR,T. Rowe Price Floating Rate ETF,NYSE/OTHER,ETF
