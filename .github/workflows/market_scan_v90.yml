@@ -12,7 +12,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,9 +26,14 @@ jobs:
         run: python release_verification.py
       - name: Scan next batch
         env:
-          SCAN_BATCH_SIZE: '275'
-          REVISIT_TOP_N: '25'
-        run: python market_batch_v90.py
+          SCAN_BATCH_SIZE: '450'
+          REVISIT_TOP_N: '0'
+        run: |
+          # Multiple balanced batches; no stored top-ranked symbol receives scan priority.
+          for batch in 1 2 3 4; do
+            echo "Market refresh batch ${batch}/4"
+            python market_batch_v90.py || exit 1
+          done
       - name: Save per-run ranking history
         run: python ranking_history.py
       - name: Record and follow up recommendation snapshots
