@@ -158,7 +158,8 @@ def run(batch_size=250):
             pd.concat([prev,excluded],ignore_index=True).drop_duplicates('ticker',keep='last').to_csv(archive,index=False,encoding='utf-8-sig')
         existing=eligible(existing)
     state=json.loads(state_path.read_text()) if state_path.exists() else {}
-    from qp_universe_r18 import choose, eligible
+    from qp_scan_rotation_r63 import choose
+    from qp_universe_r18 import eligible
     # Retain past scores for audit, but never revisit or recommend excluded ETPs.
     chosen, next_cursors, selection_counts=choose(catalog,existing,state,batch_size,choose_balanced_batch,
                                                   revisit_limit=int(os.getenv('REVISIT_TOP_N','25')))
@@ -200,7 +201,7 @@ def run(batch_size=250):
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
-    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat()}
+    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat(), 'freshness_policy':'oldest-first-balanced-r63'}
     state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2))
     pd.DataFrame(failures,columns=['ticker','reason']).to_csv(DATA/'last_failures.csv',index=False,encoding='utf-8-sig')
     print(json.dumps(state,ensure_ascii=False))
