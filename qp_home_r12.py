@@ -78,7 +78,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     def fresh_candidates(tickers, rows_json):
         from market_batch_v90 import scan_one
         return refresh_candidates(pd.read_json(__import__('io').StringIO(rows_json),dtype={'ticker':str}),scan_one,limit=60)
-    st.caption('접속·새로고침: 저장 추천 재읽기 / 지수 15분·뉴스 30분·개별 분석 5분 캐시. 전체 시장 재분석은 예약 작업에서만 수행합니다.')
+    st.caption('추천 검색 시 후보의 최신 일봉을 자동 재조회합니다. 조회 실패·오래된 가격은 최신 추천에서 제외합니다. 전체 시장 재분석은 예약 작업에서 수행합니다.')
     if st.button('시장 정보 새로고침 (지수·뉴스)',key='qp_refresh_market'):
         indices.clear(); news.clear()
     mode=st.radio('검색 메뉴',['🏆 추천종목 검색','🔎 관심종목 검색','📖 프로그램 사용 설명서'],horizontal=True,key='qp_unified_mode')
@@ -154,31 +154,44 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     broad=current_top(fresh,period,market,theme,lambda d,p:rank_fn(d,p).head(len(d)))
     full=valid_prices(broad)
     st.caption(f'최근 가격 및 필수 지표 확인 후보: {len(full):,}개 · 가격 기준일 4일 초과 제외(휴장 시 후보 감소 가능)')
-    st.caption('추천 TOP10은 현재 저장된 스캔 후보에서 선정됩니다. 같은 종목이 반복된다면 자동 스캔의 신규 분석 성공 수와 데이터 저장 여부를 확인해야 합니다. 수익률만 새로 조회해도 추천점수는 자동으로 갱신되지 않습니다.')
     from qp_rank_r26 import rank as shared_rank
     full=shared_rank(full,period,entry=sort_mode=='현재매수유망순')
     refresh_key=(period,market,theme,sort_mode)
-    if submitted: st.session_state.pop('qp_live_candidates',None)
-    if st.button('유망·신규 후보 최대 60개 최신 재평가',key='qp_refresh_candidates') and not broad.empty:
-        with st.spinner('후보의 최신 일봉을 조회합니다...'):
-            candidates=candidate_pool(pd.concat([full,broad]).drop_duplicates('ticker'))
-            updated,failed=fresh_candidates(tuple(candidates.ticker),candidates.to_json(orient='records',date_format='iso'))
+    # User-requested default: refresh on every explicit search, not an optional second click.
+    # Never silently substitute an older saved ranking after a failed live refresh.
+    if submitted:
+        st.session_state.pop('qp_live_candidates',None)
+        candidates=candidate_pool(pd.concat([full,broad]).drop_duplicates('ticker')) if not broad.empty else broad
+        if not candidates.empty:
+            # Every explicit search must attempt a provider fetch, not reuse a cached result.
+            fresh_candidates.clear()
+            with st.spinner('선정 후보의 최신 가격과 지표를 확인하고 있습니다...'):
+                updated,failed=fresh_candidates(tuple(candidates.ticker),candidates.to_json(orient='records',date_format='iso'))
             st.session_state['qp_live_candidates']=(refresh_key,updated,failed,pd.Timestamp.now(tz='UTC'))
+        else:
+            st.session_state['qp_live_candidates']=(refresh_key,pd.DataFrame(),[],pd.Timestamp.now(tz='UTC'))
     live=st.session_state.get('qp_live_candidates')
     if live and live[0]==refresh_key:
+        from qp_current_gate_r60 import eligible_refreshed
+        updated,counts=eligible_refreshed(live[1])
         if pd.Timestamp.now(tz='UTC')-live[3]>pd.Timedelta(minutes=5):
-            st.session_state.pop('qp_live_candidates',None); st.info('재평가 결과 만료 · 저장 추천 표시')
-        elif not valid_prices(live[1]).empty:
-            full=shared_rank(valid_prices(live[1]),period,entry=sort_mode=='현재매수유망순')
-            st.info(f'확장 후보 재평가: 성공 {len(live[1])}개 / 실패 {len(live[2])}개. 전체 시장 재순위가 아니며 정기 기록은 변경하지 않습니다.')
-        else: st.warning('재평가 실패 · 기존 저장 추천 유지')
+            st.warning('최신 추천 유효기간이 만료됐습니다. 다시 검색해 주세요.')
+            full=full.iloc[0:0].copy()
+        elif not updated.empty:
+            full=shared_rank(valid_prices(updated),period,entry=sort_mode=='현재매수유망순')
+            st.success(f'최신 가격 기준 재평가 {counts["eligible"]}개 · 제외 {counts["rejected"]}개 · 조회 실패 {len(live[2])}개')
+        else:
+            st.warning('최신 가격을 검증한 후보가 없어 추천을 보류합니다. 저장된 과거 순위를 현재 추천으로 표시하지 않습니다.')
+            full=full.iloc[0:0].copy()
+    else:
+        st.info('현재 보이는 저장 순위는 과거 참고 자료입니다. 검색 버튼을 누르면 최신 데이터로 다시 평가합니다.')
     with st.expander('개선 모델 비교 (연구용 · 실전 추천 미반영)'):
         comparison=shared_rank(valid_prices(broad),period,challenger=True).head(10)
         st.caption('기술점수 중심 + 기간별 상승 가속도 + 과열·급락·변동성 제한. 기존 모델과 별도 비교하며 수익률 우위는 미검증입니다.')
         st.dataframe(comparison[['name','ticker','추천 참고점수']],hide_index=True)
     top=full.head(10)
     if top.empty:
-        st.warning('조건에 맞는 최근 7일 분석 결과가 없습니다. 조건을 변경해 주세요.'); return
+        st.warning('현재 검증된 추천 후보가 없습니다. 조회 상태를 확인하거나 잠시 후 다시 검색해 주세요.'); return
     top=top.copy().reset_index(drop=True)
     top['순위']=range(1,len(top)+1)
     age=(pd.Timestamp.now(tz='UTC')-pd.to_datetime(top['scanned_at_utc'],utc=True,errors='coerce')).dt.total_seconds()/3600
@@ -256,10 +269,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.dataframe(pd.DataFrame(strategy_rows(report)),hide_index=True,width='stretch')
             st.caption('조건부 기술적 참고 가격입니다. 실시간 호가·체결가나 미래 수익을 보장하지 않습니다.')
             with st.expander('ⓘ RSI·MACD 등 기술 지표와 설명 펼쳐보기',expanded=False):
-                from qp_r21_summary import summarize
-                st.markdown(summarize(report))
-                with st.expander('전체 기술지표 원자료', expanded=False):
-                    st.dataframe(pd.DataFrame([{'지표': str(k), '값': str(v)} for k, v in report.items() if k not in ('error',)]), hide_index=True, width='stretch')
+                from qp_r21_summary import detail_html
+                st.markdown(detail_html(report),unsafe_allow_html=True)
             with st.expander('관련 뉴스와 차트',expanded=False):
                 st.link_button('차트 열기',chart_url(ticker))
                 related,err=fetch_news(ticker_query(name,ticker),limit=4)
@@ -392,7 +403,7 @@ def legacy_validation(st,period):
 
 def render_detail(st,name,ticker,report):
     from qp_r21_summary import summarize
-    st.link_button('네이버·야후 차트 열기',chart_url(ticker))
+    st.link_button('선택 종목 실시간·지연 차트 열기',chart_url(ticker))
     try:
         age=(pd.Timestamp.now(tz='Asia/Seoul').date()-pd.Timestamp(report['기준일']).date()).days
         if age>4: st.warning(f'가격 기준일이 {age}일 전입니다. 휴장·시세 지연 여부를 확인하세요.')
