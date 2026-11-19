@@ -7,11 +7,19 @@ import pandas as pd
 from ranking_history import record_snapshot, PERIODS
 
 class RankingHistoryTests(unittest.TestCase):
+    def test_incomplete_saved_input_is_not_ranked(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            now = datetime(2026, 11, 11, tzinfo=timezone.utc)
+            pd.DataFrame([{'ticker': 'AAA', 'scanned_at_utc': now.isoformat()}]).to_csv(root/'scores.csv', index=False)
+            self.assertFalse(record_snapshot(root, now=now))
+            self.assertFalse((root/'ranking_snapshots.json').exists())
+
     def test_multiple_runs_keep_independent_rankings(self):
         with tempfile.TemporaryDirectory() as folder:
             p = Path(folder)
             now = datetime(2026, 11, 11, 5, 0, tzinfo=timezone.utc)
-            rows = [dict(ticker='AAA',name='Alpha',score=80,return_5d_pct=2,return_20d_pct=5,volatility_annual=.2,scanned_at_utc=now.isoformat(),market='NASDAQ',asof_price='2026-11-10'),dict(ticker='BBB',name='Beta',score=60,return_5d_pct=1,return_20d_pct=3,volatility_annual=.2,scanned_at_utc=now.isoformat(),market='NASDAQ',asof_price='2026-11-10')]
+            rows = [dict(ticker='AAA',name='Alpha',score=80,return_5d_pct=2,return_20d_pct=5,volatility_annual=.2,scanned_at_utc=now.isoformat(),market='NASDAQ',close=100,asof_price='2026-11-10'),dict(ticker='BBB',name='Beta',score=60,return_5d_pct=1,return_20d_pct=3,volatility_annual=.2,scanned_at_utc=now.isoformat(),market='NASDAQ',close=100,asof_price='2026-11-10')]
             pd.DataFrame(rows).to_csv(p/'scores.csv', index=False)
             self.assertTrue(record_snapshot(p, now=now))
             rows[0]['score']=20
