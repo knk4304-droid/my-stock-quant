@@ -43,12 +43,15 @@ def analyze_history(frame, currency='KRW'):
             '기준가 대비 손절 거리(%)':round((close-stop)/close*100,2)}
 
 
-def get_technical_report(ticker):
+def get_technical_report(ticker, *, completed_at=None):
     try:
         import yfinance as yf
         for symbol in [ticker]+([ticker[:-3]+('.KQ' if ticker.endswith('.KS') else '.KS')] if ticker.endswith(('.KS','.KQ')) else []):
             try:
                 data=yf.Ticker(symbol).history(period='9mo',interval='1d',auto_adjust=False,timeout=12)
+                if completed_at is not None and not data.empty:
+                    from qp_current_gate_r60 import completed_bars
+                    data = completed_bars(data, symbol, completed_at)
                 report=analyze_history(data,'KRW' if symbol.endswith(('.KS','.KQ')) else 'USD')
                 report['조회 티커']=symbol
                 report['데이터 공급원']='Yahoo Finance · 일별 OHLCV (지연 가능)'

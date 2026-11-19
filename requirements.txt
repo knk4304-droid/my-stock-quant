@@ -8,3 +8,4 @@ pyarrow
 beautifulsoup4
 lxml
 finance-datareader
+exchange-calendars>=4.13.1,<5
