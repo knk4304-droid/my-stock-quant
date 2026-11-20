@@ -188,11 +188,7 @@ def recorded_windows(history, cutoff):
             yield case['period'], case['ticker'], window
 
 
-def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
-    """Reprice recorded recommendations using only later exchange-session closes."""
-    if not 0 <= fee_bps <= 1000:
-        raise ValueError('fee_bps must be between 0 and 1000')
-    cutoff = pd.to_datetime(cutoff, utc=True)
+def closing_price_lookup(prices):
     prices = prices.assign(date=pd.to_datetime(prices.date, errors='coerce').dt.date,
                            close=pd.to_numeric(prices.close, errors='coerce').astype(float))
     prices = prices.loc[prices.date.notna() & prices.close.gt(0) & prices.close.lt(float('inf')),
@@ -200,41 +196,66 @@ def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
     conflicts = set(prices.loc[prices.duplicated(['ticker', 'date'], keep=False), ['ticker', 'date']]
                     .itertuples(index=False, name=None))
     prices = prices.drop_duplicates(['ticker', 'date'], keep=False)
-    lookup = prices.set_index(['ticker', 'date']).close.to_dict()
+    return prices.set_index(['ticker', 'date']).close.to_dict(), conflicts
+
+
+def complete_window(ticker, window, sources, fee):
+    """Choose a complete series without joining independently adjusted closes."""
+    for name, lookup, _ in sources:
+        path = basket_path([ticker], {ticker: window}, lookup, fee)
+        if path is not None:
+            return name, lookup, path
+    return None, None, None
+
+
+def compare_recorded_recommendations(history, prices, cutoff, fee_bps, *, archived=None):
+    """Reprice recorded recommendations using only later exchange-session closes."""
+    if not 0 <= fee_bps <= 1000:
+        raise ValueError('fee_bps must be between 0 and 1000')
+    cutoff = pd.to_datetime(cutoff, utc=True)
+    sources = [('provided', *closing_price_lookup(prices))]
+    if archived is not None:
+        # Keep established observations when a later provider response is partial or revised.
+        sources.insert(0, ('archive', *closing_price_lookup(archived)))
     fee = fee_bps / 10_000
     rows = []
     for row, window in recorded_cases(history, cutoff):
         ticker, market = row['ticker'], row['market']
         row.update(entry=window[0] if window else None, exit=window[1] if window else None,
                    exit_close_at_utc=window[2] if window else None, gross_return_pct=None,
-                   return_pct=None, cost_pp=None, mdd_pct=None, benchmark_pct=None, benchmark_mdd_pct=None)
+                   return_pct=None, cost_pp=None, mdd_pct=None, benchmark_pct=None, benchmark_mdd_pct=None,
+                   price_source=None, benchmark_source=None)
         if row['status'] == 'mature':
-            path = basket_path([ticker], {ticker: window}, lookup, fee)
+            source, lookup, path = complete_window(ticker, window, sources, fee)
             if path is not None:
                 gross = 100 * (lookup[ticker, window[1]] / lookup[ticker, window[0]] - 1)
                 net = 100 * (path.iloc[-1] - 1)
                 row.update(status='observed', gross_return_pct=gross, return_pct=net,
-                           cost_pp=gross - net, mdd_pct=maximum_drawdown(path))
+                           cost_pp=gross - net, mdd_pct=maximum_drawdown(path), price_source=source)
                 benchmark = '^KS200' if market == 'KR' else '^GSPC'
-                index = basket_path([benchmark], {benchmark: window}, lookup, 0)
+                index_source, _, index = complete_window(benchmark, window, sources, 0)
                 if index is not None:
-                    row.update(benchmark_pct=100 * (index.iloc[-1] - 1), benchmark_mdd_pct=maximum_drawdown(index))
+                    row.update(benchmark_pct=100 * (index.iloc[-1] - 1), benchmark_mdd_pct=maximum_drawdown(index),
+                               benchmark_source=index_source)
             else:
                 calendar = get_calendar('XKRX' if market == 'KR' else 'XNYS')
                 required = {(ticker, day.date()) for day in calendar.sessions_in_range(window[0], window[1])}
-                available = required.intersection(lookup)
-                if required & conflicts:
+                available = [required.intersection(lookup) for _, lookup, _ in sources]
+                if any(required & conflicts for _, _, conflicts in sources):
                     row['status'] = 'conflicting closes'
-                elif not available:
+                elif not any(available):
                     row['status'] = 'no window prices'
-                elif (ticker, window[0]) not in lookup or (ticker, window[1]) not in lookup:
-                    row['status'] = 'missing entry or exit'
-                else:
+                elif required <= set().union(*available):
+                    row['status'] = 'split across price sources'
+                elif any({(ticker, window[0]), (ticker, window[1])} <= dates for dates in available):
                     row['status'] = 'missing intermediate closes'
+                else:
+                    row['status'] = 'missing entry or exit'
         rows.append(row)
     columns = ['source_row', 'captured_at_utc', 'period', 'market', 'ticker', 'status',
                'holding_sessions', 'duplicate_of', 'entry', 'exit', 'exit_close_at_utc',
-               'gross_return_pct', 'return_pct', 'cost_pp', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct']
+               'gross_return_pct', 'return_pct', 'cost_pp', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct',
+               'price_source', 'benchmark_source']
     result = pd.DataFrame(rows, columns=columns)
     result[['holding_sessions', 'duplicate_of']] = result[['holding_sessions', 'duplicate_of']].astype('Int64')
     return result.sort_values('source_row', ignore_index=True)
@@ -258,12 +279,11 @@ def main():
     prices = pd.read_csv(args.prices, dtype={'ticker': str}) if args.prices else pd.DataFrame(columns=['ticker','date','close'])
     if args.recommendations:
         history = pd.read_csv(args.recommendations, dtype={'ticker': str})
+        archived = None
         if args.observations:
             observations = pd.read_csv(args.observations, dtype={'ticker': str})
             archived = archived_quotes(observations, args.cutoff)
-            # Avoid splicing independently adjusted price histories for the same ticker.
-            prices = pd.concat([prices, archived.loc[~archived.ticker.isin(prices.ticker)]], ignore_index=True)
-        result = compare_recorded_recommendations(history, prices, args.cutoff, args.fee_bps)
+        result = compare_recorded_recommendations(history, prices, args.cutoff, args.fee_bps, archived=archived)
         print(f'Recorded recommendations, one position per ticker/period/local day, {args.fee_bps:g} bp per side')
         if args.audit_csv:
             result.to_csv(args.audit_csv, index=False)

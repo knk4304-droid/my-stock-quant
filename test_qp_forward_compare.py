@@ -116,3 +116,31 @@ def test_recorded_ledger_keeps_input_row_ids_and_cost_breakdown():
     assert evaluated.exit_close_at_utc == pd.Timestamp('2026-11-30T21:00Z')
     assert evaluated.gross_return_pct == pytest.approx(10)
     assert evaluated.cost_pp == pytest.approx(10 - evaluated.return_pct)
+
+
+def test_partial_provider_series_preserves_archive_and_does_not_splice_prices():
+    from qp_forward_compare import compare_recorded_recommendations
+
+    history = pd.DataFrame([
+        (ticker, '단기', '2026-11-25T19:00Z') for ticker in ('AAA', 'BBB', 'CCC')
+    ], columns=['ticker', 'period', 'recorded_at_utc'])
+    columns = ['ticker', 'date', 'close']
+    archive = pd.DataFrame([
+        ('AAA', '2026-11-27', 100), ('AAA', '2026-11-30', 110),
+        ('BBB', '2026-11-27', 100), ('CCC', '2026-11-27', 50),
+    ], columns=columns)
+    provider = pd.DataFrame([
+        ('AAA', '2026-11-27', 60), ('BBB', '2026-11-30', 120),
+        ('CCC', '2026-11-27', 90), ('CCC', '2026-11-30', 99),
+        ('^GSPC', '2026-11-27', 100), ('^GSPC', '2026-11-30', 102),
+    ], columns=columns)
+    result = compare_recorded_recommendations(history, provider, '2026-12-01', 20, archived=archive)
+    rows = result.set_index('ticker')
+    assert rows.loc['AAA', 'price_source'] == 'archive'
+    assert rows.loc['AAA', 'gross_return_pct'] == pytest.approx(10)
+    assert rows.loc['BBB', 'status'] == 'split across price sources'
+    assert pd.isna(rows.loc['BBB', 'return_pct'])
+    assert rows.loc['CCC', 'price_source'] == 'provided'
+    assert rows.loc['CCC', 'gross_return_pct'] == pytest.approx(10)
+    assert rows.loc['AAA', 'benchmark_source'] == 'provided'
+    assert rows.loc['AAA', 'benchmark_pct'] == pytest.approx(2)
