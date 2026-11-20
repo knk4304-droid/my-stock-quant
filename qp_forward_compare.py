@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 from exchange_calendars import get_calendar
 
+from benchmark_review_v70 import benchmark_for_ticker
 from qp_current_gate_r60 import exchange_zone
 
 
@@ -19,6 +20,29 @@ def observation_window(ticker, captured, horizon):
     entry = calendar.date_to_session(next_day, direction='next')
     exit_session = calendar.session_offset(entry, horizon)
     return entry.date(), exit_session.date(), calendar.session_close(exit_session)
+
+
+def basket_path(tickers, windows, lookup, fee):
+    """Daily local-close marks for an equal-weight cohort, expressed in local returns."""
+    paths = []
+    for ticker in tickers:
+        entry, exit_day, _ = windows[ticker]
+        calendar = get_calendar('XKRX' if exchange_zone(ticker) == 'Asia/Seoul' else 'XNYS')
+        days = [session.date() for session in calendar.sessions_in_range(entry, exit_day)]
+        closes = [lookup.get((ticker, day), math.nan) for day in days]
+        if not all(math.isfinite(close) and close > 0 for close in closes):
+            return None
+        values = [close / (closes[0] * (1 + fee)) for close in closes]
+        values[-1] *= 1 - fee
+        paths.append(pd.Series(values, index=days))
+    # A closed market or a sleeve that has exited keeps its previous value.
+    # A sleeve awaiting entry starts in cash. Missing open-session quotes were rejected above.
+    marks = pd.concat(paths, axis=1).sort_index().ffill().fillna(1).mean(axis=1)
+    return pd.concat([pd.Series([1.0]), marks], ignore_index=True)
+
+
+def maximum_drawdown(path):
+    return 100 * (1 - path.div(path.cummax())).max()
 
 
 def compare(snapshots, prices, cutoff, horizon, fee_bps):
@@ -57,8 +81,9 @@ def compare(snapshots, prices, cutoff, horizon, fee_bps):
                 continue
             windows = {ticker: observation_window(ticker, captured, horizon)
                        for ticker in set(models[0] + models[1])}
-            row = {'captured': captured, 'period': period, 'baseline_pct': None,
-                   'challenger_pct': None, 'difference_pp': None}
+            row = dict.fromkeys(('baseline_pct', 'challenger_pct', 'difference_pp', 'benchmark_pct',
+                                 'baseline_mdd_pct', 'challenger_mdd_pct', 'benchmark_mdd_pct'))
+            row.update(captured=captured, period=period)
             if any(close_at > cutoff for _, _, close_at in windows.values()):
                 rows.append({**row, 'status': 'pending'})
                 continue
@@ -73,16 +98,30 @@ def compare(snapshots, prices, cutoff, horizon, fee_bps):
                 continue
             base, alternate = [sum(returns[ticker] for ticker in tickers) / len(tickers)
                                for tickers in models]
-            rows.append({**row, 'status': 'paired', 'baseline_pct': base,
-                         'challenger_pct': alternate, 'difference_pp': alternate - base})
+            row.update(status='paired', baseline_pct=base, challenger_pct=alternate,
+                       difference_pp=alternate - base)
+            for label, tickers in zip(('baseline', 'challenger'), models):
+                path = basket_path(tickers, windows, lookup, fee)
+                if path is not None:
+                    row[f'{label}_mdd_pct'] = maximum_drawdown(path)
+            # The same benchmark uses the combined country weights of both frozen lists.
+            benchmarks = [benchmark_for_ticker(ticker) for tickers in models for ticker in tickers]
+            benchmark_windows = {ticker: observation_window(ticker, captured, horizon)
+                                 for ticker in set(benchmarks)}
+            benchmark = basket_path(benchmarks, benchmark_windows, lookup, 0)
+            if benchmark is not None:
+                row.update(benchmark_pct=100 * (benchmark.iloc[-1] - 1),
+                           benchmark_mdd_pct=maximum_drawdown(benchmark))
+            rows.append(row)
     return pd.DataFrame(rows, columns=['captured', 'period', 'status', 'baseline_pct',
-                                       'challenger_pct', 'difference_pp'])
+                                       'challenger_pct', 'difference_pp', 'benchmark_pct',
+                                       'baseline_mdd_pct', 'challenger_mdd_pct', 'benchmark_mdd_pct'])
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--snapshots', type=Path, default=Path('market_scan_data/ranking_snapshots.json'))
-    parser.add_argument('--prices', type=Path, help='Adjusted daily ticker,date,close CSV, including delisted names')
+    parser.add_argument('--prices', type=Path, help='Adjusted daily ticker,date,close CSV including delisted names and ^KS11/^GSPC benchmark closes')
     parser.add_argument('--cutoff', required=True, help='UTC timestamp of last available observations')
     parser.add_argument('--fee-bps', type=float, default=20, help='Per-side transaction cost assumption')
     args = parser.parse_args()
@@ -95,6 +134,13 @@ def main():
         paired = result[result.status.eq('paired')]
         if not paired.empty:
             print(paired.groupby('period')[['baseline_pct', 'challenger_pct', 'difference_pp']].mean().to_string())
+            risk_cols = ['baseline_mdd_pct', 'challenger_mdd_pct', 'benchmark_mdd_pct']
+            print('Worst daily-close drawdown across cohorts (%); unavailable when a session is missing')
+            print(paired.groupby('period')[risk_cols].agg(['count', 'max']).to_string())
+            matched = paired.dropna(subset=['benchmark_pct'])
+            if not matched.empty:
+                print('Mean returns on matched benchmark cohorts (%); benchmarks are fee-free indexes')
+                print(matched.groupby('period')[['baseline_pct', 'challenger_pct', 'benchmark_pct']].mean().to_string())
 
 
 if __name__ == '__main__':
