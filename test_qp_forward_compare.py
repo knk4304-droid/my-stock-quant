@@ -63,8 +63,33 @@ def test_recorded_evaluation_uses_post_capture_entry_and_timed_observations():
     prices = archived_quotes(observations, cutoff)
     assert set(prices.close) == {100, 110, 103}
     result = compare_recorded_recommendations(history, prices, cutoff, 20)
-    assert len(result) == 1
+    assert result.status.tolist() == ['observed', 'duplicate local day']
     row = result.iloc[0]
     assert row.status == 'observed'
     assert row.return_pct == pytest.approx(100 * (1.10 * .998 / 1.002 - 1))
     assert row.benchmark_pct == pytest.approx(3)
+
+
+def test_recorded_audit_accounts_for_each_row_and_keeps_missing_paths_distinct():
+    from qp_forward_compare import compare_recorded_recommendations
+
+    history = pd.DataFrame([
+        ('AAA', '스윙', '2026-11-25T20:00Z'),
+        ('BBB', '스윙', '2026-11-25T20:00Z'),
+        ('DDD', '스윙', '2026-11-25T20:00Z'),
+        ('CCC', '중기', '2026-11-25T20:00Z'),
+        ('005930.KS', '장기', '2026-11-25T20:00Z'),
+        ('EEE', '단기', 'invalid timestamp'),
+    ], columns=['ticker', 'period', 'recorded_at_utc'])
+    prices = pd.DataFrame([
+        ('AAA', '2026-11-27', 100), ('AAA', '2026-12-04', 110),
+        ('BBB', '2026-11-27', 100), ('BBB', '2026-11-27', 101),
+    ], columns=['ticker', 'date', 'close'])
+    result = compare_recorded_recommendations(history, prices, '2026-12-05', 20)
+    assert len(result) == len(history)
+    assert result.set_index('ticker').status.to_dict() == {
+        'AAA': 'missing intermediate closes', 'BBB': 'conflicting closes',
+        'DDD': 'no window prices', 'CCC': 'pending', '005930.KS': 'outside evaluation periods',
+        'EEE': 'invalid record',
+    }
+    assert result.return_pct.isna().all()

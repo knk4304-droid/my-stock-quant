@@ -142,20 +142,43 @@ def archived_quotes(observations, cutoff):
 RECOMMENDATION_HORIZONS = {'단기': 1, '스윙': 5, '중기': 20}
 
 
-def recorded_windows(history, cutoff):
+def recorded_cases(history, cutoff):
     history = history.assign(captured=pd.to_datetime(history.recorded_at_utc, format='mixed', utc=True,
-                                                      errors='coerce')).sort_values('captured')
+                                                      errors='coerce')).sort_values('captured', kind='stable')
     seen = set()
     for record in history.itertuples(index=False):
         ticker, captured = record.ticker, record.captured
         period = str(record.period).split(' ', 1)[0]
-        if period not in RECOMMENDATION_HORIZONS or not isinstance(ticker, str) or pd.isna(captured) or captured >= cutoff:
-            continue
-        zone = exchange_zone(ticker)
-        key = period, ticker, captured.tz_convert(zone).date()
-        if key not in seen:
-            seen.add(key)
-            yield period, ticker, observation_window(ticker, captured, RECOMMENDATION_HORIZONS[period])
+        market = '미확인'
+        window = None
+        if not isinstance(ticker, str) or not ticker.strip() or pd.isna(captured):
+            status = 'invalid record'
+        else:
+            ticker = ticker.strip().upper()
+            zone = exchange_zone(ticker)
+            market = 'KR' if zone == 'Asia/Seoul' else 'US'
+            key = period, ticker, captured.tz_convert(zone).date()
+            if period not in RECOMMENDATION_HORIZONS:
+                status = 'outside evaluation periods'
+            elif captured >= cutoff:
+                status = 'not available at cutoff'
+            elif key in seen:
+                status = 'duplicate local day'
+            else:
+                seen.add(key)
+                try:
+                    window = observation_window(ticker, captured, RECOMMENDATION_HORIZONS[period])
+                except ValueError:
+                    status = 'calendar unavailable'
+                else:
+                    status = 'pending' if window[2] > cutoff else 'mature'
+        yield period, ticker, market, status, window
+
+
+def recorded_windows(history, cutoff):
+    for period, ticker, _, _, window in recorded_cases(history, cutoff):
+        if window is not None:
+            yield period, ticker, window
 
 
 def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
@@ -165,25 +188,41 @@ def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
     cutoff = pd.to_datetime(cutoff, utc=True)
     prices = prices.assign(date=pd.to_datetime(prices.date, errors='coerce').dt.date,
                            close=pd.to_numeric(prices.close, errors='coerce').astype(float))
-    prices = prices[['ticker', 'date', 'close']].drop_duplicates().drop_duplicates(['ticker', 'date'], keep=False)
+    prices = prices.loc[prices.date.notna() & prices.close.gt(0) & prices.close.lt(float('inf')),
+                        ['ticker', 'date', 'close']].drop_duplicates()
+    conflicts = set(prices.loc[prices.duplicated(['ticker', 'date'], keep=False), ['ticker', 'date']]
+                    .itertuples(index=False, name=None))
+    prices = prices.drop_duplicates(['ticker', 'date'], keep=False)
     lookup = prices.set_index(['ticker', 'date']).close.to_dict()
     fee = fee_bps / 10_000
     rows = []
-    for period, ticker, window in recorded_windows(history, cutoff):
-        zone = exchange_zone(ticker)
-        row = {'period': period, 'status': 'pending', 'entry': window[0], 'exit': window[1],
+    for period, ticker, market, status, window in recorded_cases(history, cutoff):
+        row = {'period': period, 'market': market, 'status': status, 'ticker': ticker,
+               'entry': window[0] if window else None, 'exit': window[1] if window else None,
                'return_pct': None, 'mdd_pct': None, 'benchmark_pct': None, 'benchmark_mdd_pct': None}
-        if window[2] <= cutoff:
-            row['status'] = 'missing path'
+        if status == 'mature':
             path = basket_path([ticker], {ticker: window}, lookup, fee)
             if path is not None:
                 row.update(status='observed', return_pct=100 * (path.iloc[-1] - 1), mdd_pct=maximum_drawdown(path))
-                benchmark = '^KS200' if zone == 'Asia/Seoul' else '^GSPC'
+                benchmark = '^KS200' if market == 'KR' else '^GSPC'
                 index = basket_path([benchmark], {benchmark: window}, lookup, 0)
                 if index is not None:
                     row.update(benchmark_pct=100 * (index.iloc[-1] - 1), benchmark_mdd_pct=maximum_drawdown(index))
+            else:
+                calendar = get_calendar('XKRX' if market == 'KR' else 'XNYS')
+                required = {(ticker, day.date()) for day in calendar.sessions_in_range(window[0], window[1])}
+                available = required.intersection(lookup)
+                if required & conflicts:
+                    row['status'] = 'conflicting closes'
+                elif not available:
+                    row['status'] = 'no window prices'
+                elif (ticker, window[0]) not in lookup or (ticker, window[1]) not in lookup:
+                    row['status'] = 'missing entry or exit'
+                else:
+                    row['status'] = 'missing intermediate closes'
         rows.append(row)
-    return pd.DataFrame(rows, columns=['period', 'status', 'entry', 'exit', 'return_pct', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct'])
+    return pd.DataFrame(rows, columns=['period', 'market', 'status', 'ticker', 'entry', 'exit',
+                                       'return_pct', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct'])
 
 
 def main():
@@ -205,7 +244,7 @@ def main():
             prices = pd.concat([prices, archived.loc[~archived.ticker.isin(prices.ticker)]], ignore_index=True)
         result = compare_recorded_recommendations(history, prices, args.cutoff, args.fee_bps)
         print(f'Recorded recommendations, one position per ticker/period/local day, {args.fee_bps:g} bp per side')
-        print(result.groupby(['period', 'status']).size().to_string())
+        print(result.groupby(['period', 'market', 'status']).size().to_string())
         observed = result[result.status.eq('observed')].copy()
         if not observed.empty:
             observed['win'] = 100 * observed.return_pct.gt(0)
