@@ -16,3 +16,23 @@ def test_scoring():
 def test_no_data():
     state,df=read_snapshot()
     assert isinstance(state,dict) and isinstance(df,pd.DataFrame)
+
+
+def test_batch_does_not_overwrite_saved_score_with_delayed_price(monkeypatch, tmp_path):
+    import market_batch_v90 as batch
+
+    catalog = pd.DataFrame([('AAPL', 'Apple', 'NASDAQ', 'STOCK')], columns=batch.COLS)
+    previous = catalog.assign(close=105, score=75, asof_price='2026-11-18',
+                              scanned_at_utc='2026-11-18T22:00Z')
+    scores = tmp_path/'scores.csv'
+    previous.to_csv(scores, index=False)
+    original = scores.read_bytes()
+    monkeypatch.setattr(batch, 'DATA', tmp_path)
+    monkeypatch.setattr(batch, 'load_catalog', lambda: catalog)
+    monkeypatch.setattr(batch, 'scan_one', lambda ticker, *, completed_at: {'asof_price': '2000-01-03'})
+
+    state = batch.run(batch_size=1)
+
+    assert (state['succeeded'], state['failed']) == (0, 1)
+    assert scores.read_bytes() == original
+    assert pd.read_csv(tmp_path/'last_failures.csv').reason.tolist() == ['latest completed session missing']

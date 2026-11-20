@@ -16,8 +16,11 @@ def candidate_pool(full, limit=60):
 
 def valid_prices(frame, now=None):
     if frame.empty: return frame.copy()
+    fields = ['score', 'close', 'return_5d_pct', 'return_20d_pct', 'volatility_annual']
+    if not {*fields, 'asof_price', 'ticker'}.issubset(frame.columns):
+        return frame.iloc[0:0].copy()
     now=pd.Timestamp.now(tz='UTC') if now is None else pd.Timestamp(now)
-    d=frame.copy(); fields=['score','close','return_5d_pct','return_20d_pct','volatility_annual']
+    d=frame.copy()
     for k in fields: d[k]=pd.to_numeric(d[k],errors='coerce')
     import numpy as np
     good=np.isfinite(d[fields]).all(axis=1)&d.score.between(0,100)&d.close.gt(0)&d.volatility_annual.ge(0)

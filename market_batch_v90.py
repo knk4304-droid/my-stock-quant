@@ -140,8 +140,11 @@ def technical_score(history):
     score=float(np.clip(50 + (12 if last>ma20 else -12) + (10 if ma20>ma60 else -10) + np.clip(ret20*100, -15,15) - max(0,vol-.5)*15,0,100))
     return {'close':round(last,4),'score':round(score,2),'return_5d_pct':round(ret5*100,2),'return_20d_pct':round(ret20*100,2),'volatility_annual':round(vol,4),'asof_price':str(close.index[-1].date())}
 
-def scan_one(ticker):
+def scan_one(ticker, *, completed_at=None):
     h=yf.Ticker(ticker).history(period='6mo',interval='1d',timeout=10,auto_adjust=True)
+    if completed_at is not None and not h.empty:
+        from qp_current_gate_r60 import completed_bars
+        h = completed_bars(h, ticker, completed_at)
     return technical_score(h)
 
 def run(batch_size=250):
@@ -170,16 +173,21 @@ def run(batch_size=250):
     n=int(selection_counts.get('신규 순환 발굴',0))
     attempted_total=len(chosen)
     from concurrent.futures import ThreadPoolExecutor,as_completed
+    from qp_current_gate_r60 import has_current_price
+
     records=[]; failures=[]
+    scan_at = pd.Timestamp.now(tz='UTC')
     with ThreadPoolExecutor(max_workers=6) as pool:
-        futures={pool.submit(scan_one,r.ticker):r for r in chosen.itertuples(index=False)}
+        futures={pool.submit(scan_one, r.ticker, completed_at=scan_at):r for r in chosen.itertuples(index=False)}
         for future in as_completed(futures):
             r=futures[future]
             try:
                 result=future.result()
-                if result:
+                if result and has_current_price(r.ticker, result['asof_price'], scan_at):
                     records.append({'ticker':r.ticker,'name':r.name,'market':r.market,'asset_type':r.asset_type,**result,'scanned_at_utc':datetime.now(timezone.utc).isoformat()})
-                else: failures.append({'ticker':r.ticker,'reason':'insufficient price history'})
+                else:
+                    reason = 'latest completed session missing' if result else 'insufficient price history'
+                    failures.append({'ticker': r.ticker, 'reason': reason})
             except Exception as exc: failures.append({'ticker':r.ticker,'reason':f'{type(exc).__name__}: {str(exc)[:90]}'})
     if records:
         new=pd.DataFrame(records)

@@ -21,22 +21,29 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install scanner dependencies
-        run: pip install pandas numpy requests yfinance pykrx finance-datareader
+        run: pip install pandas numpy requests yfinance pykrx finance-datareader "exchange-calendars>=4.13.1,<5"
       - name: Verify integrated release
         run: python release_verification.py
       - name: Scan next batch
+        id: scan_batch
         env:
           SCAN_BATCH_SIZE: '450'
           REVISIT_TOP_N: '0'
         run: |
           # Multiple balanced batches; no stored top-ranked symbol receives scan priority.
+          successes=0
           for batch in 1 2 3 4; do
             echo "Market refresh batch ${batch}/4"
             python market_batch_v90.py || exit 1
+            succeeded=$(python -c 'import json; print(json.load(open("market_scan_data/state.json"))["succeeded"])')
+            successes=$((successes + succeeded))
           done
+          echo "succeeded=$successes" >> "$GITHUB_OUTPUT"
       - name: Save per-run ranking history
+        if: steps.scan_batch.outputs.succeeded != '0'
         run: python ranking_history.py
       - name: Record and follow up recommendation snapshots
+        if: steps.scan_batch.outputs.succeeded != '0'
         run: python recommendation_tracker.py
       - name: Validate 1/5/20-session forward outcomes
         env:
@@ -46,8 +53,14 @@ jobs:
         run: python validation_smoke.py --data market_scan_data/recommendation_history.csv
       - name: Capture scheduled ranking and validate outcomes
         env:
+          SCAN_SUCCEEDED: ${{ steps.scan_batch.outputs.succeeded }}
           QP_SCHEDULE: ${{ github.event.schedule || 'manual' }}
-        run: python qp_weekly.py
+        run: |
+          if [[ "$SCAN_SUCCEEDED" == 0 ]]; then
+            python qp_weekly.py --validate-only
+          else
+            python qp_weekly.py
+          fi
       - name: Save scan results
         run: |
           git config user.name 'github-actions[bot]'

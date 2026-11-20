@@ -1,32 +1,57 @@
-"""Fail-closed validation of refreshed recommendation rows (daily bar, not tick quote)."""
-from datetime import datetime, timezone
+"""Require the latest completed exchange session for current daily-bar analysis."""
+from functools import lru_cache
+
 import pandas as pd
-from qp_refresh_r23 import expected_weekday
+
+
+def exchange_zone(ticker):
+    domestic = str(ticker).upper().endswith(('.KS', '.KQ')) or ticker in ('^KS11', '^KQ11')
+    return 'Asia/Seoul' if domestic else 'America/New_York'
+
+
+@lru_cache(maxsize=128)
+def _session_at(calendar_name, minute):
+    from exchange_calendars import get_calendar
+
+    calendar = get_calendar(calendar_name)
+    local_day = minute.tz_convert(calendar.tz).date()
+    session = calendar.date_to_session(local_day, direction='previous')
+    if calendar.session_close(session) > minute:
+        session = calendar.previous_session(session)
+    return session.date()
+
+
+def latest_completed_session(ticker, now=None):
+    stamp = pd.to_datetime(now, utc=True) if now is not None else pd.Timestamp.now(tz='UTC')
+    market = 'XKRX' if exchange_zone(ticker) == 'Asia/Seoul' else 'XNYS'
+    return _session_at(market, stamp.floor('min'))
+
+
+def completed_bars(frame, ticker, now=None):
+    """Discard partial and future daily bars using the exchange's local session dates."""
+    session = latest_completed_session(ticker, now)
+    index = pd.DatetimeIndex(frame.index)
+    if index.tz is not None:
+        index = index.tz_convert(exchange_zone(ticker)).tz_localize(None)
+    return frame.loc[index.normalize() <= pd.Timestamp(session)].sort_index()
+
+
+def has_current_price(ticker, asof, now=None):
+    try:
+        day = pd.to_datetime(asof, errors='coerce')
+        return bool(ticker) and pd.notna(day) and day.date() == latest_completed_session(ticker, now)
+    except (ValueError, TypeError, OverflowError):
+        return False
 
 
 def eligible_refreshed(frame, now=None):
     if frame is None or frame.empty:
-        return pd.DataFrame(), {'checked': 0, 'eligible': 0, 'rejected': 0}
-    now = pd.Timestamp(now if now is not None else datetime.now(timezone.utc))
-    if now.tzinfo is None:
-        now = now.tz_localize('UTC')
-    kept = []
-    for row in frame.to_dict('records'):
-        try:
-            ticker = str(row['ticker'])
-            domestic = ticker.upper().endswith(('.KS', '.KQ'))
-            asof = pd.Timestamp(row['asof_price']).date()
-            local = now.tz_convert('Asia/Seoul' if domestic else 'America/New_York').date()
-            # Require latest expected weekday bar, allowing one weekday of data-provider delay.
-            expected = expected_weekday(now, domestic)
-            lag = int(__import__('numpy').busday_count(asof, expected))
-            if asof > local or lag < 0 or lag > 1:
-                continue
-            stamp = pd.Timestamp(row['scanned_at_utc'])
-            stamp = stamp.tz_localize('UTC') if stamp.tzinfo is None else stamp.tz_convert('UTC')
-            if stamp > now or now - stamp > pd.Timedelta(minutes=5):
-                continue
-            kept.append(row)
-        except (ValueError, KeyError, TypeError, OverflowError):
-            continue
-    return pd.DataFrame(kept, columns=frame.columns), {'checked': len(frame), 'eligible': len(kept), 'rejected': len(frame)-len(kept)}
+        return pd.DataFrame() if frame is None else frame.copy(), {'checked': 0, 'eligible': 0, 'rejected': 0}
+    now = pd.to_datetime(now, utc=True) if now is not None else pd.Timestamp.now(tz='UTC')
+    stamps = pd.to_datetime(frame.get('scanned_at_utc', pd.Series(index=frame.index, dtype=object)),
+                            format='mixed', utc=True, errors='coerce')
+    recent = stamps.between(now - pd.Timedelta(minutes=5), now)
+    current = [has_current_price(row.get('ticker'), row.get('asof_price'), now)
+               for row in frame.to_dict('records')]
+    kept = frame.loc[recent & pd.Series(current, index=frame.index)].copy()
+    return kept, {'checked': len(frame), 'eligible': len(kept), 'rejected': len(frame) - len(kept)}
