@@ -18,7 +18,7 @@ jobs:
           set -euo pipefail
           cutoff=$(date -u +%FT%TZ)
           python qp_forward_sample.py --cutoff "$cutoff" --max-tickers 24 --output forward-sample/prices.csv
-          python qp_forward_compare.py --recommendations market_scan_data/recommendation_history.csv --observations market_scan_data/observations.csv --prices forward-sample/prices.csv --cutoff "$cutoff" | tee forward-sample/evaluation.txt
+          python qp_forward_compare.py --recommendations market_scan_data/recommendation_history.csv --observations market_scan_data/observations.csv --prices forward-sample/prices.csv --audit-csv forward-sample/recommendation-audit.csv --cutoff "$cutoff" | tee forward-sample/evaluation.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

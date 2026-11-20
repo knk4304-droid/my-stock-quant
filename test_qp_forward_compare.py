@@ -93,3 +93,26 @@ def test_recorded_audit_accounts_for_each_row_and_keeps_missing_paths_distinct()
         'EEE': 'invalid record',
     }
     assert result.return_pct.isna().all()
+
+
+def test_recorded_ledger_keeps_input_row_ids_and_cost_breakdown():
+    from qp_forward_compare import compare_recorded_recommendations
+
+    history = pd.DataFrame([
+        ('AAA', '단기', '2026-11-25T22:00Z'),
+        ('AAA', '단기', '2026-11-25T19:00Z'),
+    ], columns=['ticker', 'period', 'recorded_at_utc'], index=[7, 7])
+    prices = pd.DataFrame([
+        ('AAA', '2026-11-27', 100), ('AAA', '2026-11-30', 110),
+    ], columns=['ticker', 'date', 'close'])
+    result = compare_recorded_recommendations(history, prices, '2026-12-01', 20)
+    duplicate, evaluated = result.iloc[0], result.iloc[1]
+    assert result.source_row.tolist() == [1, 2]
+    assert duplicate.status == 'duplicate local day'
+    assert duplicate.duplicate_of == 2
+    assert pd.isna(duplicate.return_pct)
+    assert evaluated.holding_sessions == 1
+    assert evaluated.captured_at_utc == pd.Timestamp('2026-11-25T19:00Z')
+    assert evaluated.exit_close_at_utc == pd.Timestamp('2026-11-30T21:00Z')
+    assert evaluated.gross_return_pct == pytest.approx(10)
+    assert evaluated.cost_pp == pytest.approx(10 - evaluated.return_pct)

@@ -143,14 +143,18 @@ RECOMMENDATION_HORIZONS = {'단기': 1, '스윙': 5, '중기': 20}
 
 
 def recorded_cases(history, cutoff):
-    history = history.assign(captured=pd.to_datetime(history.recorded_at_utc, format='mixed', utc=True,
-                                                      errors='coerce')).sort_values('captured', kind='stable')
-    seen = set()
+    # Use the CSV data-row position so each audit line can be traced to its input.
+    history = history.assign(source_row=range(1, len(history) + 1),
+                             captured=pd.to_datetime(history.recorded_at_utc, format='mixed', utc=True,
+                                                     errors='coerce')).sort_values('captured', kind='stable')
+    first_rows = {}
     for record in history.itertuples(index=False):
         ticker, captured = record.ticker, record.captured
         period = str(record.period).split(' ', 1)[0]
+        horizon = RECOMMENDATION_HORIZONS.get(period)
         market = '미확인'
         window = None
+        duplicate_of = None
         if not isinstance(ticker, str) or not ticker.strip() or pd.isna(captured):
             status = 'invalid record'
         else:
@@ -158,27 +162,30 @@ def recorded_cases(history, cutoff):
             zone = exchange_zone(ticker)
             market = 'KR' if zone == 'Asia/Seoul' else 'US'
             key = period, ticker, captured.tz_convert(zone).date()
-            if period not in RECOMMENDATION_HORIZONS:
+            if horizon is None:
                 status = 'outside evaluation periods'
             elif captured >= cutoff:
                 status = 'not available at cutoff'
-            elif key in seen:
+            elif key in first_rows:
                 status = 'duplicate local day'
+                duplicate_of = first_rows[key]
             else:
-                seen.add(key)
+                first_rows[key] = record.source_row
                 try:
-                    window = observation_window(ticker, captured, RECOMMENDATION_HORIZONS[period])
+                    window = observation_window(ticker, captured, horizon)
                 except ValueError:
                     status = 'calendar unavailable'
                 else:
                     status = 'pending' if window[2] > cutoff else 'mature'
-        yield period, ticker, market, status, window
+        yield {'source_row': record.source_row, 'captured_at_utc': captured, 'period': period,
+               'market': market, 'ticker': ticker, 'status': status, 'holding_sessions': horizon,
+               'duplicate_of': duplicate_of}, window
 
 
 def recorded_windows(history, cutoff):
-    for period, ticker, _, _, window in recorded_cases(history, cutoff):
+    for case, window in recorded_cases(history, cutoff):
         if window is not None:
-            yield period, ticker, window
+            yield case['period'], case['ticker'], window
 
 
 def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
@@ -196,14 +203,18 @@ def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
     lookup = prices.set_index(['ticker', 'date']).close.to_dict()
     fee = fee_bps / 10_000
     rows = []
-    for period, ticker, market, status, window in recorded_cases(history, cutoff):
-        row = {'period': period, 'market': market, 'status': status, 'ticker': ticker,
-               'entry': window[0] if window else None, 'exit': window[1] if window else None,
-               'return_pct': None, 'mdd_pct': None, 'benchmark_pct': None, 'benchmark_mdd_pct': None}
-        if status == 'mature':
+    for row, window in recorded_cases(history, cutoff):
+        ticker, market = row['ticker'], row['market']
+        row.update(entry=window[0] if window else None, exit=window[1] if window else None,
+                   exit_close_at_utc=window[2] if window else None, gross_return_pct=None,
+                   return_pct=None, cost_pp=None, mdd_pct=None, benchmark_pct=None, benchmark_mdd_pct=None)
+        if row['status'] == 'mature':
             path = basket_path([ticker], {ticker: window}, lookup, fee)
             if path is not None:
-                row.update(status='observed', return_pct=100 * (path.iloc[-1] - 1), mdd_pct=maximum_drawdown(path))
+                gross = 100 * (lookup[ticker, window[1]] / lookup[ticker, window[0]] - 1)
+                net = 100 * (path.iloc[-1] - 1)
+                row.update(status='observed', gross_return_pct=gross, return_pct=net,
+                           cost_pp=gross - net, mdd_pct=maximum_drawdown(path))
                 benchmark = '^KS200' if market == 'KR' else '^GSPC'
                 index = basket_path([benchmark], {benchmark: window}, lookup, 0)
                 if index is not None:
@@ -221,8 +232,12 @@ def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
                 else:
                     row['status'] = 'missing intermediate closes'
         rows.append(row)
-    return pd.DataFrame(rows, columns=['period', 'market', 'status', 'ticker', 'entry', 'exit',
-                                       'return_pct', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct'])
+    columns = ['source_row', 'captured_at_utc', 'period', 'market', 'ticker', 'status',
+               'holding_sessions', 'duplicate_of', 'entry', 'exit', 'exit_close_at_utc',
+               'gross_return_pct', 'return_pct', 'cost_pp', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct']
+    result = pd.DataFrame(rows, columns=columns)
+    result[['holding_sessions', 'duplicate_of']] = result[['holding_sessions', 'duplicate_of']].astype('Int64')
+    return result.sort_values('source_row', ignore_index=True)
 
 
 def main():
@@ -230,10 +245,16 @@ def main():
     parser.add_argument('--snapshots', type=Path, default=Path('market_scan_data/ranking_snapshots.json'))
     parser.add_argument('--prices', type=Path, help='Adjusted daily ticker,date,close CSV including delisted names and ^KS11/^GSPC benchmark closes')
     parser.add_argument('--recommendations', type=Path, help='Recorded recommendation history CSV')
+    parser.add_argument('--audit-csv', type=Path, help='Write one traceable evaluation row per input recommendation')
     parser.add_argument('--observations', type=Path, help='Timed observation CSV with scan price provenance')
     parser.add_argument('--cutoff', required=True, help='UTC timestamp of last available observations')
     parser.add_argument('--fee-bps', type=float, default=20, help='Per-side transaction cost assumption')
     args = parser.parse_args()
+    if args.audit_csv and not args.recommendations:
+        parser.error('--audit-csv requires --recommendations')
+    if args.audit_csv and any(args.audit_csv.resolve() == source.resolve()
+                              for source in (args.recommendations, args.prices, args.observations) if source):
+        parser.error('--audit-csv must not overwrite an input')
     prices = pd.read_csv(args.prices, dtype={'ticker': str}) if args.prices else pd.DataFrame(columns=['ticker','date','close'])
     if args.recommendations:
         history = pd.read_csv(args.recommendations, dtype={'ticker': str})
@@ -244,11 +265,17 @@ def main():
             prices = pd.concat([prices, archived.loc[~archived.ticker.isin(prices.ticker)]], ignore_index=True)
         result = compare_recorded_recommendations(history, prices, args.cutoff, args.fee_bps)
         print(f'Recorded recommendations, one position per ticker/period/local day, {args.fee_bps:g} bp per side')
+        if args.audit_csv:
+            result.to_csv(args.audit_csv, index=False)
+        statuses = result.groupby('status', dropna=False).size()
+        print(f'Input rows: {len(history)}; classified rows: {statuses.sum()}')
+        print(statuses.to_string())
         print(result.groupby(['period', 'market', 'status']).size().to_string())
         observed = result[result.status.eq('observed')].copy()
         if not observed.empty:
             observed['win'] = 100 * observed.return_pct.gt(0)
             print(observed.groupby('period').agg(samples=('return_pct', 'count'), mean_pct=('return_pct', 'mean'),
+                                                 gross_pct=('gross_return_pct', 'mean'), cost_pp=('cost_pp', 'mean'),
                                                  win_pct=('win', 'mean'), worst_mdd_pct=('mdd_pct', 'max'),
                                                  first_entry=('entry', 'min'), last_exit=('exit', 'max')).to_string())
         matched = observed.dropna(subset=['benchmark_pct']).copy()
