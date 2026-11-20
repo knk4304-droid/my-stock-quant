@@ -1,0 +1,28 @@
+name: Classic recorded recommendation sample
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install "pandas>=2,<4" "yfinance>=0.2.50,<2" "exchange-calendars>=4.13.1,<5"
+      - name: Sample completed recommendation windows
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u +%FT%TZ)
+          python qp_forward_sample.py --cutoff "$cutoff" --max-tickers 24 --output forward-sample/prices.csv
+          python qp_forward_compare.py --recommendations market_scan_data/recommendation_history.csv --observations market_scan_data/observations.csv --prices forward-sample/prices.csv --cutoff "$cutoff" | tee forward-sample/evaluation.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recorded-recommendation-evaluation
+          path: forward-sample/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -139,6 +139,25 @@ def archived_quotes(observations, cutoff):
     return pd.DataFrame(rows, columns=['ticker', 'date', 'close']).drop_duplicates()
 
 
+RECOMMENDATION_HORIZONS = {'단기': 1, '스윙': 5, '중기': 20}
+
+
+def recorded_windows(history, cutoff):
+    history = history.assign(captured=pd.to_datetime(history.recorded_at_utc, format='mixed', utc=True,
+                                                      errors='coerce')).sort_values('captured')
+    seen = set()
+    for record in history.itertuples(index=False):
+        ticker, captured = record.ticker, record.captured
+        period = str(record.period).split(' ', 1)[0]
+        if period not in RECOMMENDATION_HORIZONS or not isinstance(ticker, str) or pd.isna(captured) or captured >= cutoff:
+            continue
+        zone = exchange_zone(ticker)
+        key = period, ticker, captured.tz_convert(zone).date()
+        if key not in seen:
+            seen.add(key)
+            yield period, ticker, observation_window(ticker, captured, RECOMMENDATION_HORIZONS[period])
+
+
 def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
     """Reprice recorded recommendations using only later exchange-session closes."""
     if not 0 <= fee_bps <= 1000:
@@ -148,26 +167,12 @@ def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
                            close=pd.to_numeric(prices.close, errors='coerce').astype(float))
     prices = prices[['ticker', 'date', 'close']].drop_duplicates().drop_duplicates(['ticker', 'date'], keep=False)
     lookup = prices.set_index(['ticker', 'date']).close.to_dict()
-    periods = {'단기': 1, '스윙': 5, '중기': 20}
     fee = fee_bps / 10_000
     rows = []
-    seen = set()
-    history = history.assign(captured=pd.to_datetime(history.recorded_at_utc, format='mixed', utc=True,
-                                                      errors='coerce')).sort_values('captured')
-    for record in history.itertuples(index=False):
-        ticker, captured = record.ticker, record.captured
-        period = str(record.period).split(' ', 1)[0]
-        if period not in periods or not isinstance(ticker, str) or pd.isna(captured) or captured >= cutoff:
-            continue
+    for period, ticker, window in recorded_windows(history, cutoff):
         zone = exchange_zone(ticker)
-        key = period, ticker, captured.tz_convert(zone).date()
-        if key in seen:
-            continue
-        seen.add(key)
-        row = {'period': period, 'status': 'pending', 'return_pct': None, 'mdd_pct': None,
-               'benchmark_pct': None, 'benchmark_mdd_pct': None}
-        horizon = periods[period]
-        window = observation_window(ticker, captured, horizon)
+        row = {'period': period, 'status': 'pending', 'entry': window[0], 'exit': window[1],
+               'return_pct': None, 'mdd_pct': None, 'benchmark_pct': None, 'benchmark_mdd_pct': None}
         if window[2] <= cutoff:
             row['status'] = 'missing path'
             path = basket_path([ticker], {ticker: window}, lookup, fee)
@@ -178,7 +183,7 @@ def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
                 if index is not None:
                     row.update(benchmark_pct=100 * (index.iloc[-1] - 1), benchmark_mdd_pct=maximum_drawdown(index))
         rows.append(row)
-    return pd.DataFrame(rows, columns=['period', 'status', 'return_pct', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct'])
+    return pd.DataFrame(rows, columns=['period', 'status', 'entry', 'exit', 'return_pct', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct'])
 
 
 def main():
@@ -195,7 +200,9 @@ def main():
         history = pd.read_csv(args.recommendations, dtype={'ticker': str})
         if args.observations:
             observations = pd.read_csv(args.observations, dtype={'ticker': str})
-            prices = pd.concat([prices, archived_quotes(observations, args.cutoff)], ignore_index=True)
+            archived = archived_quotes(observations, args.cutoff)
+            # Avoid splicing independently adjusted price histories for the same ticker.
+            prices = pd.concat([prices, archived.loc[~archived.ticker.isin(prices.ticker)]], ignore_index=True)
         result = compare_recorded_recommendations(history, prices, args.cutoff, args.fee_bps)
         print(f'Recorded recommendations, one position per ticker/period/local day, {args.fee_bps:g} bp per side')
         print(result.groupby(['period', 'status']).size().to_string())
@@ -203,13 +210,16 @@ def main():
         if not observed.empty:
             observed['win'] = 100 * observed.return_pct.gt(0)
             print(observed.groupby('period').agg(samples=('return_pct', 'count'), mean_pct=('return_pct', 'mean'),
-                                                 win_pct=('win', 'mean'), worst_mdd_pct=('mdd_pct', 'max')).to_string())
-        matched = observed.dropna(subset=['benchmark_pct'])
+                                                 win_pct=('win', 'mean'), worst_mdd_pct=('mdd_pct', 'max'),
+                                                 first_entry=('entry', 'min'), last_exit=('exit', 'max')).to_string())
+        matched = observed.dropna(subset=['benchmark_pct']).copy()
+        matched['excess_pp'] = matched.return_pct - matched.benchmark_pct
         if not matched.empty:
             print('Matched index cohorts, descriptive only')
             print(matched.groupby('period').agg(samples=('benchmark_pct', 'count'),
                                                 return_pct=('return_pct', 'mean'),
                                                 benchmark_pct=('benchmark_pct', 'mean'),
+                                                excess_pp=('excess_pp', 'mean'),
                                                 benchmark_worst_mdd_pct=('benchmark_mdd_pct', 'max')).to_string())
         return
     snapshots = json.loads(args.snapshots.read_text(encoding='utf-8'))
