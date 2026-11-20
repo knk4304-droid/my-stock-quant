@@ -5,7 +5,7 @@ import pandas as pd
 
 
 def exchange_zone(ticker):
-    domestic = str(ticker).upper().endswith(('.KS', '.KQ')) or ticker in ('^KS11', '^KQ11')
+    domestic = str(ticker).upper().endswith(('.KS', '.KQ')) or ticker in ('^KS11', '^KQ11', '^KS200')
     return 'Asia/Seoul' if domestic else 'America/New_York'
 
 

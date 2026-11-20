@@ -20,3 +20,37 @@ def test_refresh():
 def test_weekday():
     assert str(expected_weekday(pd.Timestamp('2026-11-16 00:00Z'),True))=='2026-11-16'
     assert str(expected_weekday(pd.Timestamp('2026-11-16 00:00Z'),False))=='2026-11-13'
+
+
+def test_quote_sweep_does_not_repeat_calls_after_rate_limit():
+    import pytest
+    from qp_refresh_r23 import QuoteSweep
+
+    calls = []
+
+    def fetch(symbol):
+        calls.append(symbol)
+        raise RuntimeError('Too Many Requests')
+
+    sweep = QuoteSweep(fetch)
+    for symbol in ('A', 'B'):
+        with pytest.raises(RuntimeError, match='요청 제한'):
+            sweep(symbol)
+    assert calls == ['A']
+
+
+def test_quote_sweep_retries_timeout_only_once(monkeypatch):
+    import pytest
+    import qp_refresh_r23
+
+    delays = []
+
+    def fetch(symbol):
+        raise TimeoutError('read timed out')
+
+    monkeypatch.setattr(qp_refresh_r23, 'sleep', delays.append)
+    sweep = qp_refresh_r23.QuoteSweep(fetch)
+    with pytest.raises(TimeoutError):
+        sweep('A')
+    assert delays == [1]
+    assert not sweep.stopped.is_set()

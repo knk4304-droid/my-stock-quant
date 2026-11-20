@@ -67,7 +67,7 @@ def refresh_pool(saved, catalog, market, theme, now, limit=60):
 def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossary):
     import yfinance as yf
     from functools import partial
-    from qp_refresh_r23 import refresh_candidates
+    from qp_refresh_r23 import QuoteSweep, refresh_candidates
     from qp_discovery_r25 import valid_prices
     from qp_current_gate_r60 import (completed_bars, exchange_zone, has_current_price,
                                      latest_completed_session)
@@ -120,7 +120,9 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
 
     def fresh_candidates(candidates, now):
         from market_batch_v90 import scan_one
-        return refresh_candidates(candidates, partial(scan_one, completed_at=now), limit=60, now=now)
+        fetch = QuoteSweep(partial(scan_one, completed_at=now))
+        updated, failed = refresh_candidates(candidates, fetch, limit=60, now=now)
+        return updated, failed, fetch.reason
 
     st.caption('최근 종료 거래일의 일봉만 추천과 상세 전략에 사용합니다. 전체 시장 재분석은 예약 작업에서 수행합니다.')
     if 'qp_market_refresh_token' not in st.session_state:
@@ -216,7 +218,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     previous=st.session_state.get('qp_live_candidates')
     now = pd.Timestamp.now(tz='UTC')
     sessions = (latest_completed_session('^KS11', now), latest_completed_session('^GSPC', now))
-    expired=(previous is None or previous[0]!=refresh_key or previous[4:] != (sessions,) or
+    expired=(previous is None or previous[0]!=refresh_key or previous[4:5] != (sessions,) or
              now-previous[3]>pd.Timedelta(minutes=5))
     # Initial load, browser reload, explicit search and expired results all trigger a new fetch.
     if submitted or expired:
@@ -229,14 +231,17 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         st.caption(f'현재 조건에서 최대 {len(candidates)}개 후보를 재조회합니다.')
         if not candidates.empty:
             with st.spinner('선정 후보의 최신 가격과 지표를 확인하고 있습니다...'):
-                updated,failed=fresh_candidates(candidates, now)
-            st.session_state['qp_live_candidates']=(refresh_key,updated,failed,now,sessions)
+                updated,failed,provider_stop=fresh_candidates(candidates, now)
+            st.session_state['qp_live_candidates']=(refresh_key,updated,failed,now,sessions,provider_stop)
         else:
-            st.session_state['qp_live_candidates']=(refresh_key,pd.DataFrame(),[],now,sessions)
+            st.session_state['qp_live_candidates']=(refresh_key,pd.DataFrame(),[],now,sessions,None)
     live=st.session_state.get('qp_live_candidates')
     if live and live[0]==refresh_key:
         from qp_current_gate_r60 import eligible_refreshed
         updated,counts=eligible_refreshed(live[1])
+        st.caption(f'필요한 일봉 기준일 · 한국 {sessions[0]} / 미국 {sessions[1]}')
+        if len(live) > 5 and live[5]:
+            st.warning(f'{live[5]} · 이 회차의 추가 후보 조회를 중단했습니다.')
         if pd.Timestamp.now(tz='UTC')-live[3]>pd.Timedelta(minutes=5):
             st.warning('최신 추천 유효기간이 만료됐습니다. 다시 검색해 주세요.')
             full=full.iloc[0:0].copy()

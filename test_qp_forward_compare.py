@@ -44,3 +44,27 @@ def test_drawdown_uses_intermediate_prices_and_requires_complete_path():
     row = compare([snapshot], prices.drop(index=2), cutoff, 5, 0).iloc[0]
     assert row.status == 'paired'
     assert pd.isna(row.baseline_mdd_pct)
+
+
+def test_recorded_evaluation_uses_post_capture_entry_and_timed_observations():
+    from qp_forward_compare import archived_quotes, compare_recorded_recommendations
+
+    cutoff = '2026-11-30T22:00Z'
+    observations = pd.DataFrame([
+        ('AAA', '2026-11-27', 100, '2026-11-27T18:00Z', '2026-11-30', 110, '2026-11-30T22:00Z'),
+        ('AAA', '2026-11-25', 50, '2026-11-25T19:00Z', '2026-11-30', 120, '2026-12-01T00:00Z'),
+        ('^GSPC', '2026-11-27', 100, '2026-11-27T19:00Z', '2026-11-30', 103, '2026-11-30T22:00Z'),
+    ], columns=['ticker', 'asof_price_old', 'close_old', 'scanned_at_utc_old',
+                'asof_price_new', 'close_new', 'scanned_at_utc_new'])
+    history = pd.DataFrame([
+        ('AAA', '단기 (1~3일)', '2026-11-25T20:00Z'),
+        ('AAA', '단기 (1~3일)', '2026-11-25T22:00Z'),
+    ], columns=['ticker', 'period', 'recorded_at_utc'])
+    prices = archived_quotes(observations, cutoff)
+    assert set(prices.close) == {100, 110, 103}
+    result = compare_recorded_recommendations(history, prices, cutoff, 20)
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row.status == 'observed'
+    assert row.return_pct == pytest.approx(100 * (1.10 * .998 / 1.002 - 1))
+    assert row.benchmark_pct == pytest.approx(3)

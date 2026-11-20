@@ -118,14 +118,100 @@ def compare(snapshots, prices, cutoff, horizon, fee_bps):
                                        'baseline_mdd_pct', 'challenger_mdd_pct', 'benchmark_mdd_pct'])
 
 
+def archived_quotes(observations, cutoff):
+    """Recover known closing prices from timed scan observations."""
+    cutoff = pd.to_datetime(cutoff, utc=True)
+    parts = []
+    for side in ('old', 'new'):
+        parts.append(observations[['ticker', f'asof_price_{side}', f'close_{side}', f'scanned_at_utc_{side}']]
+                     .set_axis(['ticker', 'date', 'close', 'seen_at'], axis=1))
+    quotes = pd.concat(parts, ignore_index=True).drop_duplicates()
+    quotes['seen_at'] = pd.to_datetime(quotes['seen_at'], format='mixed', utc=True, errors='coerce')
+    quotes['date'] = pd.to_datetime(quotes['date'], errors='coerce').dt.date
+    quotes['close'] = pd.to_numeric(quotes['close'], errors='coerce')
+    eligible = quotes.loc[quotes.seen_at.le(cutoff) & quotes.date.notna() & quotes.close.gt(0)
+                          & quotes.close.lt(float('inf'))]
+    rows = []
+    for quote in eligible.itertuples(index=False):
+        calendar = get_calendar('XKRX' if exchange_zone(quote.ticker) == 'Asia/Seoul' else 'XNYS')
+        if calendar.is_session(quote.date) and calendar.session_close(quote.date) <= quote.seen_at:
+            rows.append((quote.ticker, quote.date, quote.close))
+    return pd.DataFrame(rows, columns=['ticker', 'date', 'close']).drop_duplicates()
+
+
+def compare_recorded_recommendations(history, prices, cutoff, fee_bps):
+    """Reprice recorded recommendations using only later exchange-session closes."""
+    if not 0 <= fee_bps <= 1000:
+        raise ValueError('fee_bps must be between 0 and 1000')
+    cutoff = pd.to_datetime(cutoff, utc=True)
+    prices = prices.assign(date=pd.to_datetime(prices.date, errors='coerce').dt.date,
+                           close=pd.to_numeric(prices.close, errors='coerce').astype(float))
+    prices = prices[['ticker', 'date', 'close']].drop_duplicates().drop_duplicates(['ticker', 'date'], keep=False)
+    lookup = prices.set_index(['ticker', 'date']).close.to_dict()
+    periods = {'단기': 1, '스윙': 5, '중기': 20}
+    fee = fee_bps / 10_000
+    rows = []
+    seen = set()
+    history = history.assign(captured=pd.to_datetime(history.recorded_at_utc, format='mixed', utc=True,
+                                                      errors='coerce')).sort_values('captured')
+    for record in history.itertuples(index=False):
+        ticker, captured = record.ticker, record.captured
+        period = str(record.period).split(' ', 1)[0]
+        if period not in periods or not isinstance(ticker, str) or pd.isna(captured) or captured >= cutoff:
+            continue
+        zone = exchange_zone(ticker)
+        key = period, ticker, captured.tz_convert(zone).date()
+        if key in seen:
+            continue
+        seen.add(key)
+        row = {'period': period, 'status': 'pending', 'return_pct': None, 'mdd_pct': None,
+               'benchmark_pct': None, 'benchmark_mdd_pct': None}
+        horizon = periods[period]
+        window = observation_window(ticker, captured, horizon)
+        if window[2] <= cutoff:
+            row['status'] = 'missing path'
+            path = basket_path([ticker], {ticker: window}, lookup, fee)
+            if path is not None:
+                row.update(status='observed', return_pct=100 * (path.iloc[-1] - 1), mdd_pct=maximum_drawdown(path))
+                benchmark = '^KS200' if zone == 'Asia/Seoul' else '^GSPC'
+                index = basket_path([benchmark], {benchmark: window}, lookup, 0)
+                if index is not None:
+                    row.update(benchmark_pct=100 * (index.iloc[-1] - 1), benchmark_mdd_pct=maximum_drawdown(index))
+        rows.append(row)
+    return pd.DataFrame(rows, columns=['period', 'status', 'return_pct', 'mdd_pct', 'benchmark_pct', 'benchmark_mdd_pct'])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--snapshots', type=Path, default=Path('market_scan_data/ranking_snapshots.json'))
     parser.add_argument('--prices', type=Path, help='Adjusted daily ticker,date,close CSV including delisted names and ^KS11/^GSPC benchmark closes')
+    parser.add_argument('--recommendations', type=Path, help='Recorded recommendation history CSV')
+    parser.add_argument('--observations', type=Path, help='Timed observation CSV with scan price provenance')
     parser.add_argument('--cutoff', required=True, help='UTC timestamp of last available observations')
     parser.add_argument('--fee-bps', type=float, default=20, help='Per-side transaction cost assumption')
     args = parser.parse_args()
     prices = pd.read_csv(args.prices, dtype={'ticker': str}) if args.prices else pd.DataFrame(columns=['ticker','date','close'])
+    if args.recommendations:
+        history = pd.read_csv(args.recommendations, dtype={'ticker': str})
+        if args.observations:
+            observations = pd.read_csv(args.observations, dtype={'ticker': str})
+            prices = pd.concat([prices, archived_quotes(observations, args.cutoff)], ignore_index=True)
+        result = compare_recorded_recommendations(history, prices, args.cutoff, args.fee_bps)
+        print(f'Recorded recommendations, one position per ticker/period/local day, {args.fee_bps:g} bp per side')
+        print(result.groupby(['period', 'status']).size().to_string())
+        observed = result[result.status.eq('observed')].copy()
+        if not observed.empty:
+            observed['win'] = 100 * observed.return_pct.gt(0)
+            print(observed.groupby('period').agg(samples=('return_pct', 'count'), mean_pct=('return_pct', 'mean'),
+                                                 win_pct=('win', 'mean'), worst_mdd_pct=('mdd_pct', 'max')).to_string())
+        matched = observed.dropna(subset=['benchmark_pct'])
+        if not matched.empty:
+            print('Matched index cohorts, descriptive only')
+            print(matched.groupby('period').agg(samples=('benchmark_pct', 'count'),
+                                                return_pct=('return_pct', 'mean'),
+                                                benchmark_pct=('benchmark_pct', 'mean'),
+                                                benchmark_worst_mdd_pct=('benchmark_mdd_pct', 'max')).to_string())
+        return
     snapshots = json.loads(args.snapshots.read_text(encoding='utf-8'))
     for horizon in (1, 5, 20):
         result = compare(snapshots, prices, args.cutoff, horizon, args.fee_bps)

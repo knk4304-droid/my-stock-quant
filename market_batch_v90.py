@@ -141,7 +141,7 @@ def technical_score(history):
     return {'close':round(last,4),'score':round(score,2),'return_5d_pct':round(ret5*100,2),'return_20d_pct':round(ret20*100,2),'volatility_annual':round(vol,4),'asof_price':str(close.index[-1].date())}
 
 def scan_one(ticker, *, completed_at=None):
-    h=yf.Ticker(ticker).history(period='6mo',interval='1d',timeout=10,auto_adjust=True)
+    h=yf.Ticker(ticker).history(period='6mo',interval='1d',timeout=10,auto_adjust=True,raise_errors=True)
     if completed_at is not None and not h.empty:
         from qp_current_gate_r60 import completed_bars
         h = completed_bars(h, ticker, completed_at)
@@ -174,11 +174,14 @@ def run(batch_size=250):
     attempted_total=len(chosen)
     from concurrent.futures import ThreadPoolExecutor,as_completed
     from qp_current_gate_r60 import has_current_price
+    from qp_refresh_r23 import QuoteSweep
+    from functools import partial
 
     records=[]; failures=[]
     scan_at = pd.Timestamp.now(tz='UTC')
+    fetch = QuoteSweep(partial(scan_one, completed_at=scan_at))
     with ThreadPoolExecutor(max_workers=6) as pool:
-        futures={pool.submit(scan_one, r.ticker, completed_at=scan_at):r for r in chosen.itertuples(index=False)}
+        futures={pool.submit(fetch, r.ticker):r for r in chosen.itertuples(index=False)}
         for future in as_completed(futures):
             r=futures[future]
             try:
@@ -209,7 +212,7 @@ def run(batch_size=250):
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
-    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat(), 'freshness_policy':'oldest-first-balanced-r63'}
+    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat(), 'freshness_policy':'oldest-first-balanced-r63', 'provider_stop_reason':fetch.reason}
     state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2))
     pd.DataFrame(failures,columns=['ticker','reason']).to_csv(DATA/'last_failures.csv',index=False,encoding='utf-8-sig')
     print(json.dumps(state,ensure_ascii=False))

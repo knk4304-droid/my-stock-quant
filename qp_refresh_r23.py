@@ -1,8 +1,44 @@
 """Bounded on-demand refresh; never writes historical recommendations."""
 import re
 import math
+from threading import Event
+from time import sleep
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
+
+
+class QuoteSweep:
+    """Stop queued Yahoo calls after a provider-wide failure; retry a transient error once."""
+
+    def __init__(self, fetch):
+        self.fetch = fetch
+        self.stopped = Event()
+        self.reason = None
+
+    def __call__(self, ticker):
+        for attempt in range(2):
+            if self.stopped.is_set():
+                raise RuntimeError(self.reason)
+            try:
+                return self.fetch(ticker)
+            except Exception as exc:
+                status = getattr(getattr(exc, 'response', None), 'status_code', None)
+                message = str(exc).casefold()
+                if (type(exc).__name__ == 'YFRateLimitError' or status == 429
+                        or 'too many requests' in message or 'rate limited' in message):
+                    self.reason = 'Yahoo Finance 요청 제한'
+                elif (status in (401, 403) or 'tunnel failed, response 403' in message
+                      or '403 forbidden' in message or 'domain forbidden' in message):
+                    self.reason = 'Yahoo Finance 접근 차단'
+                else:
+                    transient = (isinstance(exc, TimeoutError) or status in (500, 502, 503, 504)
+                                 or 'timed out' in message or 'timeout' in message)
+                    if transient and attempt == 0:
+                        sleep(1)
+                        continue
+                    raise
+                self.stopped.set()
+                raise RuntimeError(self.reason) from exc
 
 
 def resolve_catalog(raw, catalog):

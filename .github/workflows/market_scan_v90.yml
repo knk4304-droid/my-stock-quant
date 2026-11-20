@@ -37,6 +37,10 @@ jobs:
             python market_batch_v90.py || exit 1
             succeeded=$(python -c 'import json; print(json.load(open("market_scan_data/state.json"))["succeeded"])')
             successes=$((successes + succeeded))
+            if python -c 'import json,sys; sys.exit(not json.load(open("market_scan_data/state.json")).get("provider_stop_reason"))'; then
+              echo "Yahoo Finance blocked or rate limited; skip remaining batches for this run"
+              break
+            fi
           done
           echo "succeeded=$successes" >> "$GITHUB_OUTPUT"
       - name: Save per-run ranking history
