@@ -177,18 +177,30 @@ def run(batch_size=250):
 
     records=[]; failures=[]
     scan_at = pd.Timestamp.now(tz='UTC')
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures={pool.submit(scan_one, r.ticker, completed_at=scan_at):r for r in chosen.itertuples(index=False)}
-        for future in as_completed(futures):
-            r=futures[future]
-            try:
-                result=future.result()
-                if result and has_current_price(r.ticker, result['asof_price'], scan_at):
-                    records.append({'ticker':r.ticker,'name':r.name,'market':r.market,'asset_type':r.asset_type,**result,'scanned_at_utc':datetime.now(timezone.utc).isoformat()})
-                else:
-                    reason = 'latest completed session missing' if result else 'insufficient price history'
-                    failures.append({'ticker': r.ticker, 'reason': reason})
-            except Exception as exc: failures.append({'ticker':r.ticker,'reason':f'{type(exc).__name__}: {str(exc)[:90]}'})
+    rate_limited=False
+    attempted=0
+    # Small waves avoid queuing hundreds of requests after a provider rejection.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for start in range(0,len(chosen),6):
+            chunk=chosen.iloc[start:start+6]
+            attempted+=len(chunk)
+            futures={pool.submit(scan_one, r.ticker, completed_at=scan_at):r for r in chunk.itertuples(index=False)}
+            for future in as_completed(futures):
+                r=futures[future]
+                try:
+                    result=future.result()
+                    if result and has_current_price(r.ticker, result['asof_price'], scan_at):
+                        records.append({'ticker':r.ticker,'name':r.name,'market':r.market,'asset_type':r.asset_type,**result,'scanned_at_utc':datetime.now(timezone.utc).isoformat()})
+                    else:
+                        reason = 'latest completed session missing' if result else 'insufficient price history'
+                        failures.append({'ticker': r.ticker, 'reason': reason})
+                except Exception as exc: failures.append({'ticker':r.ticker,'reason':f'{type(exc).__name__}: {str(exc)[:90]}'})
+            if any('ratelimit' in f['reason'].lower() or 'too many requests' in f['reason'].lower() or '429' in f['reason'] for f in failures):
+                rate_limited=True
+                break
+    if rate_limited:
+        # Preserve rotation position so unattempted candidates are not skipped.
+        next_cursors=state.get('market_cursors',{})
     if records:
         new=pd.DataFrame(records)
         merged=pd.concat([existing,new],ignore_index=True) if not existing.empty else new
@@ -209,7 +221,7 @@ def run(batch_size=250):
         merged.to_csv(results_path,index=False,encoding='utf-8-sig')
     elif not results_path.exists():
         pd.DataFrame(columns=['ticker','name','market','asset_type','close','score','return_5d_pct','return_20d_pct','volatility_annual','asof_price','scanned_at_utc']).to_csv(results_path,index=False,encoding='utf-8-sig')
-    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted_total,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat(), 'freshness_policy':'oldest-first-balanced-r63'}
+    state={'market_cursors':next_cursors,'catalog_by_market':{str(k):int(v) for k,v in catalog.market.value_counts().items()},'scanned_by_market':{str(k):int(v) for k,v in new.market.value_counts().items()} if records else {},'catalog_size':len(catalog),'attempted':attempted,'planned':attempted_total,'deferred':attempted_total-attempted,'rate_limited':rate_limited,'rotation_count':n,'revisit_count':int(selection_counts.get('기존 우수 후보',0)),'selection_groups':selection_counts,'succeeded':len(records),'failed':len(failures),'updated_utc':datetime.now(timezone.utc).isoformat(), 'freshness_policy':'oldest-first-balanced-r63'}
     state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2))
     pd.DataFrame(failures,columns=['ticker','reason']).to_csv(DATA/'last_failures.csv',index=False,encoding='utf-8-sig')
     print(json.dumps(state,ensure_ascii=False))
