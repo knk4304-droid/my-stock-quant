@@ -237,14 +237,13 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
 
     st.subheader('3. 추천종목 TOP10')
     with st.form('qp_unified_filter_form'):
-        c1,c2,c3,c4=st.columns([2,1,1,1.5])
+        c1,c2,c3=st.columns([2,1,1])
         period=c1.selectbox('투자 기간',period_options,index=1)
         market=c2.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
         theme=c3.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
-        sort_mode=c4.selectbox('정렬 기준',['종합점수순','현재매수유망순'])
         submitted=st.form_submit_button('🔍 검색 · 추천종목 TOP10',type='primary',width="stretch")
     if submitted:
-        st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
+        st.session_state['qp_unified_filters']=(period,market,theme)
     elif 'qp_unified_filters' not in st.session_state:
         # First visit / browser refresh: evaluate the default selection automatically.
         st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
@@ -252,7 +251,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     if not active:
         st.info('투자 기간·시장·관심 테마를 선택하고 검색을 누르면 추천순위와 상세분석이 나타납니다.')
         return
-    period,market,theme,sort_mode=active
+    period,market,theme=active[:3]
+    sort_mode=st.selectbox('정렬 기준',['종합점수순','현재매수유망순','개선 모델 추천점수순 (연구용)','최근 5일 수익률순','최근 20일 수익률순','낮은 변동성순'],key='qp_top_sort_mode')
     # R21.1: 전체 적격 후보를 먼저 평가하고 정렬한 후 TOP10으로 제한합니다.
     broad=current_top(fresh,period,market,theme,lambda d,p:rank_fn(d,p).head(len(d)))
     full=valid_prices(broad)
@@ -344,36 +344,20 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         st.caption('최신 완료 거래일 저장 데이터 전체 재활용 → 부족 후보 시간 예산 내 추가 조회 → 동일 검증 표본 평가. 전체 시장 전수 평가가 아닙니다.')
         if not common.empty:
             st.dataframe(common.groupby(['market','asset_type']).size().rename('검증 종목 수').reset_index(),hide_index=True)
-    with st.expander('개선 모델 비교 (연구용 · 실전 추천 미반영)'):
-        st.caption('기술점수 중심 + 기간별 상승 가속도 + 과열·급락·변동성 제한. 수익률 우위는 미검증입니다.')
-        if not comparison.empty:
-            view=comparison.copy()
-            view['분석 날짜·시간(KST)']=pd.to_datetime(view.scanned_at_utc,utc=True).dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M')
-            for col,label in zip(st.columns([3,1,2,2]),['종목','점수','분석 날짜·시간(KST)','종목 상세분석']): col.markdown(f'**{label}**')
-            for _,r in view.iterrows():
-                cols=st.columns([3,1,2,2])
-                cols[0].markdown(stock_link(r['name'],r['ticker']),unsafe_allow_html=True)
-                cols[1].write(r['추천 참고점수']); cols[2].write(r['분석 날짜·시간(KST)'])
-                if cols[3].button('종목 상세분석',key='challenger_'+str(r.ticker)):
-                    st.session_state['qp_challenger_detail']=str(r.ticker)
-            chosen=view[view.ticker.eq(st.session_state.get('qp_challenger_detail'))]
-            if not chosen.empty:
-                r=chosen.iloc[0]
-                from qp_rank_r26 import challenger_components
-                st.write(f"**{r['name']} · 개선 모델 평가 근거**")
-                st.dataframe(pd.DataFrame([challenger_components(r,period)]),hide_index=True)
-                report=technical(r.ticker,latest_completed_session(r.ticker),refresh_token)
-                if report.get('error'): st.warning(report['error'])
-                else:
-                    st.caption('아래 매매전략은 별도 기술 분석의 조건부 참고값이며 연구 모델의 검증된 매매 신호가 아닙니다.')
-                    render_detail(st,r['name'],r.ticker,report)
+    research_mode=sort_mode=='개선 모델 추천점수순 (연구용)'
+    if research_mode:
+        full=comparison_all.copy()
+        st.caption('개선 모델 연구용 순위 · 실전 추천 성과 우위 미검증. 매매전략은 별도 기술 분석 참고값입니다.')
+    elif sort_mode in ('최근 5일 수익률순','최근 20일 수익률순','낮은 변동성순') and not full.empty:
+        col={'최근 5일 수익률순':'return_5d_pct','최근 20일 수익률순':'return_20d_pct','낮은 변동성순':'volatility_annual'}[sort_mode]
+        full=full.sort_values(col,ascending=sort_mode=='낮은 변동성순',kind='stable')
     with st.expander('최근 검증 자료 활용 참고 순위',expanded=len(common)<10):
         ref=reusable_candidates(st.session_state.get('qp_reference_candidates',pd.DataFrame()),pd.Timestamp.now(tz='UTC'),reference_age(period))
         ref=filtered_candidates(ref,market,theme)
         st.caption(f'최대 {reference_age(period)}거래일 이전 자료 허용. 최신 추천과 별개이며 현재 매수 판단·목표가·손절가로 사용하지 않습니다.')
         if not ref.empty:
             st.write(f'참고 평가 표본 {len(ref)}개 · 최신 {int(ref.data_age_sessions.eq(0).sum())}개 · 이전 자료 {int(ref.data_age_sessions.gt(0).sum())}개')
-            for label,challenger in [('기존 모델',False),('개선 모델 (연구용)',True)]:
+            for label,challenger in [('개선 모델 (연구용)' if research_mode else '기존 모델',research_mode)]:
                 ranked=shared_rank(ref,period,challenger=challenger).head(10).copy()
                 ranked['자료 상태']=ranked.data_age_sessions.map(lambda n:'최신 완료 일봉' if n==0 else f'{n}거래일 이전 · 재검증 필요')
                 ranked['저장 분석시각(KST)']=pd.to_datetime(ranked.scanned_at_utc,utc=True,format='mixed').dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M')
@@ -425,6 +409,10 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         item=top.loc[top.ticker.astype(str)==selected].iloc[0]
         ticker=str(item['ticker']); name=str(item['name'])
         st.subheader(f'📌 {name} · 매매 전략 및 상세 분석')
+        if research_mode:
+            from qp_rank_r26 import challenger_components
+            st.caption('개선 모델 평가 근거 · 연구용')
+            st.dataframe(pd.DataFrame([challenger_components(item,period)]),hide_index=True)
         report=technical(ticker, latest_completed_session(ticker), refresh_token)
         if not isinstance(report,dict) or report.get('error'):
             st.warning(str(report.get('error','분석 실패')) if isinstance(report,dict) else '분석 실패')
