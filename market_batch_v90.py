@@ -141,11 +141,36 @@ def technical_score(history):
     return {'close':round(last,4),'score':round(score,2),'return_5d_pct':round(ret5*100,2),'return_20d_pct':round(ret20*100,2),'volatility_annual':round(vol,4),'asof_price':str(close.index[-1].date())}
 
 def scan_one(ticker, *, completed_at=None):
-    h=yf.Ticker(ticker).history(period='6mo',interval='1d',timeout=10,auto_adjust=True)
-    if completed_at is not None and not h.empty:
-        from qp_current_gate_r60 import completed_bars
-        h = completed_bars(h, ticker, completed_at)
-    return technical_score(h)
+    from qp_current_gate_r60 import completed_bars, has_current_price
+    now = pd.Timestamp.now(tz='UTC') if completed_at is None else completed_at
+    primary_error = None
+    try:
+        h = yf.Ticker(ticker).history(period='6mo', interval='1d', timeout=10,
+                                      auto_adjust=True, raise_errors=True)
+        result = technical_score(completed_bars(h, ticker, now))
+        if result and has_current_price(ticker, result['asof_price'], now):
+            return {**result, 'price_source': 'Yahoo Finance'}
+    except Exception as exc:
+        primary_error = exc
+    # Independent domestic source is diagnostic only until adjustment parity
+    # and ETF coverage are verified. Never publish unverified fallback scores.
+    if re.fullmatch(r'[0-9]{6}\.(KS|KQ)', ticker):
+        try:
+            import FinanceDataReader as fdr
+            end = pd.Timestamp(now).tz_convert('Asia/Seoul').date()
+            start = end - pd.Timedelta(days=190)
+            h = fdr.DataReader('NAVER:' + ticker[:6], str(start), str(end))
+            h = completed_bars(h, ticker, now)
+            result = technical_score(h)
+            if result and has_current_price(ticker, result['asof_price'], now):
+                print('FALLBACK DIAGNOSTIC', ticker, 'NAVER', result['asof_price'],
+                      'adjustment parity not verified; not ranked')
+        except Exception as exc:
+            print('FALLBACK WARNING', ticker, type(exc).__name__, str(exc)[:100])
+    if primary_error is not None:
+        raise primary_error
+    return None
+
 
 def run(batch_size=250):
     catalog=load_catalog()
