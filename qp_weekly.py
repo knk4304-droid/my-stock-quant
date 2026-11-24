@@ -83,22 +83,34 @@ def validate(max_tickers=None):
         t,records=item
         try:
             first=min(pd.Timestamp(s['captured']) for s in records)
-            bars=yf.Ticker(t).history(start=(first-pd.Timedelta(days=2)).date().isoformat(),auto_adjust=True,timeout=10)
+            bars=yf.Ticker(t).history(start=(first-pd.Timedelta(days=2)).date().isoformat(),auto_adjust=True,timeout=10,raise_errors=True)
             if bars.empty: raise ValueError('empty history')
             return t,bars,None
-        except Exception as e: return t,None,type(e).__name__
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        for t,bars,error in pool.map(fetch,selected):
-            for s in pending[t]:
-                o=s['outcomes'][t]; o['last_attempt']=now.isoformat()
-                try:
-                    if error: raise ValueError(error)
-                    apply_outcome(s,t,bars,now)
-                except Exception as e:
-                    o['status']='시세 조회 실패 · 재시도 예정'; print(t,type(e).__name__)
+        except Exception as e: return t,None,type(e).__name__+': '+str(e)[:150]
+    attempted=0
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for i in range(0,len(selected),4):
+            limited=False
+            for t,bars,error in pool.map(fetch,selected[i:i+4]):
+                attempted+=1
+                if error and any(k in error.lower() for k in ('ratelimit','too many requests','429')):
+                    limited=True
+                for s in pending[t]:
+                    o=s['outcomes'][t]; o['last_attempt']=now.isoformat()
+                    try:
+                        if error: raise ValueError(error)
+                        apply_outcome(s,t,bars,now)
+                        o.pop('last_error',None)
+                    except Exception as e:
+                        o['status']='시세 조회 실패 · 재시도 예정'
+                        o['last_error']=str(e)[:180]
+                        print(t,type(e).__name__,str(e)[:180])
+            if limited:
+                print('Validation rate limit: remaining tickers deferred')
+                break
     if history:
         tmp=PATH.with_suffix('.tmp'); tmp.write_text(json.dumps(history,ensure_ascii=False)); tmp.replace(PATH)
-    print(f'Weekly validation: {len(selected)}/{len(pending)} tickers')
+    print(f'Weekly validation: {attempted}/{len(pending)} tickers')
 
 if __name__=='__main__':
     import sys
