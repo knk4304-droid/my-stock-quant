@@ -39,6 +39,21 @@ def test_empty_saved_scores_refresh_catalog_and_never_reuse_failed_ranking(monke
     assert any('최신 가격 기준 재평가 1개' in message.value for message in app.success)
     assert calls == ['AAPL']
 
+    original_report = qp_home_r12.get_technical_report
+    monkeypatch.setattr(qp_home_r12, 'get_technical_report', lambda ticker, **kwargs: {
+        '조회 티커': ticker, '기준일': str(latest_completed_session(ticker)),
+        '기준 종가': 100, 'RSI(14)': 52, 'MACD 히스토그램': 0.4,
+        '1차 매수 관찰가': 98, '1차 목표 관찰가': 110, '손실 제한 참고가': 95,
+    })
+    app.session_state['qp_top10_detail_editor'] = {
+        'edited_rows': {0: {'상세 분석': True}}, 'added_rows': [], 'deleted_rows': [],
+    }
+    app.run()
+    assert not app.exception
+    assert any('qp-detail13' in markdown.value and 'RSI(14)' in markdown.value
+               for markdown in app.markdown)
+
+    monkeypatch.setattr(qp_home_r12, 'get_technical_report', original_report)
     fail = True
     app.button(key='qp_refresh_market').click().run()
     assert not app.exception

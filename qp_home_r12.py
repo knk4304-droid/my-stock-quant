@@ -339,7 +339,6 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.dataframe(pd.DataFrame(strategy_rows(report)),hide_index=True,width='stretch')
             st.caption('조건부 기술적 참고 가격입니다. 실시간 호가·체결가나 미래 수익을 보장하지 않습니다.')
             with st.expander('ⓘ RSI·MACD 등 기술 지표와 설명 펼쳐보기',expanded=False):
-                from qp_r21_summary import detail_html
                 st.markdown(detail_html(report),unsafe_allow_html=True)
             with st.expander('관련 뉴스와 차트',expanded=False):
                 st.link_button('차트 열기',chart_url(ticker))
