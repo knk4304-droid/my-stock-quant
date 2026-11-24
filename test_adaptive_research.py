@@ -48,6 +48,12 @@ class AdaptiveResearchTests(unittest.TestCase):
         f[0]["challenger_net"]=float("inf")
         with self.assertRaises(ValueError):
             review(f)
+    def test_invalid_date(self):
+        f=self.folds()
+        f[0]["start"]="2020-01-01garbage"
+        f[0]["end"]="2020-01-02"
+        with self.assertRaises(ValueError):
+            review(f)
     def test_overlap(self):
         f=self.folds()
         f[1]["start"]=f[0]["end"]
