@@ -259,7 +259,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     st.caption(f'최근 가격 및 필수 지표 확인 후보: {len(full):,}개 · 가격 기준일 4일 초과 제외(휴장 시 후보 감소 가능)')
     if not full.empty:
         full=shared_rank(full,period,entry=sort_mode=='현재매수유망순')
-    refresh_key=(period,market,theme,sort_mode)
+    refresh_key=(period,market,theme)
     # User-requested default: refresh on every explicit search, not an optional second click.
     # Never silently substitute an older saved ranking after a failed live refresh.
     previous=st.session_state.get('qp_live_candidates')
