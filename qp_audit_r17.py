@@ -36,12 +36,14 @@ def summarize(df, horizon, group_col=None):
     output=[]
     for key,subset in groups:
         values=pd.to_numeric(subset[col],errors='coerce').dropna()
+        values=values[values.map(math.isfinite)]
         n=len(values)
         # Every repeated ticker-slot observation remains visible; not independent trades.
         output.append({'구분':str(key),'추천 건수':len(subset),'검증 완료':n,
                        '검증률(%)':round(n/len(subset)*100,1) if len(subset) else None,
                        '평균 수익률(%)':round(float(values.mean()),2) if n else None,
                        '중앙값(%)':round(float(values.median()),2) if n else None,
+                       '상승 건수':int((values>0).sum()),'하락 건수':int((values<0).sum()),'보합 건수':int((values==0).sum()),
                        '상승 비율(%)':round(float((values>0).mean()*100),1) if n else None,
                        '최저 수익률(%)':round(float(values.min()),2) if n else None})
     return pd.DataFrame(output)
@@ -68,6 +70,7 @@ def show(st,records,group):
     total=summarize(d,horizon)
     st.markdown('**전체 추천 성과(관찰 기준)**')
     st.dataframe(total,hide_index=True,width="stretch")
+    st.caption('상승·하락·보합 건수의 합은 검증 완료 건수입니다. 미검증 자료는 수익률 계산에서 제외합니다.')
     st.caption(f"기준가 확보 {info['기준가확보']}/{len(d)}건 · 미완료 사유는 아래 상태별 집계에서 확인하세요.")
     st.dataframe(d['검증 상태'].value_counts().rename_axis('검증 상태').reset_index(name='건수'),hide_index=True,width="stretch")
     if int(total.iloc[0]['검증 완료'])==0:
