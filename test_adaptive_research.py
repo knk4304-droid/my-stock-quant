@@ -39,6 +39,15 @@ class AdaptiveResearchTests(unittest.TestCase):
         self.assertTrue(review(f)["eligible_for_review"])
         f[-1]["challenger_mdd"]="0.2"
         self.assertFalse(review(f)["eligible_for_review"])
+    def test_invalid_threshold(self):
+        for value in (12.5, True, 11):
+            with self.assertRaises(ValueError):
+                review(self.folds(), min_folds=value)
+    def test_nonfinite_metrics(self):
+        f=self.folds()
+        f[0]["challenger_net"]=float("inf")
+        with self.assertRaises(ValueError):
+            review(f)
     def test_overlap(self):
         f=self.folds()
         f[1]["start"]=f[0]["end"]
