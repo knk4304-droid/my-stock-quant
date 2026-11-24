@@ -31,6 +31,14 @@ class AdaptiveResearchTests(unittest.TestCase):
         self.assertTrue(review(f)["eligible_for_review"])
         f[-1]["challenger_mdd"]=.2
         self.assertFalse(review(f)["eligible_for_review"])
+    def test_numeric_string_drawdown(self):
+        f=self.folds()
+        for row in f:
+            row["baseline_mdd"]="0.10"
+            row["challenger_mdd"]="0.090"
+        self.assertTrue(review(f)["eligible_for_review"])
+        f[-1]["challenger_mdd"]="0.2"
+        self.assertFalse(review(f)["eligible_for_review"])
     def test_overlap(self):
         f=self.folds()
         f[1]["start"]=f[0]["end"]
