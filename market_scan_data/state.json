@@ -7,14 +7,14 @@
     "KR ETF": 0
   },
   "catalog_by_market": {
-    "NYSE/OTHER": 7148,
-    "NASDAQ": 5463,
+    "NYSE/OTHER": 7154,
+    "NASDAQ": 5470,
     "KOSDAQ": 1719,
     "KOSPI": 911,
     "KR ETF": 4
   },
   "scanned_by_market": {},
-  "catalog_size": 15245,
+  "catalog_size": 15258,
   "attempted": 450,
   "rotation_count": 450,
   "revisit_count": 0,
@@ -25,6 +25,6 @@
   },
   "succeeded": 0,
   "failed": 450,
-  "updated_utc": "2026-11-23T07:29:38.306044+00:00",
+  "updated_utc": "2026-11-24T02:04:08.406482+00:00",
   "freshness_policy": "oldest-first-balanced-r63"
 }
