@@ -12,6 +12,7 @@ def review(folds, *, min_folds=12):
     if len(folds) < min_folds:
         return {"status": "insufficient_evidence", "eligible_for_review": False}
     deltas = []
+    baseline_drawdowns, challenger_drawdowns = [], []
     previous = None
     for f in folds:
         start, end = f["start"], f["end"]
@@ -22,6 +23,8 @@ def review(folds, *, min_folds=12):
         if not all(map(isfinite, (b,c,bd,cd))) or not (0 <= bd <= 1 and 0 <= cd <= 1) or min(b,c) < -1:
             raise ValueError("invalid metrics")
         deltas.append(c-b)
+        baseline_drawdowns.append(bd)
+        challenger_drawdowns.append(cd)
     wins = sum(d > 0 for d in deltas)
-    eligible = mean(deltas) > 0 and wins / len(deltas) >= 2/3 and max(f["challenger_mdd"] for f in folds) <= max(f["baseline_mdd"] for f in folds)
+    eligible = mean(deltas) > 0 and wins / len(deltas) >= 2/3 and max(challenger_drawdowns) <= max(baseline_drawdowns)
     return {"status": "manual_review_only", "eligible_for_review": eligible, "mean_paired_net_delta": mean(deltas), "positive_fold_fraction": wins/len(deltas), "folds": len(folds)}
