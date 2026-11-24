@@ -236,23 +236,23 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         st.caption('뉴스는 약 30분 캐시됩니다. 제목만으로 호재·악재를 단정하지 않습니다.')
 
     st.subheader('3. 추천종목 TOP10')
-    with st.form('qp_unified_filter_form'):
-        c1,c2,c3=st.columns([2,1,1])
-        period=c1.selectbox('투자 기간',period_options,index=1)
-        market=c2.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'])
-        theme=c3.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'])
-        submitted=st.form_submit_button('🔍 검색 · 추천종목 TOP10',type='primary',width="stretch")
-    if submitted:
+    from qp_strategy_menu import ordered_modes, mode_label
+    c1,c2,c3,c4=st.columns([1.4,1,1,2.3])
+    period=c1.selectbox('투자 기간',period_options,index=1,key='qp_period_choice')
+    market=c2.selectbox('시장',['전체','한국 주식','미국 주식','국내 ETF','미국 ETF'],key='qp_market_choice')
+    theme=c3.selectbox('관심 테마',['전체','반도체','AI·기술','금융','헬스케어','배당'],key='qp_theme_choice')
+    modes=ordered_modes(period)
+    previous_mode=st.session_state.get('qp_strategy_selected','종합점수순')
+    sort_mode=c4.selectbox('정렬 기준',modes,index=modes.index(previous_mode) if previous_mode in modes else 0,format_func=mode_label,key='qp_strategy_'+str(period))
+    st.session_state['qp_strategy_selected']=sort_mode
+    submitted=st.button('🔍 검색 · 추천종목 TOP10',type='primary',width='stretch')
+    if submitted or 'qp_unified_filters' not in st.session_state:
         st.session_state['qp_unified_filters']=(period,market,theme)
-    elif 'qp_unified_filters' not in st.session_state:
-        # First visit / browser refresh: evaluate the default selection automatically.
-        st.session_state['qp_unified_filters']=(period,market,theme,sort_mode)
-    active=st.session_state.get('qp_unified_filters')
-    if not active:
-        st.info('투자 기간·시장·관심 테마를 선택하고 검색을 누르면 추천순위와 상세분석이 나타납니다.')
+    active=st.session_state['qp_unified_filters']
+    if tuple(active[:3])!=(period,market,theme):
+        st.info('변경한 투자 조건을 적용하려면 검색을 눌러 주세요.')
         return
-    period,market,theme=active[:3]
-    sort_mode=st.selectbox('정렬 기준',['종합점수순','현재매수유망순','개선 모델 추천점수순 (연구용)','최근 5일 수익률순','최근 20일 수익률순','낮은 변동성순','반등유망순','눌림목매수유망순','추세돌파유망순'],key='qp_top_sort_mode')
+    st.caption('권장 기간은 전략 특성에 따른 안내이며 실제 수익률 우위는 검증 중입니다.')
     # R21.1: 전체 적격 후보를 먼저 평가하고 정렬한 후 TOP10으로 제한합니다.
     broad=current_top(fresh,period,market,theme,lambda d,p:rank_fn(d,p).head(len(d)))
     full=valid_prices(broad)
@@ -346,13 +346,13 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.dataframe(common.groupby(['market','asset_type']).size().rename('검증 종목 수').reset_index(),hide_index=True)
     from qp_patterns import MODES, rank_pattern
     pattern_mode=sort_mode in MODES
-    research_mode=sort_mode=='개선 모델 추천점수순 (연구용)'
+    research_mode=sort_mode=='추세·위험균형순'
     if pattern_mode:
         full=rank_pattern(common,sort_mode)
         st.caption(f'{sort_mode} · 연구용 기술 패턴 · 필수 지표 및 조건 충족 {len(full)}개. 실적·재무 및 시장 상대강도 미반영; 성과 미검증.')
     elif research_mode:
         full=comparison_all.copy()
-        st.caption('개선 모델 연구용 순위 · 실전 추천 성과 우위 미검증. 매매전략은 별도 기술 분석 참고값입니다.')
+        st.caption('추세·위험균형 순위 · 실전 추천 성과 우위 미검증. 매매전략은 별도 기술 분석 참고값입니다.')
     elif sort_mode in ('최근 5일 수익률순','최근 20일 수익률순','낮은 변동성순') and not full.empty:
         col={'최근 5일 수익률순':'return_5d_pct','최근 20일 수익률순':'return_20d_pct','낮은 변동성순':'volatility_annual'}[sort_mode]
         full=full.sort_values(col,ascending=sort_mode=='낮은 변동성순',kind='stable')
@@ -362,7 +362,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         st.caption(f'최대 {reference_age(period)}거래일 이전 자료 허용. 최신 추천과 별개이며 현재 매수 판단·목표가·손절가로 사용하지 않습니다.')
         if not ref.empty:
             st.write(f'참고 평가 표본 {len(ref)}개 · 최신 {int(ref.data_age_sessions.eq(0).sum())}개 · 이전 자료 {int(ref.data_age_sessions.gt(0).sum())}개')
-            for label,challenger in [('개선 모델 (연구용)' if research_mode else '기존 모델',research_mode)]:
+            for label,challenger in [('추세·위험균형' if research_mode else '기존 모델',research_mode)]:
                 ranked=(rank_pattern(ref,sort_mode) if pattern_mode else shared_rank(ref,period,challenger=challenger)).head(10).copy()
                 ranked['자료 상태']=ranked.data_age_sessions.map(lambda n:'최신 완료 일봉' if n==0 else f'{n}거래일 이전 · 재검증 필요')
                 ranked['저장 분석시각(KST)']=pd.to_datetime(ranked.scanned_at_utc,utc=True,format='mixed').dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M')
