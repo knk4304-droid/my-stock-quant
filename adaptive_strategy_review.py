@@ -7,7 +7,7 @@ def review(folds, *, min_folds=12):
     and drawdown magnitudes as decimal fractions. Caller verifies provenance,
     costs, point-in-time universe and absence of leakage.
     """
-    if min_folds < 12:
+    if isinstance(min_folds, bool) or not isinstance(min_folds, int) or min_folds < 12:
         raise ValueError("minimum 12 folds")
     if len(folds) < min_folds:
         return {"status": "insufficient_evidence", "eligible_for_review": False}
@@ -22,7 +22,10 @@ def review(folds, *, min_folds=12):
         b, c, bd, cd = (float(f[k]) for k in ("baseline_net", "challenger_net", "baseline_mdd", "challenger_mdd"))
         if not all(map(isfinite, (b,c,bd,cd))) or not (0 <= bd <= 1 and 0 <= cd <= 1) or min(b,c) < -1:
             raise ValueError("invalid metrics")
-        deltas.append(c-b)
+        delta = c-b
+        if not isfinite(delta):
+            raise ValueError("invalid return difference")
+        deltas.append(delta)
         baseline_drawdowns.append(bd)
         challenger_drawdowns.append(cd)
     wins = sum(d > 0 for d in deltas)
