@@ -1,5 +1,5 @@
 """Classic: Keep the existing ten-factor ranking as baseline; compare rule-based momentum, trend, pullback and breakout using the same universe. Research-only; no live changes."""
-from datetime import date
+from datetime import date, datetime
 from math import isfinite
 from statistics import mean
 
@@ -18,7 +18,7 @@ def review(folds, *, min_folds=12):
     for f in folds:
         start, end = f["start"], f["end"]
         if isinstance(start, str) and isinstance(end, str):
-            start, end = date.fromisoformat(start[:10]), date.fromisoformat(end[:10])
+            start, end = datetime.fromisoformat(start).date(), datetime.fromisoformat(end).date()
         elif type(start) is not int or type(end) is not int:
             raise ValueError("use ISO dates or integer session indices")
         if previous is not None and type(previous) is not type(start):
