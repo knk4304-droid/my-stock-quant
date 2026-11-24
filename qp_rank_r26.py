@@ -25,3 +25,9 @@ def rank(frame,period,entry=False,challenger=False):
     keys=['진입조건충족','매수관찰점수','추천 참고점수'] if entry else ['추천 참고점수']
     if 'ticker' in d: keys.append('ticker')
     return d.sort_values(keys,ascending=[k=='ticker' for k in keys],kind='mergesort')
+
+
+def challenger_components(row, period):
+    r5=float(np.clip(row['return_5d_pct'],-25,25)); r20=float(np.clip(row['return_20d_pct'],-40,40)); v=float(np.clip(row['volatility_annual'],0,3))
+    w=1 if period.startswith('단기') else .6 if period.startswith('스윙') else .25 if period.startswith('중기') else 0
+    return {'기술점수':float(row['score']), '상승 가속 기여':w*float(np.clip(r5-r20/4,-10,10)), '변동성 감점':-8*v, '과열 감점':-1.5*max(r5-8,0), '급락 감점':-max(-r5-7,0)}

@@ -7,6 +7,10 @@ from market_news import fetch_news, MACRO_QUERY, ticker_query
 from technical_report_v63 import get_technical_report
 from qp_classic_r22 import chart_url, rolling_points, outcome_status, strategy_rows, safe_report
 
+def stock_link(name,ticker):
+    from html import escape
+    return f'<a href="{escape(chart_url(ticker),quote=True)}" target="_blank" rel="noopener noreferrer">{escape(str(name))}</a>'
+
 DATA = Path(__file__).resolve().parent / 'market_scan_data'
 INDEXES = {'코스피':'^KS11','코스닥':'^KQ11','S&P 500':'^GSPC','나스닥':'^IXIC'}
 
@@ -72,22 +76,14 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     from qp_current_gate_r60 import (completed_bars, exchange_zone, has_current_price,
                                      latest_completed_session)
     from qp_rank_r26 import rank as shared_rank
-    @st.cache_data(ttl=900,show_spinner=False)
+    @st.cache_data(ttl=60,show_spinner=False)
     def indices(refresh_token, kr_session, us_session):
+        from qp_index_live import index_quote
         result=[]
         for name,ticker in INDEXES.items():
             try:
-                hist=yf.Ticker(ticker).history(period='10d',interval='1d',auto_adjust=False,timeout=12)
-                hist = completed_bars(hist, ticker)
-                closes = pd.to_numeric(hist['Close'], errors='coerce').dropna()
-                closes = closes[closes.gt(0) & closes.lt(float('inf'))]
-                if closes.empty: raise ValueError('no prices')
-                last=float(closes.iloc[-1]); prev=float(closes.iloc[-2]) if len(closes)>1 else None
-                stamp=closes.index[-1]
-                if not has_current_price(ticker, stamp):
-                    result.append((name, None, None, f'{stamp.date()} · 지연', None))
-                    continue
-                result.append((name,last,100*(last/prev-1) if prev else None,str(stamp.date()),datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')))
+                price,change,asof,status=index_quote(ticker, lambda **kw: yf.Ticker(ticker).history(**kw,auto_adjust=False,timeout=12))
+                result.append((name,price,change,f'{asof} · {status}',datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')))
             except Exception: result.append((name,None,None,'조회 실패',None))
         return result
     @st.cache_data(ttl=1800,show_spinner=False)
@@ -158,8 +154,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         return
 
     st.subheader('1. 주요 시장 지수')
-    st.caption('Yahoo Finance 제공 일봉 기준이며 실시간 지수가 아닙니다. 데이터 제공 지연·휴장·캐시로 수치가 변하지 않을 수 있습니다. 조회 결과는 최대 15분 캐시됩니다.')
-    if st.button('🔄 시장 지수 다시 조회',key='qp_indices_refresh',help='15분 캐시를 비우고 시세 공급원에 다시 요청합니다. 공급원 자료가 지연되면 같은 숫자가 나올 수 있습니다.'):
+    st.caption('Yahoo Finance 장중 5분봉 또는 최근 확정 일봉입니다. 실시간 체결값은 아니며 지연될 수 있습니다. 조회 캐시 최대 60초.')
+    if st.button('🔄 시장 지수 다시 조회',key='qp_indices_refresh',help='캐시를 비우고 시세 공급원에 다시 요청합니다. 공급원 자료가 지연되면 같은 숫자가 나올 수 있습니다.'):
         indices.clear()
     grid=st.columns(4)
     for col,(name,price,change,asof,updated) in zip(grid, indices(refresh_token, latest_completed_session("^KS11"), latest_completed_session("^GSPC"))):
@@ -230,10 +226,15 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         if not candidates.empty:
             with st.spinner('선정 후보의 최신 가격과 지표를 확인하고 있습니다...'):
                 updated,failed=fresh_candidates(candidates, now)
+            st.session_state['qp_sample_requested']=len(candidates)
+            st.session_state['qp_sample_saved']=int(candidates.ticker.isin(broad.get('ticker',[])).sum())
             st.session_state['qp_live_candidates']=(refresh_key,updated,failed,now,sessions)
         else:
+            st.session_state['qp_sample_requested']=0
+            st.session_state['qp_sample_saved']=0
             st.session_state['qp_live_candidates']=(refresh_key,pd.DataFrame(),[],now,sessions)
     live=st.session_state.get('qp_live_candidates')
+    common=full.iloc[0:0].copy()
     if live and live[0]==refresh_key:
         from qp_current_gate_r60 import eligible_refreshed
         updated,counts=eligible_refreshed(live[1])
@@ -241,18 +242,48 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             st.warning('최신 추천 유효기간이 만료됐습니다. 다시 검색해 주세요.')
             full=full.iloc[0:0].copy()
         elif not updated.empty:
-            full=shared_rank(updated,period,entry=sort_mode=='현재매수유망순')
+            common=filtered_candidates(updated,market,theme)
+            full=shared_rank(common,period,entry=sort_mode=='현재매수유망순')
             st.success(f'최신 가격 기준 재평가 {counts["eligible"]}개 · 제외 {counts["rejected"]}개 · 조회 실패 {len(live[2])}개')
         else:
             st.warning(f'최신 가격 검증 후보 0개 · 기준일 제외 {counts["rejected"]}개 · 조회 실패 {len(live[2])}개. 추천을 보류합니다.')
             full=full.iloc[0:0].copy()
     else:
         st.warning('최신 데이터 조회가 완료되지 않았습니다. 현재 추천을 보류합니다.'); full=full.iloc[0:0].copy()
+    comparison_all=shared_rank(common,period,challenger=True) if not common.empty else common.copy()
+    comparison=comparison_all.head(10)
+    with st.expander('평가 대상 및 표본 선정 기준'):
+        left=set(full.get('ticker',[])); right=set(comparison_all.get('ticker',[]))
+        st.write(f'저장 조건 일치 후보 {len(broad)}개 · 최신 검증 후보 {len(common)}개 · 기존 모델 {len(left)}개 · 개선 모델 {len(right)}개 · 공통 {len(left & right)}개')
+        requested=st.session_state.get('qp_sample_requested',0); saved=st.session_state.get('qp_sample_saved',0)
+        st.write(f'재조회 요청 {requested}개 · 저장 후보 {saved}개 · 추가 후보 {requested-saved}개 · 수집 성공 {len(live[1]) if live else 0}개')
+        st.write(f'표본 동일 여부: {"동일" if left==right and left else "상이 또는 평가 없음"} · 조회 실패 {len(live[2]) if live else 0}개')
+        st.caption('저장 후보 우선 선정 → 부족 시 카탈로그 순환 보충 → 최대 60개 최신 일봉 재조회 → 거래일·가격 검증 → 동일 후보에서 각각 순위 산출. 전체 시장 전수 평가가 아닙니다.')
+        if not common.empty:
+            st.dataframe(common.groupby(['market','asset_type']).size().rename('검증 종목 수').reset_index(),hide_index=True)
     with st.expander('개선 모델 비교 (연구용 · 실전 추천 미반영)'):
-        comparison=shared_rank(valid_prices(broad),period,challenger=True).head(10)
-        st.caption('기술점수 중심 + 기간별 상승 가속도 + 과열·급락·변동성 제한. 기존 모델과 별도 비교하며 수익률 우위는 미검증입니다.')
+        st.caption('기술점수 중심 + 기간별 상승 가속도 + 과열·급락·변동성 제한. 수익률 우위는 미검증입니다.')
         if not comparison.empty:
-            st.dataframe(comparison[['name','ticker','추천 참고점수']],hide_index=True)
+            view=comparison.copy()
+            view['분석 날짜·시간(KST)']=pd.to_datetime(view.scanned_at_utc,utc=True).dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M')
+            for col,label in zip(st.columns([3,1,2,2]),['종목','점수','분석 날짜·시간(KST)','종목 상세분석']): col.markdown(f'**{label}**')
+            for _,r in view.iterrows():
+                cols=st.columns([3,1,2,2])
+                cols[0].markdown(stock_link(r['name'],r['ticker']),unsafe_allow_html=True)
+                cols[1].write(r['추천 참고점수']); cols[2].write(r['분석 날짜·시간(KST)'])
+                if cols[3].button('종목 상세분석',key='challenger_'+str(r.ticker)):
+                    st.session_state['qp_challenger_detail']=str(r.ticker)
+            chosen=view[view.ticker.eq(st.session_state.get('qp_challenger_detail'))]
+            if not chosen.empty:
+                r=chosen.iloc[0]
+                from qp_rank_r26 import challenger_components
+                st.write(f"**{r['name']} · 개선 모델 평가 근거**")
+                st.dataframe(pd.DataFrame([challenger_components(r,period)]),hide_index=True)
+                report=technical(r.ticker,latest_completed_session(r.ticker),refresh_token)
+                if report.get('error'): st.warning(report['error'])
+                else:
+                    st.caption('아래 매매전략은 별도 기술 분석의 조건부 참고값이며 연구 모델의 검증된 매매 신호가 아닙니다.')
+                    render_detail(st,r['name'],r.ticker,report)
     top=full.head(10)
     if top.empty:
         st.warning('현재 검증된 추천 후보가 없습니다. 조회 상태를 확인하거나 잠시 후 다시 검색해 주세요.')
@@ -274,40 +305,24 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     table=pd.DataFrame({'순위':top['순위'],'종목':top['name'],'통화':top.ticker.map(lambda t:'KRW' if str(t).endswith(('.KS','.KQ')) else 'USD'),'시장구분':top['market'],'추천점수':top['추천 참고점수'],'기술점수':numeric('score'),'검증 일봉 가격':last,'가격 기준일':top['asof_price'],'분석 완료(KST)':top['업데이트 시각 (KST)']})
     for col in ret: table[col]=ret[col]
     if sort_mode=='현재매수유망순': table['매수관찰점수']=top['매수관찰점수']
-    table['차트']=top.ticker.map(chart_url)
-    table['상세 분석']=False
-    table=table[['순위','종목','차트','시장구분','추천점수','기술점수','검증 일봉 가격','통화','가격 기준일',*ret.columns,'분석 완료(KST)'] + (['매수관찰점수'] if sort_mode=='현재매수유망순' else []) + ['상세 분석']]
-    def color(v): return 'color: #D32F2F' if pd.notna(v) and v>0 else 'color: #1565C0' if pd.notna(v) and v<0 else 'color: #808080'
-    # Streamlit data_editor supports an actionable checkbox in the final column.
-    # A click selects one ticker; detailed analysis appears immediately below this table.
-    table_key=(period,market,theme,sort_mode,tuple(top.ticker.astype(str)))
-    if st.session_state.get('qp_detail_table_key') != table_key:
-        st.session_state['qp_detail_table_key']=table_key
-        st.session_state.pop('qp_selected_ticker',None)
-    st.caption('맨 오른쪽 **상세 분석** 칸을 체크하면 해당 종목의 분석을 표 아래에 표시합니다.')
-    selected_ticker=st.session_state.get('qp_selected_ticker')
-    table['상세 분석']=[str(t)==selected_ticker for t in top.ticker]
-    edited=st.data_editor(table,hide_index=True,width='stretch',key='qp_top10_detail_editor',
-        disabled=[c for c in table.columns if c!='상세 분석'],
-        column_config={'차트':st.column_config.LinkColumn('차트',display_text='차트 열기'),
-                       '상세 분석':st.column_config.CheckboxColumn('상세 분석',help='선택하면 아래에 매매 전략과 기술 지표가 표시됩니다.'),
-                       '추천점수':st.column_config.NumberColumn(help='상대 순위 점수이며 상승 확률이 아닙니다.'),
-                       '기술점수':st.column_config.NumberColumn(format='%.1f')})
-    checked=edited.loc[edited['상세 분석'].fillna(False).astype(bool)]
-    if not checked.empty:
-        # If a new checkbox is ticked, prefer the newly checked row over the previous selection.
-        candidates=[str(top.iloc[i]['ticker']) for i in checked.index if str(top.loc[i,'ticker'])!=selected_ticker]
-        new_ticker=candidates[-1] if candidates else str(top.loc[checked.index[-1],'ticker'])
-        st.session_state['qp_selected_ticker']=new_ticker
-    else:
-        st.session_state['qp_selected_ticker']=None
-    st.caption('가격 기준일: '+', '.join(sorted(set(top['asof_price'].dropna().astype(str)))) if 'asof_price' in top else '가격 기준일 미확인')
-    st.caption('5·20일 수익률은 추천에 쓴 수정 일봉 기준입니다. 오늘·전일 수익률은 별도 조회하며 오늘 수익률은 장중 잠정값일 수 있습니다.')
+    st.caption('종목명을 누르면 차트가 새 탭에서 열립니다. 가격은 검증 일봉 기준입니다.')
+    headers=['순위','종목','추천','기술','가격','오늘%','전일%','5일%','20일%','매수','분석']
+    widths=[.5,2.5,.8,.8,1.2,.8,.8,.8,.8,.8,1]
+    for col,label in zip(st.columns(widths),headers): col.markdown(f'**{label}**')
+    for i,r in table.iterrows():
+        cols=st.columns(widths)
+        cols[0].write(int(r['순위']))
+        cols[1].markdown(stock_link(r['종목'],top.loc[i,'ticker']),unsafe_allow_html=True)
+        cols[1].caption(f"{r['시장구분']} · {r['가격 기준일']} · {r['분석 완료(KST)']}")
+        for col,k in zip(cols[2:10],['추천점수','기술점수','검증 일봉 가격','오늘수익률','전일수익률','5일수익률','20일수익률','매수관찰점수']):
+            v=r.get(k); col.write(f'{v:,.2f}' if pd.notna(v) else '—')
+        cols[4].caption(r['통화'])
+        if cols[10].button('상세',key='top_detail_'+str(top.loc[i,'ticker'])):
+            st.session_state['qp_selected_ticker']=str(top.loc[i,'ticker'])
     with st.expander('📱 스마트폰용 TOP10 간편 보기'):
-        for r in table.to_dict('records'):
-            st.write(f"**{r['순위']}위 {r['종목']}** · 추천 {r['추천점수']}점 · 5일 {r['5일수익률']}")
-            st.link_button('차트 열기',r['차트'])
-
+        for i,r in table.iterrows():
+            st.markdown(stock_link(r['종목'],top.loc[i,'ticker']),unsafe_allow_html=True)
+            st.write(f"{r['순위']}위 · 추천 {r['추천점수']} · 5일 {r['5일수익률']}%")
     # Details are shown directly below the recommendation table, not in a duplicate menu.
     selected=st.session_state.get('qp_selected_ticker')
     if selected and selected in set(top.ticker.astype(str)):
@@ -347,7 +362,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
                 if err: st.info(err)
                 for article in related: st.markdown(f"[{article['title']}]({article['url']}) · {article['date']}")
     else:
-        st.caption('상세 분석을 보려면 위 추천 표의 맨 오른쪽 칸을 체크하세요.')
+        st.caption('상세 분석을 보려면 위 추천 표의 상세 버튼을 누르세요.')
     ticker=selected if selected in set(top.ticker.astype(str)) else str(top.iloc[0]['ticker'])
     name=str(top.loc[top.ticker.astype(str)==ticker].iloc[0]['name'])
     from qp_weekly import load

@@ -14,7 +14,9 @@ class V56LinkTests(unittest.TestCase):
         self.assertIn("'차트링크': link,", SOURCE)
         self.assertNotIn("'차트링크': f\"[{stock_name}]({link})\"", SOURCE)
     def test_link_column_in_both_tables(self):
-        self.assertIn("st.column_config.LinkColumn('차트',display_text='차트 열기')", HOME)
+        self.assertIn('target="_blank"', HOME)
+        self.assertIn("stock_link(r['종목'],top.loc[i,'ticker'])", HOME)
+        self.assertNotIn("st.column_config.LinkColumn('차트'", HOME)
         self.assertIn("st.link_button('선택 종목 실시간·지연 차트 열기'", HOME)
     def test_sort_and_details_preserved(self):
         self.assertIn('top=full.head(10)', HOME)
