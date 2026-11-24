@@ -321,9 +321,9 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     comparison=comparison_all.head(10)
     with st.expander('평가 대상 및 표본 선정 기준'):
         left=set(full.get('ticker',[])); right=set(comparison_all.get('ticker',[]))
-        st.write(f'저장 조건 일치 후보 {st.session_state.get('qp_sample_total_saved',len(broad))}개 · 최신 검증 후보 {len(common)}개 · 기존 모델 {len(left)}개 · 개선 모델 {len(right)}개 · 공통 {len(left & right)}개')
+        st.write(f"저장 조건 일치 후보 {st.session_state.get('qp_sample_total_saved',len(broad))}개 · 최신 검증 후보 {len(common)}개 · 기존 모델 {len(left)}개 · 개선 모델 {len(right)}개 · 공통 {len(left & right)}개")
         requested=st.session_state.get('qp_sample_requested',0); saved=st.session_state.get('qp_sample_saved',0)
-        st.write(f'재조회 요청 {requested}개 · 저장 후보 {saved}개 · 추가 후보 {requested-saved}개 · 신규 검증 성공 {st.session_state.get('qp_sample_new',0)}개')
+        st.write(f"재조회 요청 {requested}개 · 저장 후보 {saved}개 · 추가 후보 {requested-saved}개 · 신규 검증 성공 {st.session_state.get('qp_sample_new',0)}개")
         st.write(f'표본 동일 여부: {"동일" if left==right and left else "상이 또는 평가 없음"} · 조회 실패 {len(live[2]) if live else 0}개')
         st.write(f"저장 데이터 재활용 {st.session_state.get('qp_sample_reused',0)}개 · 추가 조회 대기 {st.session_state.get('qp_sample_pending',0)}개")
         st.caption('최신 완료 거래일 저장 데이터 전체 재활용 → 부족 후보 시간 예산 내 추가 조회 → 동일 검증 표본 평가. 전체 시장 전수 평가가 아닙니다.')
