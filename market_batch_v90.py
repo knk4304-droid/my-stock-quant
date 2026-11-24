@@ -138,7 +138,8 @@ def technical_score(history):
     daily=close.pct_change().dropna(); vol=float(daily.tail(60).std()*np.sqrt(252))
     if not np.isfinite(vol): return None
     score=float(np.clip(50 + (12 if last>ma20 else -12) + (10 if ma20>ma60 else -10) + np.clip(ret20*100, -15,15) - max(0,vol-.5)*15,0,100))
-    return {'close':round(last,4),'score':round(score,2),'return_5d_pct':round(ret5*100,2),'return_20d_pct':round(ret20*100,2),'volatility_annual':round(vol,4),'asof_price':str(close.index[-1].date())}
+    from qp_patterns import features
+    return {**features(history),'close':round(last,4),'score':round(score,2),'return_5d_pct':round(ret5*100,2),'return_20d_pct':round(ret20*100,2),'volatility_annual':round(vol,4),'asof_price':str(close.index[-1].date())}
 
 def scan_one(ticker, *, completed_at=None):
     from qp_current_gate_r60 import completed_bars, has_current_price
