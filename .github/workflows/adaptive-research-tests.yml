@@ -1,0 +1,23 @@
+name: Adaptive research unit tests
+on:
+  push:
+    branches: [research/adaptive-strategy-review]
+    paths:
+      - 'adaptive_signal_research.py'
+      - 'adaptive_strategy_review.py'
+      - 'test_adaptive_research.py'
+      - '.github/workflows/adaptive-research-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest -v test_adaptive_research
