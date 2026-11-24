@@ -361,25 +361,29 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     ret['20일수익률'] = top['return_20d_pct']
     table=pd.DataFrame({'순위':top['순위'],'종목':top['name'],'통화':top.ticker.map(lambda t:'KRW' if str(t).endswith(('.KS','.KQ')) else 'USD'),'시장구분':top['market'],'추천점수':top['추천 참고점수'],'기술점수':numeric('score'),'검증 일봉 가격':last,'가격 기준일':top['asof_price'],'분석 완료(KST)':top['업데이트 시각 (KST)']})
     for col in ret: table[col]=ret[col]
-    if sort_mode=='현재매수유망순': table['매수관찰점수']=top['매수관찰점수']
+    allowed={'적극매수','분할매수','관망','매수보류'}
+    judgments=top.get('entry_judgment',pd.Series(index=top.index,dtype=object))
+    table['매수판단']=judgments.map(lambda v:v if isinstance(v,str) and v in allowed else '재검증 필요')
+    st.caption('매수판단은 최신 완료 일봉 기반 조건부 기술 판단이며 실시간 매수 지시가 아닙니다. 신규 지표 미확보 시 재검증 필요로 표시합니다.')
     st.caption('종목명을 누르면 차트가 새 탭에서 열립니다. 가격은 검증 일봉 기준입니다.')
-    headers=['순위','종목','추천','기술','가격','오늘%','전일%','5일%','20일%','매수','분석']
-    widths=[.5,2.5,.8,.8,1.2,.8,.8,.8,.8,.8,1]
+    headers=['순위','종목','추천','기술','가격','오늘%','전일%','5일%','20일%','매수판단','분석']
+    widths=[.5,2.5,.8,.8,1.2,.8,.8,.8,.8,1.3,1]
     for col,label in zip(st.columns(widths),headers): col.markdown(f'**{label}**')
     for i,r in table.iterrows():
         cols=st.columns(widths)
         cols[0].write(int(r['순위']))
         cols[1].markdown(stock_link(r['종목'],top.loc[i,'ticker']),unsafe_allow_html=True)
         cols[1].caption(f"{r['시장구분']} · {r['가격 기준일']} · {r['분석 완료(KST)']}")
-        for col,k in zip(cols[2:10],['추천점수','기술점수','검증 일봉 가격','오늘수익률','전일수익률','5일수익률','20일수익률','매수관찰점수']):
+        for col,k in zip(cols[2:9],['추천점수','기술점수','검증 일봉 가격','오늘수익률','전일수익률','5일수익률','20일수익률']):
             v=r.get(k); col.write(f'{v:,.2f}' if pd.notna(v) else '—')
+        cols[9].write(r['매수판단'])
         cols[4].caption(r['통화'])
         if cols[10].button('상세',key='top_detail_'+str(top.loc[i,'ticker'])):
             st.session_state['qp_selected_ticker']=str(top.loc[i,'ticker'])
     with st.expander('📱 스마트폰용 TOP10 간편 보기'):
         for i,r in table.iterrows():
             st.markdown(stock_link(r['종목'],top.loc[i,'ticker']),unsafe_allow_html=True)
-            st.write(f"{r['순위']}위 · 추천 {r['추천점수']} · 5일 {r['5일수익률']}%")
+            st.write(f"{r['순위']}위 · 추천 {r['추천점수']} · 5일 {r['5일수익률']}% · {r['매수판단']}")
     # Details are shown directly below the recommendation table, not in a duplicate menu.
     selected=st.session_state.get('qp_selected_ticker')
     if selected and selected in set(top.ticker.astype(str)):
