@@ -32,26 +32,36 @@ jobs:
         run: |
           # Multiple balanced batches; no stored top-ranked symbol receives scan priority.
           successes=0
+          limited=false
           for batch in 1 2 3 4; do
             echo "Market refresh batch ${batch}/4"
             python market_batch_v90.py || exit 1
             succeeded=$(python -c 'import json; print(json.load(open("market_scan_data/state.json"))["succeeded"])')
             successes=$((successes + succeeded))
+            limited=$(python -c 'import json; print(str(json.load(open("market_scan_data/state.json")).get("rate_limited", False)).lower())')
+            if [[ "$limited" == true ]]; then
+              echo 'Provider rate limit detected; deferring remaining batches.'
+              break
+            fi
+            if [[ "$batch" != 4 ]]; then sleep 30; fi
           done
           echo "succeeded=$successes" >> "$GITHUB_OUTPUT"
+          echo "limited=$limited" >> "$GITHUB_OUTPUT"
       - name: Save per-run ranking history
-        if: steps.scan_batch.outputs.succeeded != '0'
+        if: steps.scan_batch.outputs.succeeded != '0' && steps.scan_batch.outputs.limited != 'true'
         run: python ranking_history.py
       - name: Record and follow up recommendation snapshots
-        if: steps.scan_batch.outputs.succeeded != '0'
+        if: steps.scan_batch.outputs.succeeded != '0' && steps.scan_batch.outputs.limited != 'true'
         run: python recommendation_tracker.py
       - name: Validate 1/5/20-session forward outcomes
+        if: steps.scan_batch.outputs.limited != 'true'
         env:
           VALIDATION_MAX_TICKERS: "40"
         run: python forward_validation_v95.py
       - name: Validate stored recommendation data
         run: python validation_smoke.py --data market_scan_data/recommendation_history.csv
       - name: Capture scheduled ranking and validate outcomes
+        if: steps.scan_batch.outputs.limited != 'true'
         env:
           SCAN_SUCCEEDED: ${{ steps.scan_batch.outputs.succeeded }}
           QP_SCHEDULE: ${{ github.event.schedule || 'manual' }}
