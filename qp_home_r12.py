@@ -76,15 +76,21 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     from qp_current_gate_r60 import (completed_bars, exchange_zone, has_current_price,
                                      latest_completed_session)
     from qp_rank_r26 import rank as shared_rank
-    @st.cache_data(ttl=60,show_spinner=False)
-    def indices(refresh_token, kr_session, us_session):
+    def indices():
         from qp_index_live import index_quote
         result=[]
         for name,ticker in INDEXES.items():
             try:
                 price,change,asof,status=index_quote(ticker, lambda **kw: yf.Ticker(ticker).history(**kw,auto_adjust=False,timeout=12))
                 result.append((name,price,change,f'{asof} · {status}',datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')))
-            except Exception: result.append((name,None,None,'조회 실패',None))
+            except Exception:
+                previous = st.session_state.get('qp_last_index_quotes', {}).get(ticker)
+                if previous:
+                    result.append((name,previous[1],previous[2],previous[3]+' · 갱신 실패 (마지막 정상값)',previous[4]))
+                else:
+                    result.append((name,None,None,'조회 실패',None))
+            else:
+                st.session_state.setdefault('qp_last_index_quotes', {})[ticker] = result[-1]
         return result
     @st.cache_data(ttl=1800,show_spinner=False)
     def news(): return fetch_news(MACRO_QUERY,limit=12)
@@ -153,22 +159,25 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
                 render_detail(st,query,result.get('조회 티커',resolve_symbol(query)),result)
         return
 
-    st.subheader('1. 주요 시장 지수')
-    st.caption('Yahoo Finance 장중 5분봉 또는 최근 확정 일봉입니다. 실시간 체결값은 아니며 지연될 수 있습니다. 조회 캐시 최대 60초.')
-    if st.button('🔄 시장 지수 다시 조회',key='qp_indices_refresh',help='캐시를 비우고 시세 공급원에 다시 요청합니다. 공급원 자료가 지연되면 같은 숫자가 나올 수 있습니다.'):
-        indices.clear()
-    grid=st.columns(4)
-    for col,(name,price,change,asof,updated) in zip(grid, indices(refresh_token, latest_completed_session("^KS11"), latest_completed_session("^GSPC"))):
-        col.markdown(f"**{name}**")
-        col.markdown(f"### {price:,.2f}" if price is not None else '조회 불가')
-        if change is not None:
-            color='#D32F2F' if change>0 else '#1565C0' if change<0 else '#808080'
-            arrow='▲' if change>0 else '▼' if change<0 else '—'
-            col.markdown(f'<span style="color:{color};font-weight:600">{arrow} {change:+.2f}%</span>',unsafe_allow_html=True)
-        else: col.caption('등락률 미확인')
-        col.caption(f'가격 기준일: {asof}')
-        col.caption(f'업데이트: {updated} KST' if updated else '업데이트: 조회 실패')
-    st.caption('업데이트는 데이터 조회 성공 시각이며 거래소 체결 시각과 다릅니다.')
+    @st.fragment(run_every=60)
+    def render_indices():
+        st.subheader('1. 주요 시장 지수')
+        st.caption('Yahoo Finance 장중 5분봉 또는 최근 확정 일봉입니다. 실시간 체결값은 아니며 지연될 수 있습니다. 접속·새로고침 시 재조회, 화면 유지 중 60초마다 자동 조회.')
+        st.button('🔄 시장 지수 다시 조회',key='qp_indices_refresh',help='시세 공급원에 다시 요청합니다. 공급원 자료가 지연되면 같은 숫자가 나올 수 있습니다.')
+        grid=st.columns(4)
+        for col,(name,price,change,asof,updated) in zip(grid, indices()):
+            col.markdown(f"**{name}**")
+            col.markdown(f"### {price:,.2f}" if price is not None else '조회 불가')
+            if change is not None:
+                color='#D32F2F' if change>0 else '#1565C0' if change<0 else '#808080'
+                arrow='▲' if change>0 else '▼' if change<0 else '—'
+                col.markdown(f'<span style="color:{color};font-weight:600">{arrow} {change:+.2f}%</span>',unsafe_allow_html=True)
+            else: col.caption('등락률 미확인')
+            col.caption(f'가격 기준일: {asof}')
+            col.caption(f'업데이트: {updated} KST' if updated else '업데이트: 조회 실패')
+        st.caption('업데이트는 데이터 조회 성공 시각이며 거래소 체결 시각과 다릅니다.')
+
+    render_indices()
 
     st.subheader('2. 글로벌 마켓 브리핑')
     articles,error=news()
