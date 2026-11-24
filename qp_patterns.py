@@ -5,7 +5,7 @@ import pandas as pd
 MODES={'반등유망순':'rebound','눌림목매수유망순':'pullback','추세돌파유망순':'breakout'}
 FIELDS=['rebound','pullback','breakout']
 def features(h):
-    if not {'Close','High','Low','Volume'}.issubset(h.columns) or len(h)<65: return dict.fromkeys(FIELDS,float('nan'))
+    if not {'Close','High','Low','Volume'}.issubset(h.columns) or len(h)<65: return dict.fromkeys(FIELDS+['entry_judgment'],float('nan'))
     d=h[['Close','High','Low','Volume']].apply(pd.to_numeric,errors='coerce').tail(65)
     if not np.isfinite(d).all().all() or (d[['Close','High','Low']]<=0).any().any() or (d.Volume<0).any(): return {}
     c=d.Close; p=c.iloc[-1]; prev=c.iloc[-2]; m20=c.tail(20).mean(); m60=c.tail(60).mean()
@@ -27,7 +27,19 @@ def features(h):
         out['pullback']=25*clip((m20/m60-1)/.12)+20*clip(1-abs(p-m20)/(2*atr))+15*clip(1-abs(adjust-.07)/.08)+15*recovery+10*volume+15*risk(m20-2*atr,d.High.tail(10).max())
     if 0<=p-resistance<=2*atr and p>prev and m20>m60 and volume>.2:
         out['breakout']=25*clip((p-resistance)/atr)+20*volume+20*recovery+15*clip((m20/m60-1)/.12)+10*clip(1-(p-resistance)/(2*atr))+10*risk(resistance-atr,p+2*atr)
-    return {k:round(out.get(k,float('nan')),2) for k in FIELDS}
+    stop=min(d.Low.tail(10).min(),p-atr*.5)
+    target=resistance
+    rr=(target-p)/(p-stop) if stop<p<target else 0
+    r=float(rsi.iloc[-1]); risk_pct=(p-stop)/p
+    if r>=75 or p<support or (p<m60 and recovery<=0) or risk_pct>.10:
+        judgment='매수보류'
+    elif p>m20>m60 and 45<=r<=65 and recovery>=.4 and rr>=2 and risk_pct<=.05:
+        judgment='적극매수'
+    elif 35<=r<=70 and recovery>0 and risk_pct<=.08 and (rr>=1.5 or out.get('breakout',0)>=65):
+        judgment='분할매수'
+    else:
+        judgment='관망'
+    return {**{k:round(out.get(k,float('nan')),2) for k in FIELDS},'entry_judgment':judgment}
 
 def rank_pattern(d,mode):
     key=MODES[mode]
