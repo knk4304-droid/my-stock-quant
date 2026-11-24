@@ -68,8 +68,8 @@ def refresh_pool(saved, catalog, market, theme, now, limit=60):
     return pd.concat([picked, fallback], ignore_index=True).head(limit)
 
 
-def reusable_candidates(frame, now):
-    """Reuse only complete, finite inputs collected after the relevant session closed."""
+def reusable_candidates(frame, now, max_age=0):
+    """Reuse finite validated inputs within an exchange-session age limit."""
     from qp_current_gate_r60 import latest_completed_session, exchange_zone
     from qp_universe_r18 import eligible
     import numpy as np
@@ -82,12 +82,25 @@ def reusable_candidates(frame, now):
     days=pd.to_datetime(d.asof_price,errors='coerce').dt.date
     good=np.isfinite(d[fields]).all(axis=1)&d.score.between(0,100)&d.close.gt(0)&d.volatility_annual.ge(0)&stamps.le(now)
     from exchange_calendars import get_calendar
+    good &= d.ticker.map(exchange_zone).isin(['Asia/Seoul','America/New_York'])
+    d['data_age_sessions']=-1
     for zone,calname,anchor in [('Asia/Seoul','XKRX','^KS11'),('America/New_York','XNYS','^GSPC')]:
         mask=d.ticker.map(exchange_zone).eq(zone)
         day=latest_completed_session(anchor,now)
-        close=get_calendar(calname).session_close(pd.Timestamp(day))
-        good &= ~mask | (days.eq(day)&stamps.ge(close))
-    return d.loc[good].assign(_stamp=stamps[good]).sort_values('_stamp').drop_duplicates('ticker',keep='last').drop(columns='_stamp')
+        cal=get_calendar(calname)
+        allowed=[pd.Timestamp(day)]
+        for _ in range(max_age): allowed.append(cal.previous_session(allowed[-1]))
+        valid=pd.Series(False,index=d.index)
+        for age,session in enumerate(allowed):
+            hit=mask & days.eq(session.date()) & stamps.ge(cal.session_close(session))
+            valid |= hit
+            d.loc[hit,'data_age_sessions']=age
+        good &= ~mask | valid
+    return d.loc[good].assign(_stamp=stamps[good]).sort_values(['data_age_sessions','_stamp'],ascending=[False,True]).drop_duplicates('ticker',keep='last').drop(columns='_stamp')
+
+
+def reference_age(period):
+    return 1 if period.startswith('단기') else 3 if period.startswith('스윙') else 5 if period.startswith('중기') else 10
 
 
 def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossary):
@@ -155,7 +168,7 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             if len(errors)==len(chunk): break
         return (pd.concat(rows,ignore_index=True) if rows else candidates.iloc[0:0].copy()),failed,attempted
 
-    st.caption('최근 종료 거래일의 일봉만 추천과 상세 전략에 사용합니다. 전체 시장 재분석은 예약 작업에서 수행합니다.')
+    st.caption('최신 완료 일봉 우선. 최근 검증 자료는 별도 참고 순위에 활용하며 실제 매수 전 재확인이 필요합니다.')
     if 'qp_market_refresh_token' not in st.session_state:
         st.session_state['qp_market_refresh_token'] = pd.Timestamp.now(tz='UTC').isoformat()
     refresh_market = st.button('시장 정보 새로고침 (지수·뉴스·추천)', key='qp_refresh_market')
@@ -299,6 +312,8 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
         st.session_state['qp_sample_pending']=len(candidates)-attempted
         st.session_state['qp_sample_new']=len(verified_new)
         st.session_state['qp_sample_total_saved']=len(stored)
+        reference=reusable_candidates(pd.concat([stored,cached,combined],ignore_index=True),now,reference_age(period))
+        st.session_state['qp_reference_candidates']=reference
         st.session_state['qp_live_candidates']=(refresh_key,combined,failed,now,sessions)
     live=st.session_state.get('qp_live_candidates')
     common=full.iloc[0:0].copy()
@@ -352,6 +367,19 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
                 else:
                     st.caption('아래 매매전략은 별도 기술 분석의 조건부 참고값이며 연구 모델의 검증된 매매 신호가 아닙니다.')
                     render_detail(st,r['name'],r.ticker,report)
+    with st.expander('최근 검증 자료 활용 참고 순위',expanded=len(common)<10):
+        ref=reusable_candidates(st.session_state.get('qp_reference_candidates',pd.DataFrame()),pd.Timestamp.now(tz='UTC'),reference_age(period))
+        ref=filtered_candidates(ref,market,theme)
+        st.caption(f'최대 {reference_age(period)}거래일 이전 자료 허용. 최신 추천과 별개이며 현재 매수 판단·목표가·손절가로 사용하지 않습니다.')
+        if not ref.empty:
+            st.write(f'참고 평가 표본 {len(ref)}개 · 최신 {int(ref.data_age_sessions.eq(0).sum())}개 · 이전 자료 {int(ref.data_age_sessions.gt(0).sum())}개')
+            for label,challenger in [('기존 모델',False),('개선 모델 (연구용)',True)]:
+                ranked=shared_rank(ref,period,challenger=challenger).head(10).copy()
+                ranked['자료 상태']=ranked.data_age_sessions.map(lambda n:'최신 완료 일봉' if n==0 else f'{n}거래일 이전 · 재검증 필요')
+                ranked['저장 분석시각(KST)']=pd.to_datetime(ranked.scanned_at_utc,utc=True,format='mixed').dt.tz_convert('Asia/Seoul').dt.strftime('%Y-%m-%d %H:%M')
+                st.write(label)
+                st.dataframe(ranked[['name','추천 참고점수','asof_price','자료 상태','저장 분석시각(KST)']].rename(columns={'name':'종목','asof_price':'가격 기준일'}),hide_index=True,width='stretch')
+        else: st.info('유효기간 내 참고 자료가 없습니다.')
     top=full.head(10)
     if top.empty:
         st.warning('현재 검증된 추천 후보가 없습니다. 조회 상태를 확인하거나 잠시 후 다시 검색해 주세요.')
