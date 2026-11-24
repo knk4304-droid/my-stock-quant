@@ -1,0 +1,35 @@
+name: Reference validation
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q qp_home_r12.py market_batch_v90.py
+      - run: python -m unittest -v test_reference_age test_provider_validation
+      - run: |
+          python - <<'PY'
+          import pandas as pd
+          from time import perf_counter
+          from qp_home_r12 import reusable_candidates, reference_age
+          from qp_rank_r26 import rank
+          d=pd.read_csv('market_scan_data/scores.csv')
+          now=pd.Timestamp('2026-11-24T05:00:00Z')
+          for p in ['단기','스윙','중기','장기']:
+              t=perf_counter()
+              v=reusable_candidates(d,now,reference_age(p))
+              a,b=rank(v,p),rank(v,p,challenger=True)
+              assert set(a.ticker)==set(b.ticker)
+              print(p,len(v),'latest',sum(v.data_age_sessions==0),'seconds',round(perf_counter()-t,3))
+              print(a[['ticker','asof_price','추천 참고점수']].head(10).to_string(index=False))
+          PY
