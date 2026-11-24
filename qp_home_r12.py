@@ -68,6 +68,28 @@ def refresh_pool(saved, catalog, market, theme, now, limit=60):
     return pd.concat([picked, fallback], ignore_index=True).head(limit)
 
 
+def reusable_candidates(frame, now):
+    """Reuse only complete, finite inputs collected after the relevant session closed."""
+    from qp_current_gate_r60 import latest_completed_session, exchange_zone
+    from qp_universe_r18 import eligible
+    import numpy as np
+    fields=['score','close','return_5d_pct','return_20d_pct','volatility_annual']
+    if frame.empty or not set(fields+['ticker','asof_price','scanned_at_utc','market','asset_type','name']).issubset(frame.columns):
+        return frame.iloc[0:0].copy()
+    d=eligible(frame).copy()
+    for k in fields: d[k]=pd.to_numeric(d[k],errors='coerce')
+    stamps=pd.to_datetime(d.scanned_at_utc,format='mixed',utc=True,errors='coerce')
+    days=pd.to_datetime(d.asof_price,errors='coerce').dt.date
+    good=np.isfinite(d[fields]).all(axis=1)&d.score.between(0,100)&d.close.gt(0)&d.volatility_annual.ge(0)&stamps.le(now)
+    from exchange_calendars import get_calendar
+    for zone,calname,anchor in [('Asia/Seoul','XKRX','^KS11'),('America/New_York','XNYS','^GSPC')]:
+        mask=d.ticker.map(exchange_zone).eq(zone)
+        day=latest_completed_session(anchor,now)
+        close=get_calendar(calname).session_close(pd.Timestamp(day))
+        good &= ~mask | (days.eq(day)&stamps.ge(close))
+    return d.loc[good].assign(_stamp=stamps[good]).sort_values('_stamp').drop_duplicates('ticker',keep='last').drop(columns='_stamp')
+
+
 def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossary):
     import yfinance as yf
     from functools import partial
@@ -122,7 +144,16 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
 
     def fresh_candidates(candidates, now):
         from market_batch_v90 import scan_one
-        return refresh_candidates(candidates, partial(scan_one, completed_at=now), limit=60, now=now)
+        from time import monotonic
+        start=monotonic()
+        rows=[]; failed=[]; attempted=0
+        # Bound network work by elapsed time and provider failures, not a fixed symbol cap.
+        while attempted<len(candidates) and monotonic()-start<35:
+            chunk=candidates.iloc[attempted:attempted+8]
+            updated,errors=refresh_candidates(chunk,partial(scan_one,completed_at=now),limit=len(chunk),now=now)
+            rows.append(updated); failed.extend(errors); attempted+=len(chunk)
+            if len(errors)==len(chunk): break
+        return (pd.concat(rows,ignore_index=True) if rows else candidates.iloc[0:0].copy()),failed,attempted
 
     st.caption('최근 종료 거래일의 일봉만 추천과 상세 전략에 사용합니다. 전체 시장 재분석은 예약 작업에서 수행합니다.')
     if 'qp_market_refresh_token' not in st.session_state:
@@ -230,23 +261,50 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
             catalog = pd.read_csv(DATA/'catalog.csv', dtype=str)
         except (OSError, ValueError):
             catalog = pd.DataFrame()
-        candidates = refresh_pool(pd.concat([full,broad]).drop_duplicates('ticker'), catalog, market, theme, now)
-        st.caption(f'현재 조건에서 최대 {len(candidates)}개 후보를 재조회합니다.')
+        try:
+            stored=pd.read_csv(DATA/'scores.csv',dtype={'ticker':str})
+        except (OSError,ValueError):
+            stored=broad.copy()
+        from qp_universe_r18 import eligible
+        stored=filtered_candidates(eligible(stored),market,theme)
+        cached=st.session_state.get('qp_reusable_daily',pd.DataFrame())
+        reuse=reusable_candidates(pd.concat([stored,cached],ignore_index=True),now)
+        reuse=filtered_candidates(reuse,market,theme)
+        # Prioritize saved leaders, then rotate across catalog markets.
+        missing=stored.loc[~stored.ticker.isin(reuse.get('ticker',[]))] if not stored.empty else stored
+        if not missing.empty:
+            missing=missing.assign(_priority=pd.to_numeric(missing.score,errors='coerce')).sort_values('_priority',ascending=False).drop(columns='_priority')
+        fallback=filtered_candidates(eligible(catalog),market,theme)
+        if not fallback.empty:
+            fallback=fallback.sort_values('ticker')
+            groups=fallback.groupby(['market','asset_type'],sort=True)
+            offset=int(now.timestamp()//300)
+            order=(groups.cumcount()-offset)%groups.ticker.transform('size')
+            fallback=fallback.loc[order.sort_values(kind='stable').index]
+        # Interleave saved and new candidates so a large stale backlog cannot starve discovery.
+        parts=[]
+        for i in range(0,max(len(missing),len(fallback)),6):
+            parts.extend([missing.iloc[i:i+6],fallback.iloc[i:i+6]])
+        candidates=pd.concat(parts,ignore_index=True).drop_duplicates('ticker') if parts else stored.iloc[0:0].copy()
         if not candidates.empty:
-            with st.spinner('선정 후보의 최신 가격과 지표를 확인하고 있습니다...'):
-                updated,failed=fresh_candidates(candidates, now)
-            st.session_state['qp_sample_requested']=len(candidates)
-            st.session_state['qp_sample_saved']=int(candidates.ticker.isin(broad.get('ticker',[])).sum())
-            st.session_state['qp_live_candidates']=(refresh_key,updated,failed,now,sessions)
-        else:
-            st.session_state['qp_sample_requested']=0
-            st.session_state['qp_sample_saved']=0
-            st.session_state['qp_live_candidates']=(refresh_key,pd.DataFrame(),[],now,sessions)
+            candidates=candidates.loc[~candidates.ticker.isin(reuse.get('ticker',[]))]
+        with st.spinner('저장 데이터 검증 및 추가 후보 조회 중...'):
+            updated,failed,attempted=fresh_candidates(candidates,now)
+        verified_new=reusable_candidates(updated,now)
+        combined=reusable_candidates(pd.concat([reuse,verified_new],ignore_index=True),now)
+        st.session_state['qp_reusable_daily']=reusable_candidates(pd.concat([cached,combined],ignore_index=True),now)
+        st.session_state['qp_sample_requested']=attempted
+        st.session_state['qp_sample_saved']=int(candidates.iloc[:attempted].get('ticker',pd.Series(dtype=str)).isin(stored.get('ticker',[])).sum())
+        st.session_state['qp_sample_reused']=len(reuse)
+        st.session_state['qp_sample_pending']=len(candidates)-attempted
+        st.session_state['qp_sample_new']=len(verified_new)
+        st.session_state['qp_sample_total_saved']=len(stored)
+        st.session_state['qp_live_candidates']=(refresh_key,combined,failed,now,sessions)
     live=st.session_state.get('qp_live_candidates')
     common=full.iloc[0:0].copy()
     if live and live[0]==refresh_key:
-        from qp_current_gate_r60 import eligible_refreshed
-        updated,counts=eligible_refreshed(live[1])
+        updated=reusable_candidates(live[1],pd.Timestamp.now(tz='UTC'))
+        counts={'eligible':len(updated),'rejected':len(live[1])-len(updated)}
         if pd.Timestamp.now(tz='UTC')-live[3]>pd.Timedelta(minutes=5):
             st.warning('최신 추천 유효기간이 만료됐습니다. 다시 검색해 주세요.')
             full=full.iloc[0:0].copy()
@@ -263,11 +321,12 @@ def show(st, fresh, period_options, rank_fn, resolve_symbol, score_guide, glossa
     comparison=comparison_all.head(10)
     with st.expander('평가 대상 및 표본 선정 기준'):
         left=set(full.get('ticker',[])); right=set(comparison_all.get('ticker',[]))
-        st.write(f'저장 조건 일치 후보 {len(broad)}개 · 최신 검증 후보 {len(common)}개 · 기존 모델 {len(left)}개 · 개선 모델 {len(right)}개 · 공통 {len(left & right)}개')
+        st.write(f'저장 조건 일치 후보 {st.session_state.get('qp_sample_total_saved',len(broad))}개 · 최신 검증 후보 {len(common)}개 · 기존 모델 {len(left)}개 · 개선 모델 {len(right)}개 · 공통 {len(left & right)}개')
         requested=st.session_state.get('qp_sample_requested',0); saved=st.session_state.get('qp_sample_saved',0)
-        st.write(f'재조회 요청 {requested}개 · 저장 후보 {saved}개 · 추가 후보 {requested-saved}개 · 수집 성공 {len(live[1]) if live else 0}개')
+        st.write(f'재조회 요청 {requested}개 · 저장 후보 {saved}개 · 추가 후보 {requested-saved}개 · 신규 검증 성공 {st.session_state.get('qp_sample_new',0)}개')
         st.write(f'표본 동일 여부: {"동일" if left==right and left else "상이 또는 평가 없음"} · 조회 실패 {len(live[2]) if live else 0}개')
-        st.caption('저장 후보 우선 선정 → 부족 시 카탈로그 순환 보충 → 최대 60개 최신 일봉 재조회 → 거래일·가격 검증 → 동일 후보에서 각각 순위 산출. 전체 시장 전수 평가가 아닙니다.')
+        st.write(f"저장 데이터 재활용 {st.session_state.get('qp_sample_reused',0)}개 · 추가 조회 대기 {st.session_state.get('qp_sample_pending',0)}개")
+        st.caption('최신 완료 거래일 저장 데이터 전체 재활용 → 부족 후보 시간 예산 내 추가 조회 → 동일 검증 표본 평가. 전체 시장 전수 평가가 아닙니다.')
         if not common.empty:
             st.dataframe(common.groupby(['market','asset_type']).size().rename('검증 종목 수').reset_index(),hide_index=True)
     with st.expander('개선 모델 비교 (연구용 · 실전 추천 미반영)'):
