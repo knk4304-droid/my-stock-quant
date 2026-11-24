@@ -36,7 +36,7 @@ def refresh_candidates(frame, fetch, limit=20, now=None):
         for row,result in zip(candidates.to_dict('records'),pool.map(one,candidates.to_dict('records'))):
             if result is None: failed.append(row['ticker'])
             else: rows.append(result)
-    return pd.DataFrame(rows,columns=candidates.columns.union(['asof_price','scanned_at_utc','close','score','return_5d_pct','return_20d_pct','volatility_annual'],sort=False)),failed
+    return pd.DataFrame(rows,columns=pd.Index(list(dict.fromkeys([*candidates.columns,*(k for row in rows for k in row)]))).union(['asof_price','scanned_at_utc','close','score','return_5d_pct','return_20d_pct','volatility_annual'],sort=False)),failed
 
 
 def expected_weekday(now, domestic):
