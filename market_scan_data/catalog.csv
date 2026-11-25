@@ -79,6 +79,11 @@ BIP-A,"Brookfield Infrastructure Partners LP 5.125% Class A Preferred Limited Pa
 BIP-B,"Brookfield Infrastructure Partners LP 5.000% Class A Preferred Limited Partnership Units, Series 14",NYSE/OTHER,STOCK
 BIPC,Brookfield Infrastructure Corporation Brookfield Infrastructure Corporation,NYSE/OTHER,STOCK
 SROI,Calamos Antetokounmpo Global Sustainable Equities ETF,NYSE/OTHER,ETF
+CPHY,F/m Compoundr High Yield Bond ETF,NASDAQ,ETF
+EBMT,"Eagle Bancorp Montana, Inc. - Common Stock",NASDAQ,STOCK
+IPFX,Inflection Point Acquisition Corp. VI - Class A Ordinary Shares,NASDAQ,STOCK
+IPFXU,Inflection Point Acquisition Corp. VI - Units,NASDAQ,STOCK
+IPFXW,Inflection Point Acquisition Corp. VI - Warrant,NASDAQ,STOCK
 AAAP,Pacer Barings CLO Market Flex ETF,NASDAQ,ETF
 AACG,"ATA Creativity Global - American Depositary Shares, each representing two common shares",NASDAQ,STOCK
 AACI,Armada Acquisition Corp. III - Class A Ordinary Share,NASDAQ,STOCK
@@ -1248,7 +1253,6 @@ CPAG,F/m Compoundr U.S. Aggregate Bond ETF,NASDAQ,ETF
 CPB,The Campbell's Company - Common Stock,NASDAQ,STOCK
 CPBI,"Central Plains Bancshares, Inc. - Common Stock",NASDAQ,STOCK
 CPHC,Canterbury Park Holding Corporation - Common Stock,NASDAQ,STOCK
-CPHY,F/m Compoundr High Yield Bond ETF,NASDAQ,ETF
 CPIX,Cumberland Pharmaceuticals Inc. - Common Stock,NASDAQ,STOCK
 CPLS,AB Core Plus Bond ETF,NASDAQ,ETF
 CPOP,"Pop Culture Group Co., Ltd - Class A Ordinary Shares",NASDAQ,STOCK
@@ -1561,7 +1565,6 @@ EBAY,eBay Inc. - Common Stock,NASDAQ,STOCK
 EBC,"Eastern Bankshares, Inc. - Common Stock",NASDAQ,STOCK
 EBI,Longview Advantage ETF,NASDAQ,ETF
 EBIZ,Global X E-commerce ETF,NASDAQ,ETF
-EBMT,"Eagle Bancorp Montana, Inc. - Common Stock",NASDAQ,STOCK
 EBON,Ebang International Holdings Inc. - Class A Ordinary Shares,NASDAQ,STOCK
 ECBK,"ECB Bancorp, Inc. - Common Stock",NASDAQ,STOCK
 ECHO,EchoStar Corporation - Common stock,NASDAQ,STOCK
@@ -2615,9 +2618,6 @@ IOVA,"Iovance Biotherapeutics, Inc. - Common Stock",NASDAQ,STOCK
 IOYY,GraniteShares YieldBOOST IONQ ETF,NASDAQ,ETF
 IPAR,"Interparfums, Inc. - Common Stock",NASDAQ,STOCK
 IPDN,"Professional Diversity Network, Inc. - Common Stock",NASDAQ,STOCK
-IPFX,Inflection Point Acquisition Corp. VI - Class A Ordinary Shares,NASDAQ,STOCK
-IPFXU,Inflection Point Acquisition Corp. VI - Units,NASDAQ,STOCK
-IPFXW,Inflection Point Acquisition Corp. VI - Warrant,NASDAQ,STOCK
 IPGP,IPG Photonics Corporation - Common Stock,NASDAQ,STOCK
 IPHA,Innate Pharma S.A. - American Depositary Shares,NASDAQ,STOCK
 IPHX,Inflection Point Acquisition Corp. VIII - Class A Ordinary Shares,NASDAQ,STOCK
@@ -3566,6 +3566,7 @@ OBAWU,Oxley Bridge Acquisition Limited - Unit,NASDAQ,STOCK
 OBAWW,Oxley Bridge Acquisition Limited - Warrants,NASDAQ,STOCK
 OBIL,US Treasury 12 Month Bill ETF,NASDAQ,ETF
 OBIO,"Orchestra BioMed Holdings, Inc. - Ordinary Shares",NASDAQ,STOCK
+OBMT,"Opportunity Bancorp, Inc. - Common Stock",NASDAQ,STOCK
 OBT,"Orange County Bancorp, Inc. - Common Stock",NASDAQ,STOCK
 OBTC,Osprey Bitcoin Trust,NASDAQ,ETF
 OBX,"Obsidian Therapeutics, Inc. - Common Stock",NASDAQ,STOCK
@@ -8871,6 +8872,7 @@ ITW,Illinois Tool Works Inc. Common Stock,NYSE/OTHER,STOCK
 ITWO,ProShares Russell 2000 High Income ETF,NYSE/OTHER,ETF
 IVAI,Ives Ultra AI Opportunities Inc. Common Stock,NYSE/OTHER,STOCK
 IVE,iShares S&P 500 Value ETF,NYSE/OTHER,ETF
+IVEA,Dan IVES Wedbush AI Autocallable Income ETF,NYSE/OTHER,ETF
 IVEP,Dan IVES Wedbush AI Power & Infrastructure ETF,NYSE/OTHER,ETF
 IVES,Dan IVES Wedbush AI Revolution ETF,NYSE/OTHER,ETF
 IVLU,iShares MSCI Intl Value Factor ETF,NYSE/OTHER,ETF
@@ -10701,6 +10703,8 @@ QRED.U,"QuasarEdge Acquisition Corporation Units, each consisting of one Ordinar
 QSE,Corgi Growth & Technology 10% Structured Buffer ETF - September Series,NYSE/OTHER,ETF
 QSIG,WisdomTree U.S. Short Term Corporate Bond Fund,NYSE/OTHER,ETF
 QSOL,Invesco Galaxy Solana ETF,NYSE/OTHER,ETF
+QSPC,"Quantum Space, Inc. Class A-1 Common Stock",NYSE/OTHER,STOCK
+QSPC.W,"Quantum Space, Inc. Warrants, each whole warrant exercisable for one share of Class A-1 Common Stock at an exercise price of $11.50 per share",NYSE/OTHER,STOCK
 QSPT,FT Vest Nasdaq-100 Buffer ETF - September,NYSE/OTHER,ETF
 QSR,Restaurant Brands International Inc. Common Shares,NYSE/OTHER,STOCK
 QTAC,Q3 All-Season Tactical Advantage ETF,NYSE/OTHER,ETF
@@ -12540,6 +12544,7 @@ XYZY,YieldMax XYZ Option Income Strategy ETF,NYSE/OTHER,ETF
 XZO,"Exzeo Group, Inc. Common Stock",NYSE/OTHER,STOCK
 YALA,"Yalla Group Limited American Depositary Shares, each representing one Class A Ordinary Share",NYSE/OTHER,STOCK
 YALL,Truth Social God Bless America ETF,NYSE/OTHER,ETF
+YANT,YieldMax ANT Option Income Strategy ETF,NYSE/OTHER,ETF
 YASX,Yorkville America Space Index ETF,NYSE/OTHER,ETF
 YBIT,YieldMax Bitcoin Option Income Strategy ETF,NYSE/OTHER,ETF
 YBTC,Roundhill Bitcoin Covered Call Strategy ETF,NYSE/OTHER,ETF
@@ -14182,6 +14187,7 @@ ZWS,Zurn Elkay Water Solutions Corporation Common Stock,NYSE/OTHER,STOCK
 226590.KQ,엠디바이스,KOSDAQ,STOCK
 058970.KQ,엠로,KOSDAQ,STOCK
 169330.KQ,엠브레인,KOSDAQ,STOCK
+498150.KQ,엠비디,KOSDAQ,STOCK
 097520.KS,엠씨넥스,KOSPI,STOCK
 373170.KQ,엠아이큐브솔루션,KOSDAQ,STOCK
 179290.KQ,엠아이텍,KOSDAQ,STOCK

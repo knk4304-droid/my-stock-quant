@@ -7,15 +7,22 @@
     "KR ETF": 0
   },
   "catalog_by_market": {
-    "NYSE/OTHER": 7154,
-    "NASDAQ": 5470,
-    "KOSDAQ": 1719,
+    "NYSE/OTHER": 7158,
+    "NASDAQ": 5471,
+    "KOSDAQ": 1720,
     "KOSPI": 911,
     "KR ETF": 4
   },
-  "scanned_by_market": {},
-  "catalog_size": 15258,
-  "attempted": 450,
+  "scanned_by_market": {
+    "KOSPI": 77,
+    "KOSDAQ": 53,
+    "KR ETF": 4
+  },
+  "catalog_size": 15264,
+  "attempted": 324,
+  "planned": 450,
+  "deferred": 126,
+  "rate_limited": true,
   "rotation_count": 450,
   "revisit_count": 0,
   "selection_groups": {
@@ -23,8 +30,8 @@
     "신규 순환 발굴": 450,
     "기존 우수 후보": 0
   },
-  "succeeded": 0,
-  "failed": 450,
-  "updated_utc": "2026-11-24T02:04:08.406482+00:00",
+  "succeeded": 134,
+  "failed": 190,
+  "updated_utc": "2026-11-25T02:14:12.293646+00:00",
   "freshness_policy": "oldest-first-balanced-r63"
 }
