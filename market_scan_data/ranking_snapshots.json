@@ -14102,5 +14102,630 @@
         }
       ]
     }
+  },
+  {
+    "at_utc": "2026-11-26T02:11:22+00:00",
+    "candidate_count": 2165,
+    "periods": {
+      "단기 (1~3일)": [
+        {
+          "rank": 1,
+          "ticker": "043710.KQ",
+          "name": "코스리거글로벌",
+          "score": 54.6,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:15:55.289929+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "489460.KQ",
+          "name": "바이오비쥬",
+          "score": 53.4,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:13:40.828188+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "304840.KQ",
+          "name": "타임X AI",
+          "score": 50.7,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-23T07:29:05.799741+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "104620.KQ",
+          "name": "노랑풍선",
+          "score": 50.0,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-24",
+          "scanned_at_utc": "2026-11-25T02:09:30.212825+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "034120.KS",
+          "name": "SBS",
+          "score": 49.3,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:11:19.089726+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "150900.KQ",
+          "name": "파수AI",
+          "score": 48.0,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-23T07:28:34.935185+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "170790.KQ",
+          "name": "파이오링크",
+          "score": 47.2,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-24T02:02:40.986078+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "034230.KS",
+          "name": "파라다이스",
+          "score": 46.7,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:14:40.056962+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "950260.KQ",
+          "name": "인제니아테라퓨틱스(Reg.S)",
+          "score": 46.5,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-24",
+          "scanned_at_utc": "2026-11-25T02:09:26.209262+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "290550.KQ",
+          "name": "디케이티",
+          "score": 46.1,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-24",
+          "scanned_at_utc": "2026-11-25T02:11:18.196117+00:00"
+        }
+      ],
+      "스윙 (1~2주)": [
+        {
+          "rank": 1,
+          "ticker": "043710.KQ",
+          "name": "코스리거글로벌",
+          "score": 63.1,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:15:55.289929+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "304840.KQ",
+          "name": "타임X AI",
+          "score": 59.3,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-23T07:29:05.799741+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "170790.KQ",
+          "name": "파이오링크",
+          "score": 58.8,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-24T02:02:40.986078+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "489460.KQ",
+          "name": "바이오비쥬",
+          "score": 58.7,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:13:40.828188+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "104620.KQ",
+          "name": "노랑풍선",
+          "score": 58.6,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-24",
+          "scanned_at_utc": "2026-11-25T02:09:30.212825+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "034120.KS",
+          "name": "SBS",
+          "score": 58.1,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:11:19.089726+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "002790.KS",
+          "name": "아모레퍼시픽홀딩스",
+          "score": 57.4,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:10:07.359169+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "150900.KQ",
+          "name": "파수AI",
+          "score": 56.7,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-23T07:28:34.935185+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "298690.KS",
+          "name": "에어부산",
+          "score": 56.7,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:09:10.595717+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "001080.KS",
+          "name": "MH머트리얼즈",
+          "score": 56.5,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:09:15.721800+00:00"
+        }
+      ],
+      "중기 (1~3개월)": [
+        {
+          "rank": 1,
+          "ticker": "001080.KS",
+          "name": "MH머트리얼즈",
+          "score": 67.9,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:09:15.721800+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "298690.KS",
+          "name": "에어부산",
+          "score": 67.2,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:09:10.595717+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "043710.KQ",
+          "name": "코스리거글로벌",
+          "score": 66.8,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:15:55.289929+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "170790.KQ",
+          "name": "파이오링크",
+          "score": 66.3,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-24T02:02:40.986078+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "419120.KQ",
+          "name": "산돌",
+          "score": 66.1,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:14:43.049851+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "010660.KS",
+          "name": "화천기계",
+          "score": 65.8,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:10:17.338160+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "302440.KS",
+          "name": "SK바이오사이언스",
+          "score": 65.6,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:13:37.503957+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "002790.KS",
+          "name": "아모레퍼시픽홀딩스",
+          "score": 65.5,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:10:07.359169+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "034120.KS",
+          "name": "SBS",
+          "score": 64.7,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:11:19.089726+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "272450.KS",
+          "name": "진에어",
+          "score": 64.5,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:08:58.292780+00:00"
+        }
+      ],
+      "장기 (1년 이상)": [
+        {
+          "rank": 1,
+          "ticker": "034120.KS",
+          "name": "SBS",
+          "score": 67.4,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:11:19.089726+00:00"
+        },
+        {
+          "rank": 2,
+          "ticker": "054950.KQ",
+          "name": "제이브이엠",
+          "score": 67.4,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-24T02:03:51.235732+00:00"
+        },
+        {
+          "rank": 3,
+          "ticker": "419120.KQ",
+          "name": "산돌",
+          "score": 66.8,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:14:43.049851+00:00"
+        },
+        {
+          "rank": 4,
+          "ticker": "002790.KS",
+          "name": "아모레퍼시픽홀딩스",
+          "score": 66.3,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:10:07.359169+00:00"
+        },
+        {
+          "rank": 5,
+          "ticker": "001080.KS",
+          "name": "MH머트리얼즈",
+          "score": 66.1,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:09:15.721800+00:00"
+        },
+        {
+          "rank": 6,
+          "ticker": "170790.KQ",
+          "name": "파이오링크",
+          "score": 66.0,
+          "market": "KOSDAQ",
+          "price_date": "2026-11-23",
+          "scanned_at_utc": "2026-11-24T02:02:40.986078+00:00"
+        },
+        {
+          "rank": 7,
+          "ticker": "302440.KS",
+          "name": "SK바이오사이언스",
+          "score": 66.0,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:13:37.503957+00:00"
+        },
+        {
+          "rank": 8,
+          "ticker": "298690.KS",
+          "name": "에어부산",
+          "score": 65.9,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:09:10.595717+00:00"
+        },
+        {
+          "rank": 9,
+          "ticker": "009160.KS",
+          "name": "SIMPAC",
+          "score": 65.8,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-25T07:15:46.075015+00:00"
+        },
+        {
+          "rank": 10,
+          "ticker": "010660.KS",
+          "name": "화천기계",
+          "score": 65.7,
+          "market": "KOSPI",
+          "price_date": "2026-11-25",
+          "scanned_at_utc": "2026-11-26T02:10:17.338160+00:00"
+        }
+      ]
+    },
+    "model_version": "R26-baseline",
+    "challenger_periods": {
+      "단기 (1~3일)": [
+        {
+          "ticker": "003090.KS",
+          "score": 87.3,
+          "price_date": "2026-11-25",
+          "close": 16880.0
+        },
+        {
+          "ticker": "034120.KS",
+          "score": 86.4,
+          "price_date": "2026-11-25",
+          "close": 13370.0
+        },
+        {
+          "ticker": "002790.KS",
+          "score": 85.6,
+          "price_date": "2026-11-25",
+          "close": 29350.0
+        },
+        {
+          "ticker": "034230.KS",
+          "score": 85.2,
+          "price_date": "2026-11-25",
+          "close": 11570.0
+        },
+        {
+          "ticker": "009160.KS",
+          "score": 84.7,
+          "price_date": "2026-11-25",
+          "close": 5410.0
+        },
+        {
+          "ticker": "068270.KS",
+          "score": 84.6,
+          "price_date": "2026-11-25",
+          "close": 217000.0
+        },
+        {
+          "ticker": "197140.KQ",
+          "score": 84.1,
+          "price_date": "2026-11-24",
+          "close": 2705.0
+        },
+        {
+          "ticker": "137310.KS",
+          "score": 83.4,
+          "price_date": "2026-11-25",
+          "close": 7500.0
+        },
+        {
+          "ticker": "170790.KQ",
+          "score": 83.0,
+          "price_date": "2026-11-23",
+          "close": 10290.0
+        },
+        {
+          "ticker": "326030.KS",
+          "score": 82.9,
+          "price_date": "2026-11-25",
+          "close": 89500.0
+        }
+      ],
+      "스윙 (1~2주)": [
+        {
+          "ticker": "003090.KS",
+          "score": 85.6,
+          "price_date": "2026-11-25",
+          "close": 16880.0
+        },
+        {
+          "ticker": "002790.KS",
+          "score": 84.5,
+          "price_date": "2026-11-25",
+          "close": 29350.0
+        },
+        {
+          "ticker": "009160.KS",
+          "score": 84.5,
+          "price_date": "2026-11-25",
+          "close": 5410.0
+        },
+        {
+          "ticker": "068270.KS",
+          "score": 84.2,
+          "price_date": "2026-11-25",
+          "close": 217000.0
+        },
+        {
+          "ticker": "034120.KS",
+          "score": 83.7,
+          "price_date": "2026-11-25",
+          "close": 13370.0
+        },
+        {
+          "ticker": "054950.KQ",
+          "score": 83.5,
+          "price_date": "2026-11-23",
+          "close": 25350.0
+        },
+        {
+          "ticker": "137310.KS",
+          "score": 83.5,
+          "price_date": "2026-11-25",
+          "close": 7500.0
+        },
+        {
+          "ticker": "197140.KQ",
+          "score": 83.3,
+          "price_date": "2026-11-24",
+          "close": 2705.0
+        },
+        {
+          "ticker": "302440.KS",
+          "score": 83.1,
+          "price_date": "2026-11-25",
+          "close": 40200.0
+        },
+        {
+          "ticker": "326030.KS",
+          "score": 83.1,
+          "price_date": "2026-11-25",
+          "close": 89500.0
+        }
+      ],
+      "중기 (1~3개월)": [
+        {
+          "ticker": "009160.KS",
+          "score": 84.3,
+          "price_date": "2026-11-25",
+          "close": 5410.0
+        },
+        {
+          "ticker": "054950.KQ",
+          "score": 84.3,
+          "price_date": "2026-11-23",
+          "close": 25350.0
+        },
+        {
+          "ticker": "003090.KS",
+          "score": 84.1,
+          "price_date": "2026-11-25",
+          "close": 16880.0
+        },
+        {
+          "ticker": "068270.KS",
+          "score": 83.8,
+          "price_date": "2026-11-25",
+          "close": 217000.0
+        },
+        {
+          "ticker": "137310.KS",
+          "score": 83.7,
+          "price_date": "2026-11-25",
+          "close": 7500.0
+        },
+        {
+          "ticker": "002790.KS",
+          "score": 83.6,
+          "price_date": "2026-11-25",
+          "close": 29350.0
+        },
+        {
+          "ticker": "302440.KS",
+          "score": 83.5,
+          "price_date": "2026-11-25",
+          "close": 40200.0
+        },
+        {
+          "ticker": "182360.KQ",
+          "score": 83.3,
+          "price_date": "2026-11-25",
+          "close": 7200.0
+        },
+        {
+          "ticker": "326030.KS",
+          "score": 83.3,
+          "price_date": "2026-11-25",
+          "close": 89500.0
+        },
+        {
+          "ticker": "419120.KQ",
+          "score": 83.1,
+          "price_date": "2026-11-25",
+          "close": 2985.0
+        }
+      ],
+      "장기 (1년 이상)": [
+        {
+          "ticker": "054950.KQ",
+          "score": 84.9,
+          "price_date": "2026-11-23",
+          "close": 25350.0
+        },
+        {
+          "ticker": "009160.KS",
+          "score": 84.1,
+          "price_date": "2026-11-25",
+          "close": 5410.0
+        },
+        {
+          "ticker": "419120.KQ",
+          "score": 84.1,
+          "price_date": "2026-11-25",
+          "close": 2985.0
+        },
+        {
+          "ticker": "137310.KS",
+          "score": 83.8,
+          "price_date": "2026-11-25",
+          "close": 7500.0
+        },
+        {
+          "ticker": "302440.KS",
+          "score": 83.8,
+          "price_date": "2026-11-25",
+          "close": 40200.0
+        },
+        {
+          "ticker": "068270.KS",
+          "score": 83.6,
+          "price_date": "2026-11-25",
+          "close": 217000.0
+        },
+        {
+          "ticker": "182360.KQ",
+          "score": 83.6,
+          "price_date": "2026-11-25",
+          "close": 7200.0
+        },
+        {
+          "ticker": "010660.KS",
+          "score": 83.5,
+          "price_date": "2026-11-25",
+          "close": 3650.0
+        },
+        {
+          "ticker": "326030.KS",
+          "score": 83.5,
+          "price_date": "2026-11-25",
+          "close": 89500.0
+        },
+        {
+          "ticker": "005430.KS",
+          "score": 83.4,
+          "price_date": "2026-11-25",
+          "close": 103200.0
+        }
+      ]
+    }
   }
 ]
