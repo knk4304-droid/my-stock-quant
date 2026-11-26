@@ -14,15 +14,13 @@
     "KR ETF": 4
   },
   "scanned_by_market": {
-    "KOSPI": 110,
-    "KOSDAQ": 86,
     "KR ETF": 4
   },
   "catalog_size": 15266,
-  "attempted": 450,
+  "attempted": 318,
   "planned": 450,
-  "deferred": 0,
-  "rate_limited": false,
+  "deferred": 132,
+  "rate_limited": true,
   "rotation_count": 450,
   "revisit_count": 0,
   "selection_groups": {
@@ -30,8 +28,8 @@
     "신규 순환 발굴": 450,
     "기존 우수 후보": 0
   },
-  "succeeded": 200,
-  "failed": 250,
-  "updated_utc": "2026-11-26T02:11:21.689511+00:00",
+  "succeeded": 4,
+  "failed": 314,
+  "updated_utc": "2026-11-26T16:46:50.853691+00:00",
   "freshness_policy": "oldest-first-balanced-r63"
 }
